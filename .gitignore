@@ -1,0 +1,53 @@
+# =========================
+# ROOT MONOREPO GITIGNORE
+# =========================
+
+# env files
+.env
+.env.local
+.env.*
+
+# backend envs
+backend/.env
+
+# frontend envs
+frontend/.env.local
+
+# python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# node
+node_modules/
+
+# nextjs
+.next/
+out/
+
+# logs
+*.log
+
+# databases
+*.sqlite3
+
+# chroma
+chroma/
+chromadb/
+
+# uploads
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+
+# build
+dist/
+build/
