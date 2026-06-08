@@ -1,52 +1,63 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Briefcase, MapPin, Users } from "lucide-react";
+import { Plus, Briefcase, MapPin, Users, Sparkles } from "lucide-react";
 
 export default function JobsPage() {
   const [jobs] = useState([
-    { id: 1, title: "Senior Frontend Engineer", department: "Engineering", type: "Full-time", location: "Remote", applicants: 45, status: "Open" },
-    { id: 2, title: "Product Manager", department: "Product", type: "Full-time", location: "New York, NY", applicants: 12, status: "Open" },
-    { id: 3, title: "HR Business Partner", department: "Human Resources", type: "Contract", location: "San Francisco, CA", applicants: 8, status: "Draft" },
+    { id: 1, title: "Senior Frontend System Architect", department: "Technology Solutions", type: "Full-time", location: "Distributed / Remote", applicants: 45, status: "Active" },
+    { id: 2, title: "Principal Product Manager", department: "Product Innovation", type: "Full-time", location: "New York HQ", applicants: 12, status: "Active" },
+    { id: 3, title: "HR Business Operations Partner", department: "People Operations", type: "Contract", location: "San Francisco Hub", applicants: 8, status: "Draft" },
   ]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-10">
+      
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Job Listings</h1>
-          <p className="text-gray-500">Manage your active openings and drafts.</p>
+          <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-foreground animate-pulse" />
+            Talent Acquisition Operations
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage active corporate openings, track application pipelines, and deploy position templates.</p>
         </div>
-        <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-          <Plus size={18} />
-          Create Job
+        <button className="flex items-center gap-2 bg-foreground hover:bg-foreground/90 text-background px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors shadow-sm">
+          <Plus size={14} />
+          Initiate Requisition
         </button>
       </div>
 
+      {/* Grid List */}
       <div className="grid grid-cols-1 gap-4">
         {jobs.map((job) => (
-          <div key={job.id} className="p-5 bg-white dark:bg-gray-950 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 transition flex items-center justify-between cursor-pointer">
+          <div key={job.id} className="p-6 bg-card rounded-2xl shadow-sm border border-border hover:border-foreground/20 transition-all flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-blue-600">
-                <Briefcase size={24} />
+              <div className="w-12 h-12 bg-secondary border border-border/50 rounded-xl flex items-center justify-center text-foreground group-hover:bg-foreground group-hover:text-background transition-colors">
+                <Briefcase size={20} />
               </div>
               <div>
-                <h3 className="font-semibold text-lg">{job.title}</h3>
-                <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
-                  <span className="flex items-center gap-1"><MapPin size={14} /> {job.location}</span>
-                  <span className="flex items-center gap-1"><Users size={14} /> {job.applicants} Applicants</span>
-                  <span>{job.type}</span>
+                <h3 className="font-bold text-base tracking-tight text-foreground">{job.title}</h3>
+                <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2 font-medium">
+                  <span className="flex items-center gap-1.5"><MapPin size={12} className="text-foreground" /> {job.location}</span>
+                  <span className="flex items-center gap-1.5"><Users size={12} className="text-foreground" /> {job.applicants} Evaluated Candidates</span>
+                  <span className="px-2.5 py-0.5 bg-secondary border border-border/50 rounded-full text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">{job.type}</span>
                 </div>
               </div>
             </div>
             <div>
-              <span className={`px-3 py-1 text-xs font-medium rounded-full ${job.status === "Open" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"}`}>
+              <span className={`px-2.5 py-1 text-[10px] uppercase tracking-widest font-bold rounded-lg border shadow-sm ${
+                job.status === "Active" 
+                  ? "bg-foreground/5 text-foreground border-foreground/10" 
+                  : "bg-secondary text-muted-foreground border-border"
+              }`}>
                 {job.status}
               </span>
             </div>
           </div>
         ))}
       </div>
+
     </div>
   );
 }

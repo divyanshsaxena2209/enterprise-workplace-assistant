@@ -20,11 +20,10 @@ app.add_middleware(
 def health_check():
     return {"status": "ok"}
 
-from app.routers import jobs, applications, knowledge, meetings, onboarding
+from app.routers import jobs, applications, knowledge, onboarding
 app.include_router(jobs.router, prefix=settings.API_V1_STR)
 app.include_router(applications.router, prefix=settings.API_V1_STR)
 app.include_router(knowledge.router, prefix=settings.API_V1_STR)
-app.include_router(meetings.router, prefix=settings.API_V1_STR)
 app.include_router(onboarding.router, prefix=settings.API_V1_STR)
 
 # Add router includes later...

@@ -7,8 +7,11 @@ from app.services.chunking_service import chunk_text
 from openai import OpenAI
 
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
-chroma_client = chromadb.HttpClient(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
-knowledge_collection = chroma_client.get_or_create_collection(name="enterprise_knowledge")
+chroma_client = chromadb.PersistentClient(path="./chroma_db")
+
+knowledge_collection = chroma_client.get_or_create_collection(
+    name="enterprise_knowledge"
+)
 
 class RAGService:
     @staticmethod

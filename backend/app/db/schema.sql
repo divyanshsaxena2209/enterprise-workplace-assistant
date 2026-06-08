@@ -52,14 +52,6 @@ CREATE TABLE company_documents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Meeting Records
-CREATE TABLE meeting_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
-    transcript TEXT,
-    summary TEXT,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
 
 -- AI Logs
 CREATE TABLE ai_logs (
@@ -194,60 +186,6 @@ CREATE INDEX idx_document_chunks_doc ON document_chunks(document_id);
 CREATE INDEX idx_chats_user ON chats(user_id);
 CREATE INDEX idx_chat_messages_chat ON chat_messages(chat_id);
 
--- Phase 4: Meeting Intelligence System
-
-CREATE TYPE meeting_status AS ENUM ('Uploading', 'Transcribing', 'Analyzing', 'Completed', 'Failed');
-CREATE TYPE task_priority AS ENUM ('Low', 'Medium', 'High', 'Critical');
-
--- Meetings
-CREATE TABLE meetings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
-    department VARCHAR(100),
-    organizer_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    audio_file_url TEXT NOT NULL,
-    status meeting_status DEFAULT 'Uploading',
-    meeting_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Transcripts
-CREATE TABLE transcripts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    meeting_id UUID REFERENCES meetings(id) ON DELETE CASCADE UNIQUE,
-    raw_text TEXT NOT NULL,
-    structured_json JSONB, -- For speaker segmentation and timestamps
-    executive_summary TEXT,
-    decisions_made TEXT[],
-    discussion_points TEXT[],
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Meeting Tasks (Action Items)
-CREATE TABLE meeting_tasks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    meeting_id UUID REFERENCES meetings(id) ON DELETE CASCADE,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
-    priority task_priority DEFAULT 'Medium',
-    due_date TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(50) DEFAULT 'Pending',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Participants
-CREATE TABLE participants (
-    meeting_id UUID REFERENCES meetings(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    PRIMARY KEY (meeting_id, user_id)
-);
-
--- Indexes
-CREATE INDEX idx_transcripts_meeting ON transcripts(meeting_id);
-CREATE INDEX idx_meeting_tasks_meeting ON meeting_tasks(meeting_id);
-CREATE INDEX idx_meeting_tasks_assigned ON meeting_tasks(assigned_to);
 
 -- Phase 5: Onboarding & Workflow Engine
 
@@ -281,7 +219,7 @@ CREATE TABLE onboarding_templates (
 );
 
 -- Onboarding Tasks
-CREATE TABLE onboarding_tasks (
+CREATE TABLE employee_onboarding_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
@@ -316,7 +254,7 @@ CREATE TABLE notifications (
 );
 
 -- Indexes
-CREATE INDEX idx_onboarding_tasks_emp ON onboarding_tasks(employee_id);
+CREATE INDEX idx_employee_onboarding_tasks_emp ON employee_onboarding_tasks(employee_id);
 CREATE INDEX idx_employee_docs_emp ON employee_documents(employee_id);
 CREATE INDEX idx_notifications_user ON notifications(user_id);
 

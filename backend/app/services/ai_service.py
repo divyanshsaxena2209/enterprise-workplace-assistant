@@ -25,14 +25,6 @@ class AIService:
         )
         return response.choices[0].message.content
 
-    def transcribe_audio(self, audio_file_path: str):
-        """Whisper integration for meetings."""
-        with open(audio_file_path, "rb") as audio_file:
-            transcript = self.openai_client.audio.transcriptions.create(
-                model="whisper-1", 
-                file=audio_file
-            )
-        return transcript.text
 
     def add_to_knowledge_base(self, doc_id: str, text: str, metadata: dict = None):
         """Add text document to ChromaDB for RAG."""

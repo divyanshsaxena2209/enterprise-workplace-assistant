@@ -67,7 +67,17 @@ def require_role(allowed_roles: list[str]):
     """
     def dependency(current_user: Dict[str, Any] = Security(get_current_user)) -> Dict[str, Any]:
         user_role = current_user.get("role")
-        if user_role not in allowed_roles:
+        
+        # Support new string-based roles and legacy enums compatibly
+        effective_roles = [user_role]
+        if user_role == "Management":
+            effective_roles.extend(["HR_ADMIN", "SUPER_ADMIN", "management", "admin"])
+        elif user_role == "Employee":
+            effective_roles.extend(["EMPLOYEE", "employee"])
+        elif user_role in ["HR_ADMIN", "SUPER_ADMIN"]:
+            effective_roles.extend(["Management", "management"])
+            
+        if not any(r in allowed_roles for r in effective_roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Operation not authorized for your user role"

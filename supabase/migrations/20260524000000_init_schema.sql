@@ -182,51 +182,7 @@ CREATE POLICY "Allow HR/Super admins to manage company documents"
         )
     );
 
--- 8. Meetings Table (Meeting Minutes module)
-CREATE TABLE IF NOT EXISTS public.meetings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
-    meeting_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    audio_file_path TEXT,
-    transcript TEXT,
-    summary TEXT,
-    organized_by UUID REFERENCES public.profiles(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
-);
 
--- Enable RLS on Meetings
-ALTER TABLE public.meetings ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow all authenticated users to read meetings"
-    ON public.meetings FOR SELECT
-    USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Allow all authenticated users to insert meetings"
-    ON public.meetings FOR INSERT
-    WITH CHECK (auth.role() = 'authenticated');
-
--- 9. Meeting Action Items Table
-CREATE TABLE IF NOT EXISTS public.meeting_action_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    meeting_id UUID REFERENCES public.meetings(id) ON DELETE CASCADE,
-    task_description TEXT NOT NULL,
-    assignee_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    assignee_fallback_name VARCHAR(100),
-    deadline TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(50) DEFAULT 'PENDING',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
-);
-
--- Enable RLS on Meeting Action Items
-ALTER TABLE public.meeting_action_items ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow all authenticated users to read action items"
-    ON public.meeting_action_items FOR SELECT
-    USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Allow all authenticated users to manage action items"
-    ON public.meeting_action_items FOR ALL
-    USING (auth.role() = 'authenticated');
 
 -- 10. Automatically Create Profile on User Signup (Trigger)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
