@@ -48,7 +48,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if ((user || isGuest) && isAuthRoute) {
+  if (user && isAuthRoute) {
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }

@@ -1,86 +1,93 @@
+"""
+JWT verification and low-level token utilities.
+
+This module is intentionally thin — it only handles token cryptography.
+Authorization logic (role checks) lives in app/dependencies/auth.py.
+Database queries live in app/repositories/.
+"""
+
 import jwt
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from typing import Any
+
 from app.core.config import settings
-from supabase import create_client, Client
-from typing import Dict, Any
+from app.core.exceptions import AuthenticationError
 
-security_scheme = HTTPBearer()
+# HTTPBearer extractor used as a FastAPI Security dependency.
+# auto_error=False lets the middleware handle missing tokens gracefully.
+bearer_scheme = HTTPBearer(auto_error=False)
 
-# Initialize Supabase Admin Client
-supabase_admin: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Security(security_scheme)) -> Dict[str, Any]:
+def decode_jwt(token: str) -> dict[str, Any]:
     """
-    Decodes and verifies the Supabase JWT token.
-    Returns the decoded token payload.
+    Decode and verify a Supabase-issued JWT.
+
+    Returns the decoded payload dict on success.
+    Raises AuthenticationError on any failure.
     """
-    token = credentials.credentials
+    if not settings.SUPABASE_JWT_SECRET:
+        # Fall back to unverified decode in development if secret not set.
+        # In production this will raise because is_production guard below.
+        if settings.is_production:
+            raise AuthenticationError("JWT secret not configured on server.")
+        try:
+            return jwt.decode(
+                token,
+                options={"verify_signature": False, "verify_aud": False},
+                algorithms=["HS256"],
+            )
+        except jwt.DecodeError as exc:
+            raise AuthenticationError(f"Malformed JWT: {exc}") from exc
+
     try:
         payload = jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
-            options={"verify_aud": False} # Supabase aud can be 'authenticated' or 'anon'
+            options={"verify_aud": False},  # Supabase uses 'authenticated' aud
         )
         return payload
     except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired"
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token"
-        )
+        raise AuthenticationError("Token has expired. Please log in again.")
+    except jwt.InvalidTokenError as exc:
+        raise AuthenticationError(f"Invalid authentication token: {exc}")
 
-def get_current_user(payload: Dict[str, Any] = Security(verify_token)) -> Dict[str, Any]:
-    """
-    Fetches the profile details of the current authenticated user from PostgreSQL.
-    """
+
+def extract_user_id(payload: dict[str, Any]) -> str:
+    """Extract the user UUID (sub claim) from a decoded JWT payload."""
     user_id = payload.get("sub")
     if not user_id:
+        raise AuthenticationError("Token payload is missing the user identifier (sub).")
+    return user_id
+
+
+def verify_token(
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+) -> dict[str, Any]:
+    """
+    FastAPI security dependency — extracts and verifies the Bearer token.
+
+    Usage::
+
+        @router.get("/protected")
+        def protected(payload: dict = Security(verify_token)):
+            ...
+
+    Prefer using the higher-level dependencies in app/dependencies/auth.py
+    which also load the full user profile.
+    """
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload: missing user identifier"
+            detail="Authorization header is missing.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Query profiles table using Supabase Admin client
     try:
-        response = supabase_admin.table("profiles").select("*").eq("id", user_id).execute()
-        if not response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User profile not found"
-            )
-        return response.data[0]
-    except Exception as e:
+        return decode_jwt(credentials.credentials)
+    except AuthenticationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database lookup error: {str(e)}"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=exc.message,
+            headers={"WWW-Authenticate": "Bearer"},
         )
-
-def require_role(allowed_roles: list[str]):
-    """
-    Dependency factory that checks if the current user has one of the allowed roles.
-    """
-    def dependency(current_user: Dict[str, Any] = Security(get_current_user)) -> Dict[str, Any]:
-        user_role = current_user.get("role")
-        
-        # Support new string-based roles and legacy enums compatibly
-        effective_roles = [user_role]
-        if user_role == "Management":
-            effective_roles.extend(["HR_ADMIN", "SUPER_ADMIN", "management", "admin"])
-        elif user_role == "Employee":
-            effective_roles.extend(["EMPLOYEE", "employee"])
-        elif user_role in ["HR_ADMIN", "SUPER_ADMIN"]:
-            effective_roles.extend(["Management", "management"])
-            
-        if not any(r in allowed_roles for r in effective_roles):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Operation not authorized for your user role"
-            )
-        return current_user
-    return dependency

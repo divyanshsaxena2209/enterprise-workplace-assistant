@@ -107,6 +107,7 @@ export default function SignupPage() {
 
       if (data?.user) {
         // Automatically route to dashboard upon successful signup
+        document.cookie = "guest_mode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         router.push("/dashboard");
       }
     } catch (err) {

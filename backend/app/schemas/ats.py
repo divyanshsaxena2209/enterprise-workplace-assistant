@@ -59,24 +59,6 @@ class ResumeResponse(ResumeBase):
     class Config:
         from_attributes = True
 
-# Application Schemas
-class ApplicationBase(BaseModel):
-    job_id: UUID
-    candidate_id: UUID
-    resume_id: Optional[UUID] = None
-    status: str = "Applied"
-
-class ApplicationCreate(ApplicationBase):
-    pass
-
-class ApplicationResponse(ApplicationBase):
-    id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 # Candidate Score Schemas
 class CandidateScoreBase(BaseModel):
     application_id: UUID
