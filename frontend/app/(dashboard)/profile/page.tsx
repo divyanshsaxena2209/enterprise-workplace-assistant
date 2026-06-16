@@ -1,406 +1,286 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
 import { 
-  User, Mail, Phone, MapPin, Briefcase, 
-  FileText, Shield, Calendar, Edit3, Save, X, Loader2, Sparkles, AlertCircle
+  User, Mail, Briefcase, Phone, MapPin, 
+  FileText, Shield, Loader2, Edit3, Check
 } from "lucide-react";
 
-interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-  employee_id: string;
-  department: string;
-  job_title: string;
-  phone: string;
-  location: string;
-  bio: string;
-  avatar_url: string;
-  created_at: string;
-}
-
 export default function ProfilePage() {
+  const { profile, refreshProfile } = useUser();
   const supabase = createClient();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
-  // Edit states
-  const [editForm, setEditForm] = useState({
-    fullName: "",
+  const [formData, setFormData] = useState({
+    full_name: "",
+    department: "",
+    job_title: "",
     phone: "",
     location: "",
     bio: "",
-    department: "",
-    jobTitle: "",
-    avatarUrl: "",
+    avatar_url: "",
   });
 
-  const fetchProfile = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No authenticated user session found.");
-
-      const { data, error: fetchError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      setProfile(data);
-      setEditForm({
-        fullName: data.full_name || "",
-        phone: data.phone || "",
-        location: data.location || "",
-        bio: data.bio || "",
-        department: data.department || "",
-        jobTitle: data.job_title || "",
-        avatarUrl: data.avatar_url || "",
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load user profile.";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase]);
-
   useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
+    if (profile) {
+      setFormData({
+        full_name: profile.full_name || "",
+        department: profile.department || "",
+        job_title: profile.job_title || "",
+        phone: profile.phone || "",
+        location: profile.location || "",
+        bio: profile.bio || "",
+        avatar_url: profile.avatar_url || "",
+      });
+    }
+  }, [profile]);
 
-  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setEditForm((prev) => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async () => {
     setSaving(true);
     setError(null);
-    setSuccess(null);
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No authenticated session.");
-
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
-          full_name: editForm.fullName,
-          phone: editForm.phone,
-          location: editForm.location,
-          bio: editForm.bio,
-          department: editForm.department,
-          job_title: editForm.jobTitle,
-          avatar_url: editForm.avatarUrl,
-          updated_at: new Date().toISOString(),
+          full_name: formData.full_name,
+          department: formData.department,
+          job_title: formData.job_title,
+          phone: formData.phone,
+          location: formData.location,
+          bio: formData.bio,
+          avatar_url: formData.avatar_url,
         })
-        .eq("id", user.id);
+        .eq("id", profile.id);
 
       if (updateError) throw updateError;
-
-      setSuccess("Profile settings successfully updated and saved.");
-      setEditing(false);
-      await fetchProfile();
+      
+      await refreshProfile();
+      setIsEditing(false);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to save profile changes.";
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : "Failed to update profile");
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Loading profile records...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-8 pb-10">
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="max-w-4xl mx-auto py-8 px-6">
+      <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-foreground" />
-            Personnel Profile
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage credentials, organizational identifiers, and bio.</p>
+          <h1 className="text-2xl font-black tracking-tight">Personnel Profile</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your enterprise identity and preferences.</p>
         </div>
-        {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            className="flex items-center gap-2 bg-foreground hover:bg-foreground/90 text-background px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
-          >
-            <Edit3 size={14} />
-            Modify Profile
-          </button>
-        )}
+        <button
+          onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+          disabled={saving}
+          className={`py-2 px-4 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm ${
+            isEditing 
+              ? "bg-foreground text-background hover:bg-foreground/90" 
+              : "bg-secondary text-foreground hover:bg-secondary/80 border border-border"
+          }`}
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditing ? <Check className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
+          {isEditing ? "Save Changes" : "Edit Profile"}
+        </button>
       </div>
-
-      {success && (
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs font-semibold text-emerald-500 flex items-center gap-3">
-          <Save className="w-4 h-4 flex-shrink-0" />
-          <span>{success}</span>
-        </div>
-      )}
 
       {error && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-semibold text-destructive flex items-center gap-3">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+        <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive flex items-center gap-3">
+          <Shield className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      {profile && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Card Left: Profile Info Details */}
-          <div className="bg-card border border-border rounded-2xl p-8 space-y-6 flex flex-col items-center text-center shadow-sm">
-            <div className="relative">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        {/* Left Column: Avatar & Quick Info */}
+        <div className="col-span-1 space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-6 text-center shadow-sm">
+            <div className="relative w-32 h-32 mx-auto mb-4 group">
               <img 
-                src={profile.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name)}`}
-                alt={profile.full_name} 
-                className="w-32 h-32 rounded-full border-2 border-border object-cover bg-secondary"
+                src={isEditing ? formData.avatar_url : (profile.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name)}`)}
+                alt={profile.full_name}
+                className="w-full h-full rounded-full object-cover border-4 border-background shadow-md"
               />
-              <span className={`absolute bottom-2 right-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shadow-sm ${
-                profile.role === "Management" 
-                  ? "bg-foreground text-background border-border" 
-                  : "bg-secondary text-muted-foreground border-border"
-              }`}>
-                {profile.role}
-              </span>
             </div>
-
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold tracking-tight text-foreground">{profile.full_name}</h3>
-              <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{profile.job_title || "Designation Pending"}</p>
-              <p className="text-xs text-muted-foreground">{profile.department || "No Department Assigned"}</p>
-            </div>
-
-            <div className="w-full h-px bg-border/50"></div>
-
-            <div className="w-full space-y-3.5 text-left text-xs font-medium text-muted-foreground">
-              <div className="flex items-center gap-3">
-                <Mail size={14} className="text-foreground" />
-                <span className="truncate">{profile.email}</span>
-              </div>
-              {profile.employee_id && (
-                <div className="flex items-center gap-3">
-                  <FileText size={14} className="text-foreground" />
-                  <span>Employee ID: <span className="font-bold text-foreground">{profile.employee_id}</span></span>
-                </div>
-              )}
-              <div className="flex items-center gap-3">
-                <Calendar size={14} className="text-foreground" />
-                <span>Joined {new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card Right: Profile View/Edit Form */}
-          <div className="bg-card border border-border rounded-2xl p-8 lg:col-span-2 shadow-sm">
-            {editing ? (
-              <form onSubmit={handleSave} className="space-y-6">
-                <div className="border-b border-border/50 pb-4">
-                  <h3 className="font-bold text-sm uppercase tracking-wider text-foreground">Personnel Profile Modifications</h3>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Full Name</label>
-                    <div className="relative">
-                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-                      <input 
-                        type="text" 
-                        name="fullName"
-                        value={editForm.fullName}
-                        onChange={handleEditChange}
-                        required
-                        className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Avatar Image URL</label>
-                    <div className="relative">
-                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-                      <input 
-                        type="url" 
-                        name="avatarUrl"
-                        value={editForm.avatarUrl}
-                        onChange={handleEditChange}
-                        className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Department</label>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-                      <input 
-                        type="text" 
-                        name="department"
-                        value={editForm.department}
-                        onChange={handleEditChange}
-                        className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Job Title</label>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-                      <input 
-                        type="text" 
-                        name="jobTitle"
-                        value={editForm.jobTitle}
-                        onChange={handleEditChange}
-                        className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Phone Number</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-                      <input 
-                        type="text" 
-                        name="phone"
-                        value={editForm.phone}
-                        onChange={handleEditChange}
-                        className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Location</label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-                      <input 
-                        type="text" 
-                        name="location"
-                        value={editForm.location}
-                        onChange={handleEditChange}
-                        className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Personal Biography</label>
-                  <textarea 
-                    name="bio"
-                    value={editForm.bio}
-                    onChange={handleEditChange}
-                    rows={4}
-                    className="w-full px-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground resize-none shadow-sm"
-                  />
-                </div>
-
-                <div className="flex gap-4 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(false)}
-                    disabled={saving}
-                    className="flex-1 py-2.5 px-4 bg-secondary hover:bg-secondary/80 border border-border text-foreground rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
-                  >
-                    <X size={14} />
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="flex-1 py-2.5 px-4 bg-foreground hover:bg-foreground/90 text-background rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Saving Changes...
-                      </>
-                    ) : (
-                      <>
-                        <Save size={14} />
-                        Save Profile
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="space-y-6">
-                <div className="border-b border-border/50 pb-4">
-                  <h3 className="font-bold text-sm uppercase tracking-wider text-foreground font-sans">Professional Summary</h3>
-                </div>
-                
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Biography</h4>
-                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                    {profile.bio || "No biography provided. Click 'Modify Profile' to share a professional overview."}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4">
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Organizational Team</h4>
-                    <div className="flex items-center gap-2">
-                      <Briefcase size={14} className="text-foreground" />
-                      <span className="text-sm text-foreground font-medium">{profile.department || "Unassigned Team"}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Official Position</h4>
-                    <div className="flex items-center gap-2">
-                      <Briefcase size={14} className="text-foreground" />
-                      <span className="text-sm text-foreground font-medium">{profile.job_title || "Designation Pending"}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Primary Contact</h4>
-                    <div className="flex items-center gap-2">
-                      <Phone size={14} className="text-foreground" />
-                      <span className="text-sm text-foreground font-medium">{profile.phone || "No phone linked"}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Geographic Location</h4>
-                    <div className="flex items-center gap-2">
-                      <MapPin size={14} className="text-foreground" />
-                      <span className="text-sm text-foreground font-medium">{profile.location || "No location linked"}</span>
-                    </div>
-                  </div>
-                </div>
+            
+            {isEditing && (
+              <div className="mb-4">
+                <input
+                  type="text"
+                  name="avatar_url"
+                  value={formData.avatar_url}
+                  onChange={handleChange}
+                  placeholder="Avatar URL"
+                  className="w-full px-3 py-2 text-xs rounded border border-border bg-secondary/50 focus:outline-none"
+                />
               </div>
             )}
+
+            <h2 className="font-bold text-lg">{profile.full_name}</h2>
+            <div className="inline-flex items-center gap-1 mt-1 text-xs font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground border border-border/50">
+              <Shield className="w-3 h-3" />
+              {profile.role}
+            </div>
           </div>
 
-        </div>
-      )}
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4 border-b border-border pb-2">Read-Only Details</h3>
+            
+            <div className="flex items-start gap-3 text-sm">
+              <Mail className="w-4 h-4 text-muted-foreground mt-0.5" />
+              <div>
+                <p className="font-medium text-foreground">{profile.email}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Primary Email</p>
+              </div>
+            </div>
+            
+            <div className="flex items-start gap-3 text-sm">
+              <FileText className="w-4 h-4 text-muted-foreground mt-0.5" />
+              <div>
+                <p className="font-medium text-foreground">{profile.employee_id || "N/A"}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Employee ID</p>
+              </div>
+            </div>
 
+            <div className="flex items-start gap-3 text-sm">
+              <User className="w-4 h-4 text-muted-foreground mt-0.5" />
+              <div>
+                <p className="font-medium text-foreground">{new Date(profile.created_at).toLocaleDateString()}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Joined Date</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Editable Info */}
+        <div className="col-span-1 md:col-span-2 space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-2">Organizational Details</h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Full Name</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    name="full_name"
+                    value={formData.full_name}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring"
+                  />
+                ) : (
+                  <p className="text-sm font-medium">{profile.full_name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Department</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Briefcase className="w-4 h-4 text-muted-foreground" />
+                    {profile.department || "Not specified"}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Job Title</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    name="job_title"
+                    value={formData.job_title}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring"
+                  />
+                ) : (
+                  <p className="text-sm font-medium">{profile.job_title || "Not specified"}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Location</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    name="location"
+                    value={formData.location}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <MapPin className="w-4 h-4 text-muted-foreground" />
+                    {profile.location || "Not specified"}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Phone</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Phone className="w-4 h-4 text-muted-foreground" />
+                    {profile.phone || "Not specified"}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-2">Biography</h3>
+            
+            {isEditing ? (
+              <textarea
+                name="bio"
+                value={formData.bio}
+                onChange={handleChange}
+                rows={4}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring resize-none"
+              />
+            ) : (
+              <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {profile.bio || "No biography provided."}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

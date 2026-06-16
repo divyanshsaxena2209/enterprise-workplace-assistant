@@ -40,9 +40,10 @@ export async function updateSession(request: NextRequest) {
     url.pathname.startsWith('/api') || 
     url.pathname.includes('.')
     
+  const isLandingPage = url.pathname === '/'
   const isGuest = request.cookies.get('guest_mode')?.value === 'true'
 
-  if (!user && !isAuthRoute && !isPublicStatic && !isGuest) {
+  if (!user && !isAuthRoute && !isPublicStatic && !isGuest && !isLandingPage) {
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
@@ -52,10 +53,6 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (url.pathname === '/' && !isPublicStatic) {
-    url.pathname = (user || isGuest) ? '/dashboard' : '/login'
-    return NextResponse.redirect(url)
-  }
 
   return supabaseResponse
 }
