@@ -1,12 +1,13 @@
 import os
 import chromadb
-from openai import OpenAI
+from google import genai
+from pydantic import BaseModel
 from app.core.config import settings
 
 class AIService:
     def __init__(self):
-        # OpenAI Setup
-        self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        # Gemini Setup
+        self.genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
         
         # ChromaDB Setup
         self.chroma_client = chromadb.HttpClient(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
@@ -14,17 +15,14 @@ class AIService:
         # Ensures collection exists
         self.document_collection = self.chroma_client.get_or_create_collection(name="company_documents")
 
-    def generate_completion(self, system_prompt: str, user_prompt: str, model: str = "gpt-4o"):
-        """Wrapper for basic Chat Completions."""
-        response = self.openai_client.chat.completions.create(
+    def generate_completion(self, system_prompt: str, user_prompt: str, model: str = "gemma-4-31b-it"):
+        """Wrapper for basic Chat Completions using Gemini."""
+        prompt = f"System: {system_prompt}\n\nUser: {user_prompt}"
+        response = self.genai_client.models.generate_content(
             model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
+            contents=prompt
         )
-        return response.choices[0].message.content
-
+        return response.text
 
     def add_to_knowledge_base(self, doc_id: str, text: str, metadata: dict = None):
         """Add text document to ChromaDB for RAG."""
@@ -43,24 +41,29 @@ class AIService:
         return results
 
     def evaluate_candidate(self, resume_data: dict, job_description: str, job_requirements: list[str]):
-        """Evaluate a candidate's parsed resume against the job description."""
+        """Evaluate a candidate's parsed resume against the job description using Gemini Structured Output."""
         from app.schemas.ats import CandidateScoreBase
+        
         system_prompt = (
             "You are an expert technical recruiter and AI hiring assistant. "
             "Your task is to evaluate the provided candidate resume data against the job description and requirements. "
-            "Return the evaluation strictly adhering to the JSON schema provided."
+            "Return the evaluation strictly adhering to the JSON schema."
         )
         
         user_prompt = f"Job Description:\n{job_description}\n\nJob Requirements:\n{job_requirements}\n\nCandidate Resume Data:\n{resume_data}"
         
-        response = self.openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            response_format=CandidateScoreBase
+        prompt = f"System Instruction: {system_prompt}\n\n{user_prompt}"
+        
+        response = self.genai_client.models.generate_content(
+            model="gemma-4-31b-it",
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=CandidateScoreBase,
+            ),
         )
-        return response.choices[0].message.parsed
+        
+        # Gemini returns structured output in response.parsed if a Pydantic schema is passed
+        return response.parsed
 
 ai_service = AIService()

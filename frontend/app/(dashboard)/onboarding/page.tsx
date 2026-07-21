@@ -5,6 +5,7 @@ import { CheckCircle, Clock, Bot, ArrowRight, BookOpen, ShieldCheck, Sparkles, L
 import Link from "next/link";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
+import LockedFeature from "@/components/layout/LockedFeature";
 
 interface OnboardingTask {
   id: string;
@@ -15,7 +16,7 @@ interface OnboardingTask {
 }
 
 export default function OnboardingDashboard() {
-  const { profile } = useUser();
+  const { profile, isHired } = useUser();
   const supabase = createClient();
   const [tasks, setTasks] = useState<OnboardingTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +112,8 @@ export default function OnboardingDashboard() {
   }
 
   return (
-    <div className="space-y-8 pb-10">
+    <LockedFeature isLocked={!isHired}>
+      <div className="space-y-8 pb-10">
       
       {/* Header Area */}
       <div className="bg-foreground rounded-2xl p-8 text-background shadow-sm flex items-center justify-between relative overflow-hidden">
@@ -220,6 +222,6 @@ export default function OnboardingDashboard() {
         </div>
 
       </div>
-    </div>
+    </LockedFeature>
   );
 }

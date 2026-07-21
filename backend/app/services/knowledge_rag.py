@@ -1,10 +1,10 @@
 import uuid
 import chromadb
-from openai import OpenAI
+from google import genai
 from app.core.config import settings
 from app.schemas.knowledge import ReferenceItem, RAGQueryResponse
 
-openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 # Initialize ChromaDB Persistent Client
 chroma_client = chromadb.PersistentClient(path=settings.CHROMADB_PATH)
@@ -36,15 +36,15 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[st
         
     return chunks
 
-def get_openai_embedding(text: str) -> list[float]:
+def get_gemini_embedding(text: str) -> list[float]:
     """
-    Generates embedding vector for text using text-embedding-3-small.
+    Generates embedding vector for text using text-embedding-004.
     """
-    response = openai_client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
+    response = genai_client.models.embed_content(
+        model="text-embedding-004",
+        contents=text
     )
-    return response.data[0].embedding
+    return response.embeddings[0].values
 
 def index_document_in_chroma(document_id: str, title: str, file_path: str, text: str):
     """
@@ -61,7 +61,7 @@ def index_document_in_chroma(document_id: str, title: str, file_path: str, text:
 
     for i, chunk in enumerate(chunks):
         chunk_id = f"{document_id}_chunk_{i}"
-        vector = get_openai_embedding(chunk)
+        vector = get_gemini_embedding(chunk)
         
         ids.append(chunk_id)
         embeddings.append(vector)
@@ -83,10 +83,10 @@ def index_document_in_chroma(document_id: str, title: str, file_path: str, text:
 
 def query_rag_knowledge(query_text: str) -> RAGQueryResponse:
     """
-    Queries ChromaDB vector store, retrieves top matches, synthesizes response using GPT-4o.
+    Queries ChromaDB vector store, retrieves top matches, synthesizes response using Gemini.
     """
     # 1. Embed query
-    query_vector = get_openai_embedding(query_text)
+    query_vector = get_gemini_embedding(query_text)
 
     # 2. Query Chroma collection
     results = rag_collection.query(
@@ -135,15 +135,12 @@ def query_rag_knowledge(query_text: str) -> RAGQueryResponse:
     """
 
     try:
-        completion = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.3
+        prompt = f"System Instruction: {system_prompt}\n\n{user_prompt}"
+        completion = genai_client.models.generate_content(
+            model="gemma-4-31b-it",
+            contents=prompt
         )
-        answer_text = completion.choices[0].message.content
+        answer_text = completion.text
     except Exception as e:
         answer_text = f"An error occurred while generating the response: {str(e)}"
 

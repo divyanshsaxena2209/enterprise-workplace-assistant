@@ -37,6 +37,11 @@ class ApplicationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    candidate: Optional[CandidateResponse] = None
+    score: Optional[CandidateScoreResponse] = None
+    job: Optional[JobResponse] = None
+    interviews: List['InterviewResponse'] = []
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -57,5 +62,10 @@ class ApplicationDetailResponse(BaseModel):
     score: Optional[CandidateScoreResponse] = None
     notes: List[RecruiterNoteResponse] = []
     history: List[ApplicationStatusHistoryResponse] = []
+    interviews: List['InterviewResponse'] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+from app.schemas.interview import InterviewResponse
+ApplicationDetailResponse.model_rebuild()
+ApplicationResponse.model_rebuild()

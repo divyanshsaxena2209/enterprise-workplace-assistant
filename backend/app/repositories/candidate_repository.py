@@ -21,10 +21,10 @@ class CandidateRepository:
         self,
         candidate_data: Dict[str, Any],
         resume_data: Dict[str, Any]
-    ) -> str:
+    ) -> tuple[str, str]:
         """
         Creates a candidate and their resume.
-        Returns the new candidate ID.
+        Returns the new candidate ID and resume ID.
         """
         try:
             # 1. Create candidate
@@ -37,9 +37,10 @@ class CandidateRepository:
             resume_data["candidate_id"] = candidate_id
 
             # 3. Create resume
-            self._db.table("resumes").insert(resume_data).execute()
+            resume_res = self._db.table("resumes").insert(resume_data).execute()
+            resume_id = resume_res.data[0]["id"]
 
-            return candidate_id
+            return candidate_id, resume_id
         except Exception as exc:
             raise DatabaseError(f"Failed to save candidate data to database: {exc}") from exc
 
@@ -72,7 +73,7 @@ class CandidateRepository:
             candidate = CandidateResponse.model_validate(cand_res.data[0])
 
             # Fetch Resume
-            resume_res = self._db.table("resumes").select("*").eq("candidate_id", candidate_id).order("uploaded_at", desc=True).limit(1).execute()
+            resume_res = self._db.table("resumes").select("*").eq("candidate_id", candidate_id).order("created_at", desc=True).limit(1).execute()
             resume = ResumeResponse.model_validate(resume_res.data[0]) if resume_res.data else None
 
             return CandidateDetailResponse(

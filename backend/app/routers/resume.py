@@ -12,7 +12,6 @@ from app.schemas.profile import ProfileResponse
 from app.schemas.resume import ResumeUploadResponse
 from app.schemas.common import ErrorResponse
 from app.services.resume_parser import ResumeParserService
-from app.services.candidate_evaluator import CandidateEvaluatorService
 from app.repositories.candidate_repository import CandidateRepository
 from app.core.exceptions import BadRequestError, DatabaseError
 
@@ -37,7 +36,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
         500: {"description": "Internal Server Error or AI Service Failure.", "model": ErrorResponse},
     },
 )
-async def upload_resume(
+def upload_resume(
     file: UploadFile = File(...),
     current_user: ProfileResponse = Depends(get_current_user)
 ) -> ResumeUploadResponse:
@@ -46,9 +45,8 @@ async def upload_resume(
     - Validates file type and size.
     - Uploads raw file to Supabase Storage.
     - Extracts raw text using PyPDF2 / docx2txt.
-    - Parses text into structured JSON via GPT-4o.
-    - Evaluates candidate profile via GPT-4o.
-    - Saves Candidate, Resume, and CandidateScore to database.
+    - Parses text into structured JSON via Gemini AI.
+    - Saves Candidate and Resume to database.
     """
     
     # 1. Validation
@@ -59,7 +57,7 @@ async def upload_resume(
     if ext not in ["pdf", "doc", "docx"]:
         raise BadRequestError("Only PDF and DOCX files are allowed.")
 
-    file_bytes = await file.read()
+    file_bytes = file.file.read()
     if len(file_bytes) > MAX_FILE_SIZE:
         raise BadRequestError("File exceeds the 10MB size limit.")
 
@@ -71,11 +69,7 @@ async def upload_resume(
     raw_text = parser.extract_text(file_bytes, file.filename)
     parsed_data = parser.parse_with_ai(raw_text)
 
-    # 3. Evaluate Candidate
-    evaluator = CandidateEvaluatorService()
-    eval_result = evaluator.evaluate_candidate(parsed_data)
-
-    # 4. Upload to Storage
+    # 3. Upload to Storage
     client = get_supabase_client()
     
     # Generate unique filename to prevent collisions
@@ -94,7 +88,7 @@ async def upload_resume(
     except Exception as exc:
         raise DatabaseError(f"Failed to upload resume to storage: {exc}") from exc
 
-    # 5. Save to Database
+    # 4. Save to Database
     repo = CandidateRepository(client)
     
     candidate_data = {
@@ -106,17 +100,13 @@ async def upload_resume(
     }
     
     resume_data = {
-        "file_name": file.filename,
         "file_url": file_url,
-        "parsed_json": parsed_data.model_dump(),
+        "parsed_data": parsed_data.model_dump(),
     }
     
-    score_data = eval_result.model_dump()
-
-    candidate_id = repo.create_candidate_with_resume_and_score(
+    candidate_id, resume_id = repo.create_candidate_with_resume(
         candidate_data=candidate_data,
-        resume_data=resume_data,
-        score_data=score_data
+        resume_data=resume_data
     )
 
-    return ResumeUploadResponse(candidate_id=candidate_id)
+    return ResumeUploadResponse(candidate_id=candidate_id, resume_id=resume_id)

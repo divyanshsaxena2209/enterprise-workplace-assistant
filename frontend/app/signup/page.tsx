@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { 
   User, Mail, Lock, Briefcase, Phone, MapPin, 
-  FileText, Shield, ArrowRight, ArrowLeft, Loader2, Sparkles 
+  FileText, Shield, ArrowRight, ArrowLeft, Loader2, Sparkles, CheckCircle
 } from "lucide-react";
 
 export default function SignupPage() {
@@ -16,6 +16,7 @@ export default function SignupPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupSuccess, setSignupSuccess] = useState(false);
 
   // Form Fields
   const [formData, setFormData] = useState({
@@ -106,9 +107,11 @@ export default function SignupPage() {
       }
 
       if (data?.user) {
-        // Automatically route to dashboard upon successful signup
         document.cookie = "guest_mode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-        router.push("/dashboard");
+        setSignupSuccess(true);
+        setTimeout(() => {
+          router.push("/login");
+        }, 2500);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred during sign up.";
@@ -155,14 +158,23 @@ export default function SignupPage() {
             </p>
           </div>
 
-          {error && (
+          {error && !signupSuccess && (
             <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive flex items-center gap-3">
               <Shield className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={step === 3 ? handleSubmit : handleNext} className="space-y-5">
+          {signupSuccess ? (
+            <div className="text-center py-10 space-y-4">
+              <div className="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
+                <CheckCircle size={32} />
+              </div>
+              <h3 className="text-2xl font-bold tracking-tight text-foreground">Profile Created Successfully!</h3>
+              <p className="text-sm text-muted-foreground">Redirecting you to the sign-in page...</p>
+            </div>
+          ) : (
+            <form onSubmit={step === 3 ? handleSubmit : handleNext} className="space-y-5">
             
             {/* STEP 1: CREDENTIALS */}
             {step === 1 && (
@@ -177,6 +189,7 @@ export default function SignupPage() {
                       value={formData.fullName}
                       onChange={handleChange}
                       required
+                      suppressHydrationWarning
                       className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
                       placeholder="Jane Doe"
                     />
@@ -193,6 +206,7 @@ export default function SignupPage() {
                       value={formData.email}
                       onChange={handleChange}
                       required
+                      suppressHydrationWarning
                       className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
                       placeholder="jane.doe@company.com"
                     />
@@ -210,6 +224,7 @@ export default function SignupPage() {
                         value={formData.password}
                         onChange={handleChange}
                         required
+                        suppressHydrationWarning
                         className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
                         placeholder="••••••••"
                       />
@@ -226,6 +241,7 @@ export default function SignupPage() {
                         value={formData.confirmPassword}
                         onChange={handleChange}
                         required
+                        suppressHydrationWarning
                         className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
                         placeholder="••••••••"
                       />
@@ -379,6 +395,7 @@ export default function SignupPage() {
                   type="button"
                   onClick={handleBack}
                   disabled={loading}
+                  suppressHydrationWarning
                   className="flex-1 py-2.5 px-4 bg-secondary hover:bg-secondary/80 border border-border text-foreground rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   <ArrowLeft size={14} />
@@ -389,6 +406,7 @@ export default function SignupPage() {
               <button
                 type="submit"
                 disabled={loading}
+                suppressHydrationWarning
                 className="flex-1 py-2.5 px-4 bg-foreground hover:bg-foreground/90 text-background rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
               >
                 {loading ? (
@@ -405,15 +423,18 @@ export default function SignupPage() {
               </button>
             </div>
           </form>
+        )}
 
-          <div className="text-center mt-6">
-            <p className="text-xs text-muted-foreground">
-              Already have an enterprise account?{" "}
-              <Link href="/login" className="font-bold text-foreground hover:underline">
-                Sign In
-              </Link>
-            </p>
-          </div>
+          {!signupSuccess && (
+            <div className="text-center mt-6">
+              <p className="text-xs text-muted-foreground">
+                Already have an enterprise account?{" "}
+                <Link href="/login" className="font-bold text-foreground hover:underline">
+                  Sign In
+                </Link>
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

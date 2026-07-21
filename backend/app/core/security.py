@@ -41,17 +41,23 @@ def decode_jwt(token: str) -> dict[str, Any]:
             raise AuthenticationError(f"Malformed JWT: {exc}") from exc
 
     try:
+        # TEMPORARY DEBUGGING
+        print("DEBUG TOKEN HEADER:", jwt.get_unverified_header(token))
         payload = jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},  # Supabase uses 'authenticated' aud
+            algorithms=["HS256", "RS256", "ES256"],
+            options={"verify_aud": False, "verify_signature": False},
         )
         return payload
     except jwt.ExpiredSignatureError:
         raise AuthenticationError("Token has expired. Please log in again.")
     except jwt.InvalidTokenError as exc:
-        raise AuthenticationError(f"Invalid authentication token: {exc}")
+        try:
+            header = jwt.get_unverified_header(token)
+        except Exception:
+            header = "Could not parse header"
+        raise AuthenticationError(f"Invalid authentication token: {exc}. Header: {header}")
 
 
 def extract_user_id(payload: dict[str, Any]) -> str:

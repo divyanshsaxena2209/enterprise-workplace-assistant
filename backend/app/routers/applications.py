@@ -21,6 +21,8 @@ def get_application_service(client: Client = Depends(get_supabase_client)) -> Ap
     repo = ApplicationRepository(client)
     return ApplicationService(repo, client)
 
+from fastapi import BackgroundTasks
+
 @router.post(
     "/",
     response_model=ApplicationResponse,
@@ -30,10 +32,11 @@ def get_application_service(client: Client = Depends(get_supabase_client)) -> Ap
 )
 def create_application(
     application: ApplicationCreate,
+    background_tasks: BackgroundTasks,
     current_user: ProfileResponse = Depends(require_authenticated_user),
     service: ApplicationService = Depends(get_application_service)
 ):
-    return service.create_application(application, user_id=current_user.id)
+    return service.create_application(application, user_id=current_user.id, background_tasks=background_tasks)
 
 
 @router.get(
@@ -110,3 +113,56 @@ def delete_application(
     service: ApplicationService = Depends(get_application_service)
 ):
     service.delete_application(application_id)
+
+from pydantic import BaseModel
+
+class RejectRequest(BaseModel):
+    notes: Optional[str] = None
+
+@router.post(
+    "/{application_id}/reject",
+    status_code=status.HTTP_200_OK,
+    summary="Reject application",
+    description="Rejects an application. This endpoint is restricted to Management."
+)
+def reject_application(
+    application_id: UUID,
+    request: RejectRequest,
+    current_user: ProfileResponse = Depends(require_management),
+    service: ApplicationService = Depends(get_application_service)
+):
+    service.reject_application(application_id, current_user.id, request.notes)
+    return {"message": "Application rejected."}
+
+from app.schemas.interview import InterviewCreate, InterviewRespond, InterviewResponse
+
+@router.post(
+    "/{application_id}/interviews",
+    response_model=InterviewResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Schedule an interview",
+    description="Schedules an interview for a candidate. Management only."
+)
+def schedule_interview(
+    application_id: UUID,
+    interview_data: InterviewCreate,
+    current_user: ProfileResponse = Depends(require_management),
+    service: ApplicationService = Depends(get_application_service)
+):
+    return service.schedule_interview(application_id, interview_data, current_user.id)
+
+@router.put(
+    "/{application_id}/interviews/{interview_id}/respond",
+    response_model=InterviewResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Respond to an interview",
+    description="Allows a candidate (employee) to respond to an interview invite."
+)
+def respond_interview(
+    application_id: UUID,
+    interview_id: UUID,
+    respond_data: InterviewRespond,
+    current_user: ProfileResponse = Depends(require_authenticated_user),
+    service: ApplicationService = Depends(get_application_service)
+):
+    return service.respond_interview(application_id, interview_id, respond_data, current_user.id)

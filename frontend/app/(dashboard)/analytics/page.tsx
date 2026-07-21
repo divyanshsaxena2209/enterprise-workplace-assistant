@@ -2,9 +2,13 @@
 
 import React from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
-import { ArrowUpRight, ArrowDownRight, MoreHorizontal, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, MoreHorizontal, Sparkles, TrendingUp, Lock } from "lucide-react";
+import { useUser } from "@/lib/context/UserContext";
 
 export default function AnalyticsPage() {
+  const { profile, loading } = useUser();
+  const isManagement = profile?.role === "MANAGEMENT" || profile?.role === "ADMIN" || profile?.role === "HR";
+  const hasAccess = isManagement || !!profile?.employee_id;
   const funnelData = [
     { name: "Applied", count: 450 },
     { name: "Screened", count: 320 },
@@ -20,6 +24,22 @@ export default function AnalyticsPage() {
     { month: "Apr", hires: 8, applications: 210 },
     { month: "May", hires: 12, applications: 250 },
   ];
+
+  if (!loading && !hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="bg-background/80 backdrop-blur-md border border-white/10 p-8 rounded-3xl shadow-2xl flex flex-col items-center justify-center gap-4 text-center max-w-md">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
+            <Lock className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">Access Denied</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Operational Analytics is restricted to Management and Official Members. If you believe this is an error, contact HR.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-10">
@@ -58,7 +78,10 @@ export default function AnalyticsPage() {
               <h3 className="font-bold text-sm uppercase tracking-wider text-foreground">Talent Acquisition Pipeline</h3>
               <p className="text-xs text-muted-foreground mt-1">Hiring funnel conversion rates across standard workflows</p>
             </div>
-            <button className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary">
+            <button 
+              onClick={() => alert("Detailed funnel settings coming soon!")}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary"
+            >
               <MoreHorizontal size={18} />
             </button>
           </div>
@@ -85,7 +108,10 @@ export default function AnalyticsPage() {
               <h3 className="font-bold text-sm uppercase tracking-wider text-foreground">Workforce Acquisition Trends</h3>
               <p className="text-xs text-muted-foreground mt-1">Historical monthly applications and hired volumes</p>
             </div>
-            <button className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary">
+            <button 
+              onClick={() => alert("Detailed trend settings coming soon!")}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary"
+            >
               <MoreHorizontal size={18} />
             </button>
           </div>

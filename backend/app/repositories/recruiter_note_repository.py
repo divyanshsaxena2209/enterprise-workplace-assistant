@@ -25,14 +25,14 @@ class RecruiterNoteRepository:
 
     def get_notes_by_application(self, application_id: str | UUID) -> List[RecruiterNoteResponse]:
         try:
-            res = self._db.table("recruiter_notes").select("*").eq("application_id", str(application_id)).eq("is_deleted", False).order("created_at", desc=True).execute()
+            res = self._db.table("recruiter_notes").select("*").eq("application_id", str(application_id)).order("created_at", desc=True).execute()
             return [RecruiterNoteResponse.model_validate(row) for row in res.data]
         except Exception as exc:
             raise DatabaseError(f"Failed to fetch recruiter notes: {exc}") from exc
 
     def get_note_by_id(self, note_id: str | UUID) -> RecruiterNoteResponse:
         try:
-            res = self._db.table("recruiter_notes").select("*").eq("id", str(note_id)).eq("is_deleted", False).execute()
+            res = self._db.table("recruiter_notes").select("*").eq("id", str(note_id)).execute()
             if not res.data:
                 raise NotFoundError(f"Recruiter note '{note_id}' not found.")
             return RecruiterNoteResponse.model_validate(res.data[0])
@@ -43,7 +43,7 @@ class RecruiterNoteRepository:
 
     def update_note(self, note_id: str | UUID, update_data: Dict[str, Any]) -> RecruiterNoteResponse:
         try:
-            res = self._db.table("recruiter_notes").update(update_data).eq("id", str(note_id)).eq("is_deleted", False).execute()
+            res = self._db.table("recruiter_notes").update(update_data).eq("id", str(note_id)).execute()
             if not res.data:
                 raise NotFoundError(f"Recruiter note '{note_id}' not found or deleted.")
             return RecruiterNoteResponse.model_validate(res.data[0])
@@ -54,7 +54,7 @@ class RecruiterNoteRepository:
 
     def delete_note(self, note_id: str | UUID) -> None:
         try:
-            res = self._db.table("recruiter_notes").update({"is_deleted": True}).eq("id", str(note_id)).execute()
+            res = self._db.table("recruiter_notes").delete().eq("id", str(note_id)).execute()
             if not res.data:
                 raise NotFoundError(f"Recruiter note '{note_id}' not found.")
         except NotFoundError:

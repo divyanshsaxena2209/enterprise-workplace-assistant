@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 export default function ProfilePage() {
-  const { profile, refreshProfile } = useUser();
+  const { profile, loading, refreshProfile } = useUser();
   const supabase = createClient();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,10 +39,19 @@ export default function ProfilePage() {
     }
   }, [profile]);
 
-  if (!profile) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+        <h2 className="text-xl font-bold">Profile Not Found</h2>
+        <p className="text-muted-foreground text-sm max-w-md">We couldn't load your profile. Please make sure you are logged in, or try refreshing the page.</p>
       </div>
     );
   }

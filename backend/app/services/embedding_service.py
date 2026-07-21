@@ -1,23 +1,28 @@
-from openai import OpenAI
+from google import genai
 from app.core.config import settings
 
-openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-def generate_embeddings(texts: list[str], model: str = "text-embedding-3-small") -> list[list[float]]:
+def generate_embeddings(texts: list[str], model: str = "text-embedding-004") -> list[list[float]]:
     """Generate vector embeddings for a list of text chunks."""
     if not texts:
         return []
         
-    # Replace newlines with spaces as recommended by OpenAI for better embeddings
+    # Replace newlines with spaces as recommended for better embeddings
     cleaned_texts = [text.replace("\n", " ") for text in texts]
     
-    response = openai_client.embeddings.create(
-        input=cleaned_texts,
-        model=model
+    response = genai_client.models.embed_content(
+        model=model,
+        contents=cleaned_texts
     )
     
-    return [data.embedding for data in response.data]
+    # Gemini embed_content returns a list of embeddings directly if inputs is a list
+    return [e.values for e in response.embeddings]
 
-def generate_embedding(text: str, model: str = "text-embedding-3-small") -> list[float]:
+def generate_embedding(text: str, model: str = "text-embedding-004") -> list[float]:
     """Generate a single vector embedding."""
-    return generate_embeddings([text], model)[0]
+    response = genai_client.models.embed_content(
+        model=model,
+        contents=text
+    )
+    return response.embeddings[0].values

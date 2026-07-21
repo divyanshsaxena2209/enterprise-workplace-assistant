@@ -52,15 +52,24 @@ export default function Home() {
 
       <header className="h-20 max-w-7xl mx-auto px-6 flex items-center justify-end z-50 relative">
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => {
+              document.cookie = "guest_mode=true; path=/";
+              window.location.href = "/dashboard";
+            }}
+            className="px-4 py-2 border border-white/10 rounded-lg hover:bg-white/5 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all active:scale-95 cursor-pointer"
+          >
+            Guest Mode
+          </button>
           <Link
             href="/login"
-            className="text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+            className="px-4 py-2 border border-white/10 rounded-lg hover:bg-white/5 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all active:scale-95 cursor-pointer"
           >
             Sign In
           </Link>
           <Link
             href="/signup"
-            className="group flex items-center gap-2 glass-panel hover:bg-white/5 px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all shadow-sm"
+            className="group flex items-center gap-2 bg-foreground text-background hover:bg-foreground/90 px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all shadow-sm active:scale-95 cursor-pointer"
           >
             <span>Create Account</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
@@ -97,20 +106,7 @@ export default function Home() {
           transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
         >
-          <Link
-            href="/signup"
-            className="group relative flex items-center justify-center gap-2 bg-foreground text-background px-8 py-4 rounded-xl text-sm font-bold uppercase tracking-wider transition-all w-full sm:w-auto overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[150%] group-hover:translate-x-[150%] transition-transform duration-700" />
-            <span>Create Account</span>
-            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </Link>
-          <Link
-            href="/login"
-            className="flex items-center justify-center glass-panel hover:bg-white/5 border border-white/10 px-8 py-4 rounded-xl text-sm font-bold uppercase tracking-wider transition-all w-full sm:w-auto text-foreground"
-          >
-            Sign In
-          </Link>
+          {/* Removed redundant buttons as requested */}
         </motion.div>
       </section>
 

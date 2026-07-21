@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
-# Structured output schemas (for GPT-4o)
+# Structured output schemas (for Gemini AI)
 # ---------------------------------------------------------------------------
 
 class ParsedExperience(BaseModel):
@@ -50,10 +50,10 @@ class ResumeResponse(BaseModel):
     """Safe representation of a resume record."""
     id: str
     candidate_id: str
-    file_name: str
     file_url: str
-    parsed_json: ParsedResumeData
-    uploaded_at: datetime
+    parsed_data: ParsedResumeData
+    status: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -61,4 +61,5 @@ class ResumeResponse(BaseModel):
 class ResumeUploadResponse(BaseModel):
     """Response returned when a resume is successfully uploaded and processed."""
     candidate_id: str
+    resume_id: str
     message: str = "Resume successfully uploaded and processed."

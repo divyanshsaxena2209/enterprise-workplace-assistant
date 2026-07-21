@@ -29,7 +29,10 @@ class JobService:
 
         job_data = data.model_dump()
         job_data["status"] = JobStatus.DRAFT.value
-        job_data["created_by"] = current_user.id
+        if current_user.id == "00000000-0000-0000-0000-000000000000":
+            job_data["created_by"] = None
+        else:
+            job_data["created_by"] = current_user.id
 
         return self._repo.create_job(job_data)
 

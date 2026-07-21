@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.security import require_role, supabase_admin
 from app.schemas.hiring import ScreenResumeRequest, ScreenResumeResponse
-from app.services.resume_parser import extract_resume_text, screen_resume_with_ai
+from app.services.resume_parser import ResumeParserService
+from app.services.candidate_evaluator import CandidateEvaluatorService
 from typing import Dict, Any
 
 router = APIRouter()
@@ -13,7 +14,7 @@ def screen_resume(
 ):
     """
     Downloads a candidate's resume from Supabase storage, extracts its text,
-    screens it using GPT-4o against the specified Job, scores it,
+    screens it using Gemini AI against the specified Job, scores it,
     saves the parsed details into the PostgreSQL candidates table, and returns the result.
     """
     job_id = payload.job_id
@@ -48,7 +49,8 @@ def screen_resume(
 
     # 3. Extract text from resume bytes
     try:
-        resume_text = extract_resume_text(file_data, resume_file_path)
+        resume_parser = ResumeParserService()
+        resume_text = resume_parser.extract_text(file_data, resume_file_path)
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
     except Exception as e:
@@ -57,14 +59,16 @@ def screen_resume(
             detail=f"Failed to parse resume document content: {str(e)}"
         )
 
-    # 4. Invoke OpenAI GPT-4o screening pipeline
+    # 4. Invoke Gemini AI screening pipeline
     try:
-        screening_result = screen_resume_with_ai(
-            resume_text=resume_text,
-            job_title=job["title"],
-            job_description=job["description"],
-            job_requirements=job.get("requirements", [])
-        )
+        # Parse resume into structured data
+        parsed_resume = resume_parser.parse_with_ai(resume_text)
+        
+        # Evaluate candidate against the job
+        from app.schemas.hiring import JobResponse
+        job_model = JobResponse(**job)
+        evaluator = CandidateEvaluatorService()
+        eval_result = evaluator.evaluate_against_job(job_model, parsed_resume)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -73,17 +77,22 @@ def screen_resume(
 
     # 5. Save the parsed candidate details into PostgreSQL
     # Convert ExperienceDetail list to raw JSON lists
-    experience_list = [exp.model_dump() for exp in screening_result.parsed_experience]
+    experience_list = [exp.model_dump() for exp in parsed_resume.experience]
+
+    full_name = parsed_resume.full_name or ""
+    name_parts = full_name.split(" ", 1)
+    first_name = name_parts[0] if len(name_parts) > 0 else ""
+    last_name = name_parts[1] if len(name_parts) > 1 else ""
 
     candidate_data = {
         "job_id": job_id,
-        "first_name": screening_result.first_name,
-        "last_name": screening_result.last_name,
-        "email": screening_result.email,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": parsed_resume.email,
         "resume_file_path": resume_file_path,
-        "suitability_score": screening_result.suitability_score,
-        "match_explanation": screening_result.match_explanation,
-        "parsed_skills": screening_result.parsed_skills,
+        "suitability_score": eval_result.match_percentage,
+        "match_explanation": eval_result.ai_summary,
+        "parsed_skills": parsed_resume.skills,
         "parsed_experience": experience_list,
         "status": "SCREENING"
     }

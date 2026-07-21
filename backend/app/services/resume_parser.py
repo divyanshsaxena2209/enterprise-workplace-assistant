@@ -1,6 +1,6 @@
 """
 Resume Parser Service
-Extracts text from PDF/DOCX files and uses OpenAI to structure the raw text into JSON.
+Extracts text from PDF/DOCX files and uses Gemini to structure the raw text into JSON.
 """
 
 import io
@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 import PyPDF2
 import docx2txt
-import openai
+from google import genai
 
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ServiceUnavailableError
@@ -16,11 +16,8 @@ from app.schemas.resume import ParsedResumeData
 
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-if settings.OPENAI_API_KEY:
-    openai.api_key = settings.OPENAI_API_KEY
-else:
-    logger.warning("OPENAI_API_KEY is not set. AI parsing will fail.")
+if not settings.GEMINI_API_KEY:
+    logger.warning("GEMINI_API_KEY is not set. AI parsing will fail.")
 
 
 class ResumeParserService:
@@ -58,36 +55,36 @@ class ResumeParserService:
 
     def parse_with_ai(self, raw_text: str) -> ParsedResumeData:
         """
-        Send raw resume text to OpenAI to parse into structured JSON.
-        Uses GPT-4o structured outputs feature.
+        Send raw resume text to Gemini to parse into structured JSON.
+        Uses Gemini's structured outputs feature.
         """
-        if not settings.OPENAI_API_KEY:
-            raise ServiceUnavailableError("OpenAI API key is missing. Cannot parse resume.")
+        if not settings.GEMINI_API_KEY:
+            raise ServiceUnavailableError("AI configuration is missing. Cannot parse resume.")
 
         try:
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
             
-            # Use structured outputs via response_format
-            response = client.beta.chat.completions.parse(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are an expert HR assistant. Extract the candidate's information from the provided resume text into the required structured format. Be precise and thorough."},
-                    {"role": "user", "content": raw_text}
-                ],
-                response_format=ParsedResumeData,
-                temperature=0.0,
+            system_instruction = "You are an expert HR assistant. Extract the candidate's information from the provided resume text into the required structured format. Be precise and thorough."
+            
+            prompt = f"System Instruction: {system_instruction}\n\nCandidate Resume:\n{raw_text}"
+            
+            response = client.models.generate_content(
+                model="gemma-4-31b-it",
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ParsedResumeData,
+                    temperature=0.0,
+                )
             )
             
-            parsed_data = response.choices[0].message.parsed
+            parsed_data = response.parsed
             
             if not parsed_data:
                 raise ServiceUnavailableError("AI model returned an empty response.")
                 
             return parsed_data
             
-        except openai.OpenAIError as exc:
-            logger.error("OpenAI API error during resume parsing: %s", exc)
-            raise ServiceUnavailableError("AI parsing service is currently unavailable.") from exc
         except Exception as exc:
             logger.error("Unexpected error during resume AI parsing: %s", exc)
             raise ServiceUnavailableError("Failed to structure the resume data.") from exc

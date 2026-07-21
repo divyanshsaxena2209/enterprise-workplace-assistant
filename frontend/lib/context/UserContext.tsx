@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { checkIsHired } from "@/lib/api/applications";
 
 interface UserProfile {
   id: string;
@@ -21,6 +22,8 @@ interface UserProfile {
 interface UserContextType {
   profile: UserProfile | null;
   loading: boolean;
+  isHired: boolean;
+  accessToken: string | null;
   refreshProfile: () => Promise<void>;
 }
 
@@ -45,22 +48,32 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isHired, setIsHired] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const fetchProfile = React.useCallback(async () => {
+  const fetchProfile = React.useCallback(async (sessionArg?: any) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      let session = sessionArg;
+      if (!session) {
+        const { data } = await supabase.auth.getSession();
+        session = data.session;
+      }
       
       const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');
 
       if (!session?.user) {
         if (isGuestMode) {
           setProfile(guestProfile);
+          setAccessToken("guest");
         } else {
           setProfile(null);
+          setAccessToken(null);
         }
         setLoading(false);
         return;
       }
+      
+      setAccessToken(session.access_token || null);
 
       const { data, error } = await supabase
         .from("profiles")
@@ -71,8 +84,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("Error fetching user profile:", error);
         setProfile(null);
+        setIsHired(false);
       } else {
         setProfile(data);
+        if (data.role === "EMPLOYEE" && !data.employee_id) {
+          const hiredStatus = await checkIsHired();
+          setIsHired(hiredStatus);
+        } else if (data.role === "MANAGEMENT" || data.employee_id) {
+          // Implicitly true for management and active employees
+          setIsHired(true); 
+        }
       }
     } catch (err) {
       console.error("Failed to fetch session/profile", err);
@@ -86,15 +107,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     fetchProfile();
 
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        await fetchProfile();
+        await fetchProfile(session);
       } else if (event === "SIGNED_OUT") {
         const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');
         if (isGuestMode) {
           setProfile(guestProfile);
+          setAccessToken("guest");
         } else {
           setProfile(null);
+          setAccessToken(null);
         }
         setLoading(false);
       }
@@ -106,7 +129,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile, supabase]);
 
   return (
-    <UserContext.Provider value={{ profile, loading, refreshProfile: fetchProfile }}>
+    <UserContext.Provider value={{ profile, loading, isHired, accessToken, refreshProfile: fetchProfile }}>
       {children}
     </UserContext.Provider>
   );

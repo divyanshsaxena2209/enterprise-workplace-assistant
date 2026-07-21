@@ -19,6 +19,7 @@ class CandidateScoreResponse(BaseModel):
     id: UUID
     application_id: UUID
     match_percentage: int
+    relative_score: Optional[int] = None
     ai_summary: str
     strengths: List[str]
     weaknesses: List[str]

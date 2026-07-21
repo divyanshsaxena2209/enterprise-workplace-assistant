@@ -79,6 +79,7 @@ export default function LoginPage() {
                 required
                 className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm" 
                 placeholder="you@company.com"
+                suppressHydrationWarning
               />
             </div>
           </div>
@@ -94,6 +95,7 @@ export default function LoginPage() {
                 required
                 className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm" 
                 placeholder="••••••••"
+                suppressHydrationWarning
               />
             </div>
           </div>
@@ -101,6 +103,7 @@ export default function LoginPage() {
           <button 
             type="submit" 
             disabled={loading}
+            suppressHydrationWarning
             className="w-full py-2.5 px-4 bg-foreground hover:bg-foreground/90 text-background rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
           >
             {loading ? (
@@ -113,19 +116,6 @@ export default function LoginPage() {
             )}
           </button>
 
-          <div className="relative flex py-2 items-center">
-            <div className="flex-grow border-t border-border"></div>
-            <span className="flex-shrink-0 mx-4 text-muted-foreground text-xs font-medium uppercase">Or</span>
-            <div className="flex-grow border-t border-border"></div>
-          </div>
-
-          <button 
-            type="button" 
-            onClick={handleGuestLogin}
-            className="w-full py-2.5 px-4 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm border border-border"
-          >
-            Continue as Guest (Testing)
-          </button>
         </form>
 
         <div className="text-center mt-6">

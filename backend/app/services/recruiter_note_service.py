@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 from uuid import UUID
 from supabase import Client
 
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import AuthorizationError
 from app.schemas.recruiter_notes import RecruiterNoteResponse, RecruiterNoteCreate, RecruiterNoteUpdate
 from app.repositories.recruiter_note_repository import RecruiterNoteRepository
 
@@ -35,7 +35,7 @@ class RecruiterNoteService:
         is_management = current_user.get("role") == "MANAGEMENT"
         
         if not (is_author or is_management):
-            raise UnauthorizedError("You can only edit your own notes.")
+            raise AuthorizationError("You can only edit your own notes.")
             
         update_dict = {"note": note_data.note}
         return self.repo.update_note(note_id, update_dict)
@@ -47,6 +47,6 @@ class RecruiterNoteService:
         is_management = current_user.get("role") == "MANAGEMENT"
         
         if not (is_author or is_management):
-            raise UnauthorizedError("You can only delete your own notes.")
+            raise AuthorizationError("You can only delete your own notes.")
             
         self.repo.delete_note(note_id)

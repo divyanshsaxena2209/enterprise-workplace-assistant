@@ -4,9 +4,10 @@ import React, { useState } from "react";
 import { Search, Upload, MessageSquare, FileText, Database, MoreHorizontal, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/context/UserContext";
+import LockedFeature from "@/components/layout/LockedFeature";
 
 export default function KnowledgeDashboard() {
-  const { profile } = useUser();
+  const { profile, isHired } = useUser();
   const [documents] = useState([
     { id: 1, title: "Employee Operations Handbook 2026.pdf", dept: "HR Operations", uploaded: "2 days ago", size: "2.4 MB" },
     { id: 2, title: "Q3 System Architecture Roadmap.docx", dept: "Engineering", uploaded: "5 days ago", size: "1.1 MB" },
@@ -14,7 +15,8 @@ export default function KnowledgeDashboard() {
   ]);
 
   return (
-    <div className="space-y-8 pb-10">
+    <LockedFeature isLocked={!isHired && !profile?.employee_id}>
+      <div className="space-y-8 pb-10">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
@@ -90,6 +92,7 @@ export default function KnowledgeDashboard() {
           ))}
         </div>
       </div>
-    </div>
+      </div>
+    </LockedFeature>
   );
 }

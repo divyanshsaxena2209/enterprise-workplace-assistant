@@ -4,9 +4,9 @@ from typing import List, Dict, Any
 from app.core.config import settings
 from app.services.embedding_service import generate_embeddings, generate_embedding
 from app.services.chunking_service import chunk_text
-from openai import OpenAI
+from google import genai
 
-openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
 knowledge_collection = chroma_client.get_or_create_collection(
@@ -74,7 +74,7 @@ class RAGService:
 
     @staticmethod
     def generate_rag_response(query: str, retrieved_chunks: List[Dict[str, Any]]) -> str:
-        """Injects retrieved chunks into GPT-4o to generate a factual response."""
+        """Injects retrieved chunks into Gemini to generate a factual response."""
         context_texts = []
         for i, chunk in enumerate(retrieved_chunks):
             doc_id = chunk["metadata"].get("document_id", "Unknown")
@@ -90,14 +90,10 @@ class RAGService:
             "Do NOT hallucinate or use outside knowledge. Cite your sources using the Document Source number."
         )
         
-        user_prompt = f"Context:\n{context_block}\n\nQuestion:\n{query}"
+        prompt = f"System Instruction: {system_prompt}\n\nContext:\n{context_block}\n\nQuestion:\n{query}"
         
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            stream=False # Can be switched to True for UI streaming
+        response = genai_client.models.generate_content(
+            model="gemma-4-31b-it",
+            contents=prompt
         )
-        return response.choices[0].message.content
+        return response.text
