@@ -27,10 +27,10 @@ class RecruiterNoteService:
         return self.repo.get_notes_by_application(application_id)
 
     def update_note(self, note_id: str | UUID, note_data: RecruiterNoteUpdate, current_user: dict) -> RecruiterNoteResponse:
-        # Fetch existing to verify authorization
+        
         existing = self.repo.get_note_by_id(note_id)
         
-        # Only the author or Management can edit
+        
         is_author = str(existing.author_id) == str(current_user["id"])
         is_management = current_user.get("role") == "MANAGEMENT"
         

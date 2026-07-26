@@ -31,9 +31,9 @@ def _error_body(message: str, error_code: str, success: bool = False) -> dict[st
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all exception handlers on the FastAPI app instance."""
 
-    # -------------------------------------------------------------------------
-    # 1. Custom domain exceptions (AuthenticationError, NotFoundError, etc.)
-    # -------------------------------------------------------------------------
+    
+    
+    
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
         logger.info(
@@ -48,14 +48,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_error_body(exc.message, exc.error_code),
         )
 
-    # -------------------------------------------------------------------------
-    # 2. Pydantic v2 request validation errors (422)
-    # -------------------------------------------------------------------------
+    
+    
+    
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        # Extract human-readable messages from Pydantic's error list
+        
         messages = []
         for error in exc.errors():
             loc = " → ".join(str(l) for l in error["loc"] if l != "body")
@@ -70,9 +70,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_error_body(message, "VALIDATION_ERROR"),
         )
 
-    # -------------------------------------------------------------------------
-    # 3. Pydantic validation errors raised programmatically
-    # -------------------------------------------------------------------------
+    
+    
+    
     @app.exception_handler(PydanticValidationError)
     async def pydantic_exception_handler(
         request: Request, exc: PydanticValidationError
@@ -84,9 +84,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_error_body(message, "VALIDATION_ERROR"),
         )
 
-    # -------------------------------------------------------------------------
-    # 4. Generic unhandled exceptions (500)
-    # -------------------------------------------------------------------------
+    
+    
+    
     @app.exception_handler(Exception)
     async def generic_exception_handler(
         request: Request, exc: Exception
@@ -94,7 +94,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.exception(
             "Unhandled exception on %s %s", request.method, request.url.path
         )
-        # In production, never expose internal details.
+        
         message = (
             str(exc)
             if settings.is_development

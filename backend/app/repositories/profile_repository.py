@@ -23,9 +23,9 @@ class ProfileRepository:
     def __init__(self, client: Client) -> None:
         self._db = client
 
-    # -------------------------------------------------------------------------
-    # Read
-    # -------------------------------------------------------------------------
+    
+    
+    
 
     def get_by_id(self, user_id: str) -> Optional[ProfileModel]:
         """
@@ -75,9 +75,9 @@ class ProfileRepository:
             return None
         return ProfileModel.from_dict(response.data[0])
 
-    # -------------------------------------------------------------------------
-    # Write
-    # -------------------------------------------------------------------------
+    
+    
+    
 
     def create(self, profile_data: dict) -> ProfileModel:
         """
@@ -126,7 +126,7 @@ class ProfileRepository:
         Raises DatabaseError on failures.
         """
         if not updates:
-            # Nothing to update — return current state.
+            
             return self.get_by_id_or_raise(user_id)
 
         try:

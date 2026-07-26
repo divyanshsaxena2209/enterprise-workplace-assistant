@@ -14,9 +14,9 @@ from app.core.enums import UserRole
 _PHONE_RE = re.compile(r"^\+?[1-9]\d{6,14}$")
 
 
-# ---------------------------------------------------------------------------
-# Response schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 
 class ProfileResponse(BaseModel):
@@ -34,7 +34,7 @@ class ProfileResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    # Optional fields
+    
     employee_id: Optional[str] = None
     department: Optional[str] = None
     job_title: Optional[str] = None
@@ -46,7 +46,7 @@ class ProfileResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_model(cls, model: "ProfileModel") -> "ProfileResponse":  # noqa: F821
+    def from_model(cls, model: "ProfileModel") -> "ProfileResponse":  
         """Build from an internal ProfileModel dataclass."""
         return cls(
             id=model.id,
@@ -67,9 +67,9 @@ class ProfileResponse(BaseModel):
         )
 
 
-# ---------------------------------------------------------------------------
-# Request schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 
 class ProfileUpdateRequest(BaseModel):

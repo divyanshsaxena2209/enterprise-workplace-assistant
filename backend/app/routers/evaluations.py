@@ -39,8 +39,8 @@ def get_application_score(
     current_user: ProfileResponse = Depends(require_authenticated_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    # Note: RLS policy on candidate_scores restricts employee access to only their own applications' scores.
-    # Therefore, we can just call the service, and DB RLS protects it automatically.
+    
+    
     return service.get_application_score(application_id)
 
 @router.get(

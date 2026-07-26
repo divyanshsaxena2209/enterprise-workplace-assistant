@@ -18,13 +18,13 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [signupSuccess, setSignupSuccess] = useState(false);
 
-  // Form Fields
+  
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
-    role: "Employee", // Management or Employee
+    role: "Employee", 
     department: "",
     jobTitle: "",
     employeeId: "",
@@ -125,7 +125,7 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-background text-foreground selection:bg-foreground selection:text-background py-10 px-4">
       <div className="max-w-lg w-full bg-card rounded-2xl shadow-xl border border-border overflow-hidden transition-all duration-300">
         
-        {/* Progress Header */}
+        {}
         <div className="bg-secondary/40 border-b border-border p-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-foreground animate-pulse" />
@@ -136,7 +136,7 @@ export default function SignupPage() {
           </span>
         </div>
 
-        {/* Step Indicator Bar */}
+        {}
         <div className="w-full bg-secondary h-1">
           <div 
             className="bg-foreground h-1 transition-all duration-300"
@@ -176,7 +176,7 @@ export default function SignupPage() {
           ) : (
             <form onSubmit={step === 3 ? handleSubmit : handleNext} className="space-y-5">
             
-            {/* STEP 1: CREDENTIALS */}
+            {}
             {step === 1 && (
               <div className="space-y-4">
                 <div>
@@ -251,7 +251,7 @@ export default function SignupPage() {
               </div>
             )}
 
-            {/* STEP 2: ORGANIZATIONAL DETAILS */}
+            {}
             {step === 2 && (
               <div className="space-y-4">
                 <div>
@@ -324,7 +324,7 @@ export default function SignupPage() {
               </div>
             )}
 
-            {/* STEP 3: CONTACT & BIO */}
+            {}
             {step === 3 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -388,7 +388,7 @@ export default function SignupPage() {
               </div>
             )}
 
-            {/* Navigation Controls */}
+            {}
             <div className="flex gap-4 pt-4">
               {step > 1 && (
                 <button

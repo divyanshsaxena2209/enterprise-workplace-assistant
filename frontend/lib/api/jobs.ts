@@ -19,7 +19,8 @@ export async function createJob(jobData: any, providedToken: string | null = nul
   
   if (!token) throw new Error("Authentication failed. No token found.");
 
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+  if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
   const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
 
   const headers = new Headers();
@@ -51,7 +52,8 @@ export async function publishJob(jobId: string, providedToken: string | null = n
   
   if (!token) throw new Error("Authentication failed. No token found.");
 
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+  if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
   const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
 
   const headers = new Headers();

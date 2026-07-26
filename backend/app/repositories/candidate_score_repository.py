@@ -21,11 +21,11 @@ class CandidateScoreRepository:
         Creates or updates a score for a specific application.
         """
         try:
-            # We use upsert because there is a UNIQUE constraint on application_id
+            
             data_dict = score_data.model_dump()
             data_dict["application_id"] = str(data_dict["application_id"])
             
-            # Using Supabase's upsert matching on the unique constraint (on conflict)
+            
             res = self._db.table("candidate_scores").upsert(
                 data_dict, 
                 on_conflict="application_id"

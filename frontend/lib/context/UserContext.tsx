@@ -91,7 +91,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           const hiredStatus = await checkIsHired();
           setIsHired(hiredStatus);
         } else if (data.role === "MANAGEMENT" || data.employee_id) {
-          // Implicitly true for management and active employees
+          
           setIsHired(true); 
         }
       }
@@ -106,7 +106,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchProfile();
 
-    // Listen for auth state changes
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         await fetchProfile(session);

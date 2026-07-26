@@ -21,7 +21,7 @@ from app.schemas.profile import ProfileResponse
 
 logger = logging.getLogger(__name__)
 
-# Routes that should skip profile loading entirely (even if token is present).
+
 _SKIP_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/health")
 
 
@@ -52,7 +52,7 @@ class AuthMiddleware:
             logger.info(f"HEADERS FOR POST /api/v1/jobs: {scope.get('headers', [])}")
 
         if not any(path.startswith(prefix) for prefix in _SKIP_PREFIXES):
-            # Parse Authorization header from scope["headers"]
+            
             auth_header = ""
             for key, val in scope.get("headers", []):
                 if key == b"authorization":

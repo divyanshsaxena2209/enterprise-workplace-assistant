@@ -9,7 +9,7 @@ class InterviewCreate(BaseModel):
     management_notes: Optional[str] = None
 
 class InterviewRespond(BaseModel):
-    status: str # 'Accepted', 'Rejected', 'Reschedule Requested'
+    status: str 
     candidate_notes: Optional[str] = None
 
 class InterviewResponse(BaseModel):

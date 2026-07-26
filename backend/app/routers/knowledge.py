@@ -1,105 +1,108 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from typing import List, Optional
+import os
+import shutil
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from pydantic import BaseModel
-from app.db.supabase import get_db
-from app.services.document_parser import extract_document_text
-from app.services.rag_service import RAGService
-import uuid
+from app.services.knowledge_rag import process_and_store_document, retrieve_and_answer
 
-router = APIRouter(prefix="/knowledge", tags=["Knowledge"])
+router = APIRouter()
 
-class SearchRequest(BaseModel):
-    query: str
-    department: Optional[str] = None
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-class ChatRequest(BaseModel):
-    query: str
-    department: Optional[str] = None
-    chat_id: Optional[str] = None
+class QueryRequest(BaseModel):
+    question: str
 
-@router.post("/documents")
-async def upload_document(
-    file: UploadFile = File(...),
-    department_tag: str = Form(None),
-    db=Depends(get_db)
-):
+@router.post("/upload")
+async def upload_document(request: Request, file: UploadFile = File(...)):
+    
+    
+    
+    ALLOWED_TYPES = [
+        "application/pdf", 
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ]
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed.")
+
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    
+    import uuid
+    from app.db.supabase import get_supabase_client
+    
+    file_bytes = await file.read()
+    
+    
+    with open(file_path, "wb") as buffer:
+        buffer.write(file_bytes)
+
     try:
-        # 1. Read file
-        file_bytes = await file.read()
         
-        # 2. Store document metadata in Postgres (Processing state)
-        doc_data = {
-            "title": file.filename,
-            "filename": file.filename,
-            "file_url": f"/mock/storage/{file.filename}", # In real app, upload to Supabase Storage first
-            "department_tag": department_tag,
-            "status": "Processing"
-        }
-        res = db.table("documents").insert(doc_data).execute()
-        document_id = res.data[0]["id"]
+        result = process_and_store_document(file_path)
+    except Exception as e:
         
-        # 3. Extract text
-        text = extract_document_text(file_bytes, file.filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=str(e))
         
-        # 4. Ingest into ChromaDB via RAGService
-        metadata = {"department": department_tag, "filename": file.filename} if department_tag else {"filename": file.filename}
-        chunk_ids = RAGService.ingest_document(document_id, text, metadata)
-        
-        # 5. Update Postgres state to Active
-        db.table("documents").update({"status": "Active"}).eq("id", document_id).execute()
-        
-        # 6. Log chunks in DB (simplified)
-        for i, cid in enumerate(chunk_ids):
-            db.table("document_chunks").insert({
-                "document_id": document_id,
-                "chunk_index": i,
-                "vector_id": cid
-            }).execute()
+    
+    try:
+        client = get_supabase_client()
+        unique_filename = f"knowledge_{uuid.uuid4()}_{file.filename.replace(' ', '_')}"
+        client.storage.from_("resumes").upload(
+            path=unique_filename,
+            file=file_bytes,
+            file_options={"content-type": file.content_type}
+        )
+        file_url = client.storage.from_("resumes").get_public_url(unique_filename)
+    except Exception as exc:
+        print(f"Failed to upload to storage: {exc}")
+        file_url = None
 
-        return {"status": "success", "document_id": document_id, "chunks_processed": len(chunk_ids)}
+    
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    return {
+        "success": True,
+        "filename": file.filename,
+        "pages": result.get("pages", 0),
+        "chunks": result.get("chunks", 0),
+        "file_url": file_url,
+        "message": "Document uploaded and indexed successfully."
+    }
+
+@router.post("/query")
+async def query_documents(request: Request, query: QueryRequest):
+    if not query.question or not query.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+        
+    try:
+        result = retrieve_and_answer(query.question)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/search")
-def semantic_search(req: SearchRequest, db=Depends(get_db)):
-    try:
-        results = RAGService.semantic_search(req.query, req.department)
-        
-        # Log retrieval
-        db.table("retrieval_logs").insert({
-            "query": req.query,
-            "chunks_retrieved": len(results),
-            "latency_ms": 0 # Would calculate actual latency
-        }).execute()
-        
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+class DeleteDocumentRequest(BaseModel):
+    filename: str
+    file_url: str | None = None
 
-@router.post("/chat")
-def chat_with_knowledge(req: ChatRequest, db=Depends(get_db)):
+@router.delete("/document")
+async def delete_document_endpoint(request: Request, body: DeleteDocumentRequest):
     try:
-        # 1. Retrieve context
-        retrieved_chunks = RAGService.semantic_search(req.query, req.department, top_k=3)
+        from app.services.knowledge_rag import delete_document
+        deleted_chunks = delete_document(body.filename)
         
-        # 2. Generate response using RAG
-        response_text = RAGService.generate_rag_response(req.query, retrieved_chunks)
         
-        # 3. Handle chat session (mock logic for brevity)
-        chat_id = req.chat_id or str(uuid.uuid4())
-        
-        # If new, create chat entry (omitted DB call for brevity)
-        
-        # 4. Save messages to db
-        db.table("chat_messages").insert([
-            {"chat_id": chat_id, "role": "user", "content": req.query},
-            {"chat_id": chat_id, "role": "assistant", "content": response_text}
-        ]).execute()
-        
-        return {
-            "chat_id": chat_id,
-            "response": response_text,
-            "sources": retrieved_chunks
-        }
+        if body.file_url:
+            from app.db.supabase import get_supabase_client
+            
+            try:
+                storage_filename = body.file_url.split('/')[-1]
+                client = get_supabase_client()
+                client.storage.from_("resumes").remove([storage_filename])
+            except Exception as e:
+                print(f"Failed to remove from storage: {e}")
+                
+        return {"success": True, "deleted_chunks": deleted_chunks, "message": f"Document '{body.filename}' deleted successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

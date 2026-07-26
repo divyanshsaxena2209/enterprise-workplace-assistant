@@ -119,7 +119,7 @@ export default function ProfilePage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         
-        {/* Left Column: Avatar & Quick Info */}
+        {}
         <div className="col-span-1 space-y-6">
           <div className="bg-card border border-border rounded-2xl p-6 text-center shadow-sm">
             <div className="relative w-32 h-32 mx-auto mb-4 group">
@@ -179,7 +179,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Right Column: Editable Info */}
+        {}
         <div className="col-span-1 md:col-span-2 space-y-6">
           <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-2">Organizational Details</h3>

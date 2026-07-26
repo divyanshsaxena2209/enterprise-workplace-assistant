@@ -12,9 +12,9 @@ from app.core.enums import UserRole
 from app.schemas.profile import ProfileResponse
 
 
-# ---------------------------------------------------------------------------
-# Request schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 _PHONE_RE = re.compile(r"^\+?[1-9]\d{6,14}$")
 _EMP_ID_RE = re.compile(r"^[A-Za-z0-9\-_]{2,20}$")
@@ -64,7 +64,7 @@ class SignupRequest(BaseModel):
         examples=["EMPLOYEE"],
     )
 
-    # Optional profile fields
+    
     employee_id: Optional[str] = Field(
         default=None,
         description="Company-assigned employee identifier.",
@@ -163,9 +163,9 @@ class LoginRequest(BaseModel):
     )
 
 
-# ---------------------------------------------------------------------------
-# Response schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 
 class TokenResponse(BaseModel):

@@ -1,12 +1,12 @@
--- =============================================================================
--- Phase 1: Auth & Profiles Infrastructure Migration
--- =============================================================================
--- Idempotent: safe to re-run.
--- Hardens the profiles table created in 20260616000000_core_overhaul.sql
 
--- ---------------------------------------------------------------------------
--- 1. Add missing columns if they don't exist
--- ---------------------------------------------------------------------------
+
+
+
+
+
+
+
+
 DO $$
 BEGIN
     -- is_active column (required by RBAC logic)
@@ -32,11 +32,11 @@ BEGIN
     END IF;
 END $$;
 
--- ---------------------------------------------------------------------------
--- 2. Apply NOT NULL constraints (safe — backfill defaults first)
--- ---------------------------------------------------------------------------
 
--- Ensure full_name has a sensible default before adding NOT NULL
+
+
+
+
 UPDATE public.profiles
 SET full_name = ''
 WHERE full_name IS NULL;
@@ -44,7 +44,7 @@ WHERE full_name IS NULL;
 ALTER TABLE public.profiles
     ALTER COLUMN full_name SET NOT NULL;
 
--- Ensure role has a sensible default before adding NOT NULL
+
 UPDATE public.profiles
 SET role = 'EMPLOYEE'
 WHERE role IS NULL;
@@ -52,10 +52,10 @@ WHERE role IS NULL;
 ALTER TABLE public.profiles
     ALTER COLUMN role SET NOT NULL;
 
--- ---------------------------------------------------------------------------
--- 3. Performance index on email (unique constraint already exists, but
---    an explicit index improves planner choices for partial scans)
--- ---------------------------------------------------------------------------
+
+
+
+
 CREATE INDEX IF NOT EXISTS idx_profiles_email
     ON public.profiles (email);
 
@@ -65,9 +65,9 @@ CREATE INDEX IF NOT EXISTS idx_profiles_role
 CREATE INDEX IF NOT EXISTS idx_profiles_is_active
     ON public.profiles (is_active);
 
--- ---------------------------------------------------------------------------
--- 4. updated_at auto-update trigger
--- ---------------------------------------------------------------------------
+
+
+
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -83,25 +83,25 @@ CREATE TRIGGER profiles_set_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION public.set_updated_at();
 
--- ---------------------------------------------------------------------------
--- 5. RLS — add INSERT policy so the signup trigger can create rows
--- ---------------------------------------------------------------------------
 
--- Allow service role (backend) to insert profiles
+
+
+
+
 DROP POLICY IF EXISTS "Allow service role to insert profiles" ON public.profiles;
 CREATE POLICY "Allow service role to insert profiles"
     ON public.profiles FOR INSERT
     WITH CHECK (true);
 
--- Allow users to read their own profile (in addition to public read)
+
 DROP POLICY IF EXISTS "Allow users to read their own profile" ON public.profiles;
 CREATE POLICY "Allow users to read their own profile"
     ON public.profiles FOR SELECT
     USING (auth.uid() = id);
 
--- ---------------------------------------------------------------------------
--- 6. Update the handle_new_user trigger to include is_active
--- ---------------------------------------------------------------------------
+
+
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -140,7 +140,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Recreate trigger (DROP + CREATE is idempotent via OR REPLACE above)
+
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users

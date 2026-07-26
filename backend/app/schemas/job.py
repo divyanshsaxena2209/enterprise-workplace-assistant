@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field, field_validator
 from app.core.enums import JobStatus
 
 
-# ---------------------------------------------------------------------------
-# Base schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 class JobBase(BaseModel):
     title: str = Field(..., min_length=2, max_length=150, description="Job title")
@@ -63,9 +63,9 @@ class JobUpdate(BaseModel):
         return self.model_dump(exclude_unset=True, exclude_none=True)
 
 
-# ---------------------------------------------------------------------------
-# Response schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 class JobResponse(JobBase):
     """Safe representation of a Job."""

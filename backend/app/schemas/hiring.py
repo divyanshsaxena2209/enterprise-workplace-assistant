@@ -9,7 +9,7 @@ class CandidateStatusEnum(str, Enum):
     REJECTED = "REJECTED"
     HIRED = "HIRED"
 
-# Job Schemas
+
 class JobBase(BaseModel):
     title: str = Field(..., description="Job Title")
     department: Optional[str] = Field(None, description="Department")
@@ -27,7 +27,7 @@ class JobResponse(JobBase):
     class Config:
         from_attributes = True
 
-# Resume Parsing Structured Outputs
+
 class ExperienceDetail(BaseModel):
     role: str = Field(..., description="Job title / Role name")
     company: str = Field(..., description="Company name")
@@ -43,7 +43,7 @@ class ResumeScreeningResult(BaseModel):
     parsed_skills: List[str] = Field(..., description="Core list of skills found in the resume")
     parsed_experience: List[ExperienceDetail] = Field(..., description="List of professional work experiences")
 
-# Request DTOs
+
 class ScreenResumeRequest(BaseModel):
     resume_file_path: str = Field(..., description="Path to file in Supabase storage")
     job_id: str = Field(..., description="ID of the job description to match against")

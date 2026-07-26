@@ -42,6 +42,16 @@ export async function rejectApplication(id: string, notes?: string) {
   });
 }
 
+export async function acceptApplication(id: string, notes?: string) {
+  return fetchWithAuth(`/applications/${id}/accept`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ notes }),
+  });
+}
+
 export async function respondInterview(applicationId: string, interviewId: string, status: string, notes?: string) {
   return fetchWithAuth(`/applications/${applicationId}/interviews/${interviewId}/respond`, {
     method: "PUT",

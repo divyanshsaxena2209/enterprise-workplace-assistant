@@ -6,13 +6,13 @@ from app.core.config import settings
 
 class AIService:
     def __init__(self):
-        # Gemini Setup
+        
         self.genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
         
-        # ChromaDB Setup
+        
         self.chroma_client = chromadb.HttpClient(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
         
-        # Ensures collection exists
+        
         self.document_collection = self.chroma_client.get_or_create_collection(name="company_documents")
 
     def generate_completion(self, system_prompt: str, user_prompt: str, model: str = "gemma-4-31b-it"):
@@ -63,7 +63,7 @@ class AIService:
             ),
         )
         
-        # Gemini returns structured output in response.parsed if a Pydantic schema is passed
+        
         return response.parsed
 
 ai_service = AIService()

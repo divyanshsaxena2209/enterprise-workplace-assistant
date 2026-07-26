@@ -20,6 +20,6 @@ def test_unauthorized_access():
     """
     Verifies that calling a protected route without a JWT bearer token returns 403 / 401.
     """
-    # Protected by require_role(["HR_ADMIN", "SUPER_ADMIN"])
+    
     response = client.get("/api/v1/hiring/")
     assert response.status_code in [401, 403]

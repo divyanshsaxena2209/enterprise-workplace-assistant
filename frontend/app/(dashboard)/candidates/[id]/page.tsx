@@ -5,7 +5,7 @@ import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot } from "lucide-react"
 import Link from "next/link";
 
 import { useParams } from "next/navigation";
-import { getApplicationDetails, rejectApplication } from "@/lib/api/applications";
+import { getApplicationDetails, rejectApplication, acceptApplication } from "@/lib/api/applications";
 import { Loader2 } from "lucide-react";
 import InterviewSchedulerModal from "@/components/candidates/InterviewSchedulerModal";
 
@@ -15,6 +15,7 @@ export default function CandidateDetailPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [rejecting, setRejecting] = React.useState(false);
+  const [accepting, setAccepting] = React.useState(false);
   const [isInterviewModalOpen, setIsInterviewModalOpen] = React.useState(false);
 
   const fetchDetails = async () => {
@@ -36,7 +37,7 @@ export default function CandidateDetailPage() {
     const initFetch = async () => {
       const data = await fetchDetails();
       if (data) {
-        // If evaluation is still pending, poll again in 3 seconds
+        
         if (!data.score || data.score.recommendation === "PENDING" || !data.score.ai_summary) {
           timeoutId = setTimeout(initFetch, 3000);
         }
@@ -77,6 +78,18 @@ export default function CandidateDetailPage() {
     }
   };
 
+  const handleAccept = async () => {
+    setAccepting(true);
+    try {
+      await acceptApplication(id as string, "Candidate accepted and hired via dashboard.");
+      await fetchDetails();
+    } catch (err: any) {
+      alert("Failed to accept candidate: " + err.message);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   const handleInterviewSuccess = async () => {
     await fetchDetails();
   };
@@ -97,7 +110,7 @@ export default function CandidateDetailPage() {
       </Link>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left Column: Profile & Resume Preview */}
+        {}
         <div className="lg:w-1/2 space-y-6">
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm relative overflow-hidden">
             {application?.status?.toUpperCase() === "REJECTED" && (
@@ -142,7 +155,7 @@ export default function CandidateDetailPage() {
           </div>
         </div>
 
-        {/* Right Column: AI Match & Insights */}
+        {}
         <div className="lg:w-1/2 space-y-6">
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-foreground/5 rounded-bl-full -z-10"></div>
@@ -222,16 +235,24 @@ export default function CandidateDetailPage() {
             <h3 className="font-semibold text-sm uppercase tracking-wide text-foreground mb-4">Recruiter Actions</h3>
             <div className="flex flex-col sm:flex-row gap-3">
               <button 
+                onClick={handleAccept}
+                disabled={accepting || application?.status === "Rejected" || application?.status === "Hired"}
+                className="flex-1 bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(34,197,94,0.1)] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)] disabled:opacity-50"
+              >
+                {accepting ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
+                Accept Candidate
+              </button>
+              <button 
                 onClick={() => setIsInterviewModalOpen(true)}
-                disabled={application?.status === "Rejected"}
-                className="flex-1 bg-foreground hover:bg-foreground/90 text-background py-2.5 rounded-md text-sm font-semibold transition-all shadow-sm disabled:opacity-50"
+                disabled={application?.status === "Rejected" || application?.status === "Hired"}
+                className="flex-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(234,179,8,0.1)] hover:shadow-[0_0_20px_rgba(234,179,8,0.2)] disabled:opacity-50"
               >
                 Schedule Interview
               </button>
               <button 
                 onClick={handleReject}
-                disabled={rejecting || application?.status === "Rejected"}
-                className="flex-1 bg-secondary hover:bg-secondary/80 text-foreground border border-border py-2.5 rounded-md text-sm font-semibold transition-all disabled:opacity-50"
+                disabled={rejecting || application?.status === "Rejected" || application?.status === "Hired"}
+                className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(239,68,68,0.1)] hover:shadow-[0_0_20px_rgba(239,68,68,0.2)] disabled:opacity-50"
               >
                 {rejecting ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
                 Reject Candidate

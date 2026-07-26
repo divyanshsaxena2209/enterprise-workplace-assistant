@@ -34,7 +34,7 @@ class RAGService:
             chunk_meta.update({
                 "document_id": document_id,
                 "chunk_index": i,
-                "text_snippet": chunk[:200] # Store snippet for preview
+                "text_snippet": chunk[:200] 
             })
             metadatas.append(chunk_meta)
             

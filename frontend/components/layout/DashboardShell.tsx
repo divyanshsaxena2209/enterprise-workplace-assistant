@@ -5,7 +5,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground selection:bg-white selection:text-black relative z-0">
       
-      {/* Ambient background glows */}
+      {}
       <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-white/5 blur-[120px] pointer-events-none -z-10 mix-blend-screen" />
       <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-white/5 blur-[120px] pointer-events-none -z-10 mix-blend-screen" />
 

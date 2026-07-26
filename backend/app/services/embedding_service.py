@@ -8,7 +8,7 @@ def generate_embeddings(texts: list[str], model: str = "text-embedding-004") -> 
     if not texts:
         return []
         
-    # Replace newlines with spaces as recommended for better embeddings
+    
     cleaned_texts = [text.replace("\n", " ") for text in texts]
     
     response = genai_client.models.embed_content(
@@ -16,7 +16,7 @@ def generate_embeddings(texts: list[str], model: str = "text-embedding-004") -> 
         contents=cleaned_texts
     )
     
-    # Gemini embed_content returns a list of embeddings directly if inputs is a list
+    
     return [e.values for e in response.embeddings]
 
 def generate_embedding(text: str, model: str = "text-embedding-004") -> list[float]:

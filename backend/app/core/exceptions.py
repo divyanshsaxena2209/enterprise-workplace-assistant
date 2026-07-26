@@ -22,9 +22,9 @@ class AppException(Exception):
         super().__init__(self.message)
 
 
-# ---------------------------------------------------------------------------
-# 4xx Client Errors
-# ---------------------------------------------------------------------------
+
+
+
 
 
 class AuthenticationError(AppException):
@@ -75,9 +75,9 @@ class BadRequestError(AppException):
     message = "The request could not be processed."
 
 
-# ---------------------------------------------------------------------------
-# 5xx Server Errors
-# ---------------------------------------------------------------------------
+
+
+
 
 
 class ServiceUnavailableError(AppException):

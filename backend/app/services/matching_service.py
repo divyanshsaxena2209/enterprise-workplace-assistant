@@ -25,7 +25,7 @@ class MatchingService:
         """
         Retrieves the application, job, and parsed resume, then evaluates the candidate against the job.
         """
-        # 1. Fetch Application Detail (which includes Job and Resume)
+        
         try:
             app_detail = self.app_repo.get_application(application_id)
         except Exception as exc:
@@ -36,7 +36,7 @@ class MatchingService:
         if not app_detail.resume:
             raise ValidationError("Application does not have an associated Resume.")
 
-        # Parse the JSONB parsed_data into our Pydantic model
+        
         if not app_detail.resume.parsed_data:
             raise ValidationError("Resume has not been fully parsed yet. Cannot evaluate.")
 
@@ -45,7 +45,7 @@ class MatchingService:
         except Exception as exc:
             raise ValidationError(f"Resume parsed data is malformed: {exc}") from exc
 
-        # 2. Call Evaluator
+        
         try:
             eval_result = self.evaluator.evaluate_against_job(app_detail.job, parsed_resume)
         except ServiceUnavailableError as exc:
@@ -53,7 +53,7 @@ class MatchingService:
         except Exception as exc:
             raise ServiceUnavailableError(f"Unexpected error during evaluation: {exc}") from exc
 
-        # 3. Save Score
+        
         score_create = CandidateScoreCreate(
             application_id=application_id,
             match_percentage=eval_result.match_percentage,

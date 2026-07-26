@@ -54,7 +54,7 @@ def update_note(
     current_user: ProfileResponse = Depends(require_management),
     service: RecruiterNoteService = Depends(get_note_service)
 ):
-    # Pass current_user dict logic. Our model is ProfileResponse which acts as a dict via model_dump()
+    
     return service.update_note(note_id, note, current_user.model_dump())
 
 @router.delete(

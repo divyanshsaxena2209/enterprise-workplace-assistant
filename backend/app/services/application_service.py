@@ -32,36 +32,36 @@ class ApplicationService:
         """
         Validates entities and creates a new application.
         """
-        # 1. Verify Job exists
+        
         try:
             self.job_repo.get_job_or_raise(str(application_data.job_id))
         except Exception as exc:
             raise ValidationError(f"Job with ID {application_data.job_id} does not exist: {exc}")
 
-        # 2. Verify Candidate exists
+        
         try:
             self.candidate_repo.get_candidate_by_id(str(application_data.candidate_id))
         except Exception as e:
             raise ValidationError(f"Candidate with ID {application_data.candidate_id} does not exist. Inner Err: {str(e)}")
 
-        # 3. Verify Resume exists
+        
         res = self.client.table("resumes").select("id").eq("id", str(application_data.resume_id)).execute()
         if not res.data:
             raise ValidationError(f"Resume with ID {application_data.resume_id} does not exist.")
 
-        # 4. Prevent duplicate applications
+        
         existing = self.client.table("applications").select("id").eq("job_id", str(application_data.job_id)).eq("candidate_id", str(application_data.candidate_id)).eq("is_deleted", False).execute()
         if existing.data:
             raise ValidationError("Candidate has already applied for this job.")
 
-        # 5. Create Application
+        
         data = application_data.model_dump(mode="json")
         data["user_id"] = str(user_id)
         data["status"] = "Applied"
 
         created_app = self.repo.create_application(data)
 
-        # 6. Automatic AI Evaluation (run in background)
+        
         def _run_ai_evaluation(app_id: str, client: Client):
             try:
                 from app.services.matching_service import MatchingService
@@ -86,13 +86,13 @@ class ApplicationService:
         """
         app_detail = self.repo.get_application(application_id)
         
-        # Enforce RBAC
-        # Management can view all. Employees can view only their own.
+        
+        
         if current_user.role not in ["ADMIN", "HR", "MANAGEMENT"]:
             if str(app_detail.application.user_id) != str(current_user.id):
                 raise AuthorizationError("You do not have permission to view this application.")
 
-        # Hydrate extra details (Score, History, Notes)
+        
         try:
             from app.repositories.candidate_score_repository import CandidateScoreRepository
             score_repo = CandidateScoreRepository(self.client)
@@ -136,7 +136,7 @@ class ApplicationService:
         """
         skip = (page - 1) * limit
 
-        # If employee, force filter to their own applications
+        
         user_id_filter = None
         if current_user.role not in ["ADMIN", "HR", "MANAGEMENT"]:
             user_id_filter = current_user.id
@@ -173,13 +173,13 @@ class ApplicationService:
         """
         Rejects an application and logs the history.
         """
-        # Get old status
+        
         app_detail = self.repo.get_application(application_id)
         old_status = app_detail.application.status
         
         self.pipeline_repo.update_application_status(application_id, "Rejected")
         
-        # Log history
+        
         history_data = {
             "application_id": str(application_id),
             "old_status": old_status,
@@ -188,7 +188,103 @@ class ApplicationService:
             "notes": notes or "Candidate rejected."
         }
         self.pipeline_repo.insert_status_history(history_data)
+
+    def accept_application(self, application_id: str | UUID, user_id: str | UUID, notes: Optional[str] = None):
+        """
+        Accepts an application (Hires the candidate) and seeds their onboarding process.
+        """
+        app_detail = self.repo.get_application(application_id)
+        old_status = app_detail.application.status
+        candidate_id = app_detail.application.candidate_id
         
+        
+        self.pipeline_repo.update_application_status(application_id, "Hired")
+        
+        
+        history_data = {
+            "application_id": str(application_id),
+            "old_status": old_status,
+            "new_status": "Hired",
+            "changed_by": str(user_id),
+            "notes": notes or "Candidate accepted and hired."
+        }
+        self.pipeline_repo.insert_status_history(history_data)
+
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        
+        candidate_res = self.client.table("candidates").select("email, full_name, jobs(title, department)").eq("id", str(candidate_id)).execute()
+        if not candidate_res.data:
+            logger.error("Candidate not found: %s", candidate_id)
+            return
+            
+        candidate_email = candidate_res.data[0]["email"]
+        candidate_name = candidate_res.data[0]["full_name"]
+        job_data = candidate_res.data[0].get("jobs") or {}
+        job_title = job_data.get("title", "")
+        department = job_data.get("department", "")
+        
+        profile_res = self.client.table("profiles").select("id, employee_id").eq("email", candidate_email).execute()
+        profile_id = None
+        
+        if profile_res.data:
+            profile_id = profile_res.data[0]["id"]
+            update_payload = {"role": "EMPLOYEE", "job_title": job_title, "department": department}
+            if not profile_res.data[0].get("employee_id"):
+                update_payload["employee_id"] = f"EMP-{str(profile_id)[:8].upper()}"
+            self.client.table("profiles").update(update_payload).eq("id", profile_id).execute()
+        else:
+            
+            try:
+                emp_id_str = f"EMP-{str(candidate_id)[:8].upper()}"
+                new_user = self.client.auth.admin.create_user({
+                    "email": candidate_email,
+                    "password": "Password123!",
+                    "email_confirm": True,
+                    "user_metadata": {
+                        "full_name": candidate_name,
+                        "role": "EMPLOYEE",
+                        "employee_id": emp_id_str,
+                        "job_title": job_title,
+                        "department": department
+                    }
+                })
+                profile_id = new_user.user.id
+            except Exception as e:
+                logger.error("Failed to create auth user for candidate: %s", e)
+                return
+
+        
+        try:
+            template_res = self.client.table("onboarding_templates").select("id").eq("is_default", True).execute()
+            if template_res.data:
+                template_id = template_res.data[0]["id"]
+                steps_res = self.client.table("onboarding_steps").select("*").eq("template_id", template_id).execute()
+                if steps_res.data:
+                    progress_inserts = []
+                    for step in steps_res.data:
+                        
+                        new_step_res = self.client.table("onboarding_steps").insert({
+                            "template_id": None,
+                            "step_name": step["step_name"],
+                            "description": step["description"],
+                            "step_order": step["step_order"]
+                        }).execute()
+                        
+                        if new_step_res.data:
+                            new_step_id = new_step_res.data[0]["id"]
+                            progress_inserts.append({
+                                "employee_id": str(profile_id),
+                                "step_id": new_step_id,
+                                "status": "PENDING",
+                                "notes": "Assigned upon hiring."
+                            })
+                    if progress_inserts:
+                        self.client.table("employee_onboarding_progress").insert(progress_inserts).execute()
+        except Exception as e:
+            logger.error("Failed to seed onboarding steps for candidate %s: %s", candidate_id, e)
     def schedule_interview(self, application_id: str | UUID, interview_data: InterviewCreate, user_id: str | UUID) -> InterviewResponse:
         """
         Schedules an interview for a candidate.
@@ -198,7 +294,7 @@ class ApplicationService:
 
         data = interview_data.model_dump(exclude_unset=True)
         data["application_id"] = str(application_id)
-        # Fix datetime serialization for Supabase
+        
         if "scheduled_at" in data and data["scheduled_at"]:
             data["scheduled_at"] = data["scheduled_at"].isoformat()
             

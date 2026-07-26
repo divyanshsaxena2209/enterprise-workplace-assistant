@@ -1,13 +1,13 @@
--- =============================================================================
--- Phase 2A: Resume Screening Engine Migration
--- =============================================================================
 
--- Ensure uuid-ossp is available
+
+
+
+
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- ---------------------------------------------------------------------------
--- 1. Candidates Table
--- ---------------------------------------------------------------------------
+
+
+
 CREATE TABLE IF NOT EXISTS public.candidates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     full_name TEXT NOT NULL,
@@ -20,17 +20,17 @@ CREATE TABLE IF NOT EXISTS public.candidates (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Index for soft delete filtering
+
 CREATE INDEX IF NOT EXISTS idx_candidates_is_deleted ON public.candidates (is_deleted);
 
--- Trigger for updated_at
+
 DROP TRIGGER IF EXISTS candidates_set_updated_at ON public.candidates;
 CREATE TRIGGER candidates_set_updated_at
     BEFORE UPDATE ON public.candidates
     FOR EACH ROW
     EXECUTE FUNCTION public.set_updated_at();
 
--- RLS
+
 ALTER TABLE public.candidates ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow authenticated users to read candidates" ON public.candidates;
@@ -44,9 +44,9 @@ CREATE POLICY "Allow service role full access to candidates"
     USING (true);
 
 
--- ---------------------------------------------------------------------------
--- 2. Resumes Table
--- ---------------------------------------------------------------------------
+
+
+
 CREATE TABLE IF NOT EXISTS public.resumes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     candidate_id UUID REFERENCES public.candidates(id) ON DELETE CASCADE,
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS public.resumes (
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- RLS
+
 ALTER TABLE public.resumes ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow authenticated users to read resumes" ON public.resumes;
@@ -70,9 +70,9 @@ CREATE POLICY "Allow service role full access to resumes"
     USING (true);
 
 
--- ---------------------------------------------------------------------------
--- 3. Candidate Scores Table
--- ---------------------------------------------------------------------------
+
+
+
 CREATE TABLE IF NOT EXISTS public.candidate_scores (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     candidate_id UUID REFERENCES public.candidates(id) ON DELETE CASCADE,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS public.candidate_scores (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- RLS
+
 ALTER TABLE public.candidate_scores ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow authenticated users to read candidate_scores" ON public.candidate_scores;
@@ -97,15 +97,15 @@ CREATE POLICY "Allow service role full access to candidate_scores"
     ON public.candidate_scores FOR ALL
     USING (true);
 
--- ---------------------------------------------------------------------------
--- 4. Storage Bucket Setup
--- ---------------------------------------------------------------------------
--- Insert 'resumes' bucket if it does not exist
+
+
+
+
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('resumes', 'resumes', false)
 ON CONFLICT (id) DO NOTHING;
 
--- Allow authenticated users to upload and download from the resumes bucket
+
 DROP POLICY IF EXISTS "Allow authenticated users to upload resumes" ON storage.objects;
 CREATE POLICY "Allow authenticated users to upload resumes" 
     ON storage.objects FOR INSERT 

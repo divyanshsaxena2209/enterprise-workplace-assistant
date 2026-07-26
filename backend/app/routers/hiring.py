@@ -20,7 +20,7 @@ def screen_resume(
     job_id = payload.job_id
     resume_file_path = payload.resume_file_path
 
-    # 1. Fetch the Job details from PostgreSQL
+    
     try:
         job_res = supabase_admin.table("jobs").select("*").eq("id", job_id).execute()
         if not job_res.data:
@@ -37,9 +37,9 @@ def screen_resume(
             detail=f"Error retrieving job from database: {str(e)}"
         )
 
-    # 2. Download the resume file from Supabase Storage (bucket 'resumes')
+    
     try:
-        # Expected path format is "job-uuid/filename.pdf" or simply "filename.pdf"
+        
         file_data = supabase_admin.storage.from_("resumes").download(resume_file_path)
     except Exception as e:
         raise HTTPException(
@@ -47,7 +47,7 @@ def screen_resume(
             detail=f"Failed to download resume from Storage: {str(e)}. Ensure the file exists in the 'resumes' bucket."
         )
 
-    # 3. Extract text from resume bytes
+    
     try:
         resume_parser = ResumeParserService()
         resume_text = resume_parser.extract_text(file_data, resume_file_path)
@@ -59,12 +59,12 @@ def screen_resume(
             detail=f"Failed to parse resume document content: {str(e)}"
         )
 
-    # 4. Invoke Gemini AI screening pipeline
+    
     try:
-        # Parse resume into structured data
+        
         parsed_resume = resume_parser.parse_with_ai(resume_text)
         
-        # Evaluate candidate against the job
+        
         from app.schemas.hiring import JobResponse
         job_model = JobResponse(**job)
         evaluator = CandidateEvaluatorService()
@@ -75,8 +75,8 @@ def screen_resume(
             detail=f"AI model screening failed: {str(e)}"
         )
 
-    # 5. Save the parsed candidate details into PostgreSQL
-    # Convert ExperienceDetail list to raw JSON lists
+    
+    
     experience_list = [exp.model_dump() for exp in parsed_resume.experience]
 
     full_name = parsed_resume.full_name or ""

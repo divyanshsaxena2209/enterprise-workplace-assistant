@@ -18,7 +18,7 @@ export default function JobsPage() {
   const { profile, accessToken } = useUser();
   const isManagement = profile?.role === "MANAGEMENT";
 
-  // Modal State
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export default function JobsPage() {
   return (
     <div className="space-y-8 pb-10">
       
-      {/* Header */}
+      {}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
         <div>
           <h1 className="text-3xl font-black tracking-tight text-white flex items-center gap-3">
@@ -89,7 +89,7 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Grid List */}
+      {}
       <div className="grid grid-cols-1 gap-4 relative z-10">
         {loading ? (
            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground space-y-4">
@@ -104,7 +104,7 @@ export default function JobsPage() {
         ) : (
           jobs.map((job) => (
             <div key={job.id} onClick={() => router.push(`/jobs/${job.id}`)} className="p-6 glass-panel rounded-2xl hover:border-white/20 hover:bg-white/5 cursor-pointer transition-all duration-300 flex items-center justify-between group hover-lift relative overflow-hidden">
-              {/* Subtle success glow if active */}
+              {}
               {job.status === "Published" && (
                 <div className="absolute top-0 left-0 w-1 h-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
               )}
@@ -151,7 +151,7 @@ export default function JobsPage() {
                       e.stopPropagation();
                       try {
                         await publishJob(job.id, accessToken);
-                        fetchJobs(); // refresh the list
+                        fetchJobs(); 
                       } catch (err: any) {
                         alert(err.message || "Failed to publish job");
                       }
@@ -167,12 +167,12 @@ export default function JobsPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {}
       {isModalOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-zinc-900 border border-white/20 rounded-2xl w-full max-w-3xl shadow-2xl relative flex flex-col max-h-[95vh] overflow-hidden">
             
-            {/* Header */}
+            {}
             <div className="p-6 pb-4 flex-shrink-0 border-b border-white/10 relative">
               <button 
                 onClick={() => setIsModalOpen(false)}
@@ -214,7 +214,7 @@ export default function JobsPage() {
               }
             }} className="flex flex-col flex-1 min-h-0">
               
-              {/* Scrollable Body */}
+              {}
               <div className="p-6 overflow-y-auto flex-1 space-y-5">
                 
                 {submitError && (
@@ -294,7 +294,7 @@ export default function JobsPage() {
                 </div>
               </div>
 
-              {/* Fixed Footer */}
+              {}
               <div className="p-6 pt-4 flex justify-end gap-3 border-t border-white/10 flex-shrink-0 bg-zinc-900/50">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-lg text-sm font-bold text-muted-foreground hover:text-white transition-colors cursor-pointer">
                   Cancel
@@ -310,7 +310,7 @@ export default function JobsPage() {
         document.body
       )}
 
-      {/* Apply Modal */}
+      {}
       {applyModalOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-zinc-900 border border-white/20 rounded-2xl w-full max-w-md shadow-2xl relative flex flex-col overflow-hidden">

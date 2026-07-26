@@ -1,150 +1,142 @@
-import uuid
+import os
 import chromadb
-from google import genai
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_chroma import Chroma
 from app.core.config import settings
-from app.schemas.knowledge import ReferenceItem, RAGQueryResponse
 
-genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-# Initialize ChromaDB Persistent Client
-chroma_client = chromadb.PersistentClient(path=settings.CHROMADB_PATH)
-# Get or create default collection
-rag_collection = chroma_client.get_or_create_collection(
-    name="enterprise_knowledge",
-    metadata={"hnsw:space": "cosine"}
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+
+
+embedding_model = FastEmbedEmbeddings()
+
+llm = ChatGoogleGenerativeAI(
+    model="gemma-4-31b-it",
+    google_api_key=settings.GEMINI_API_KEY,
+    temperature=0.3,
 )
 
-def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[str]:
-    """
-    Splits plain text into overlapping chunks of defined size.
-    """
-    if not text:
-        return []
-    
-    chunks = []
-    start = 0
-    text_length = len(text)
-    
-    while start < text_length:
-        end = min(start + chunk_size, text_length)
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        if end >= text_length:
-            break
-        start += (chunk_size - overlap)
-        
-    return chunks
 
-def get_gemini_embedding(text: str) -> list[float]:
-    """
-    Generates embedding vector for text using text-embedding-004.
-    """
-    response = genai_client.models.embed_content(
-        model="text-embedding-004",
-        contents=text
-    )
-    return response.embeddings[0].values
+try:
+    chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8080)
+except Exception as e:
+    print(f"[WARN] Failed to connect to ChromaDB: {e}")
+    chroma_client = None
 
-def index_document_in_chroma(document_id: str, title: str, file_path: str, text: str):
-    """
-    Chunks document text, embeddings each chunk, and registers in ChromaDB.
-    """
-    chunks = chunk_text(text)
-    if not chunks:
-        return
+COLLECTION_NAME = "enterprise_knowledge_fastembed"
 
-    ids = []
-    embeddings = []
-    documents = []
-    metadatas = []
-
-    for i, chunk in enumerate(chunks):
-        chunk_id = f"{document_id}_chunk_{i}"
-        vector = get_gemini_embedding(chunk)
-        
-        ids.append(chunk_id)
-        embeddings.append(vector)
-        documents.append(chunk)
-        metadatas.append({
-            "document_id": document_id,
-            "title": title,
-            "file_path": file_path,
-            "chunk_index": i
-        })
-
-    # Add in batches to Chroma DB
-    rag_collection.add(
-        ids=ids,
-        embeddings=embeddings,
-        documents=documents,
-        metadatas=metadatas
+def get_vector_store():
+    global chroma_client
+    if not chroma_client:
+        try:
+            chroma_client = chromadb.HttpClient(host="127.0.0.1", port=8080)
+            
+            chroma_client.heartbeat()
+        except Exception as e:
+            raise Exception(f"ChromaDB is not available on port 8080. Detailed Error: {str(e)}")
+            
+    return Chroma(
+        client=chroma_client,
+        collection_name=COLLECTION_NAME,
+        embedding_function=embedding_model,
     )
 
-def query_rag_knowledge(query_text: str) -> RAGQueryResponse:
-    """
-    Queries ChromaDB vector store, retrieves top matches, synthesizes response using Gemini.
-    """
-    # 1. Embed query
-    query_vector = get_gemini_embedding(query_text)
-
-    # 2. Query Chroma collection
-    results = rag_collection.query(
-        query_embeddings=[query_vector],
-        n_results=4
+def process_and_store_document(file_path: str):
+    
+    if file_path.lower().endswith(".pdf"):
+        loader = PyPDFLoader(file_path)
+    elif file_path.lower().endswith(".docx"):
+        loader = Docx2txtLoader(file_path)
+    else:
+        raise ValueError("Unsupported file format. Only PDF and DOCX are allowed.")
+    documents = loader.load()
+    
+    
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        separators=["\n\n", "\n", " ", ""]
     )
-
-    # Extract matches
-    references = []
-    retrieved_texts = []
+    chunks = text_splitter.split_documents(documents)
     
-    if results and results["documents"] and len(results["documents"][0]) > 0:
-        docs = results["documents"][0]
-        metas = results["metadatas"][0]
-        
-        for doc_text, meta in zip(docs, metas):
-            references.append(ReferenceItem(
-                document_title=meta.get("title", "Unknown Policy"),
-                file_path=meta.get("file_path", ""),
-                matched_text=doc_text
-            ))
-            retrieved_texts.append(f"Source: {meta.get('title')}\nExcerpt: {doc_text}")
-
-    # 3. Formulate Prompt and Synthesize Contextual Answer
-    context_str = "\n\n---\n\n".join(retrieved_texts) if retrieved_texts else "No specific policies matched."
     
-    system_prompt = """
-    You are an expert Enterprise Workplace Assistant bot.
-    Your goal is to answer employee questions regarding company policies, guidelines, and SOPs accurately and professionally.
+    vector_store = get_vector_store()
+    vector_store.add_documents(chunks)
     
-    GUIDELINES:
-    1. Base your answer strictly on the provided context sections.
-    2. If the context does not contain enough information to answer the question, state politely: "I cannot find this information in the uploaded company policies. Please consult HR."
-    3. Cite the documents you retrieve to give workers full clarity on what guidelines apply.
-    4. Keep the tone helpful, professional, and corporate.
-    """
+    return {
+        "pages": len(documents),
+        "chunks": len(chunks)
+    }
 
-    user_prompt = f"""
-    CONTEXT FROM COMPANY DOCUMENTS:
-    {context_str}
+def delete_document(filename: str):
+    vector_store = get_vector_store()
+    collection = vector_store._collection
+    
+    sources_to_try = [
+        f"uploads\\{filename}",
+        f"uploads/{filename}"
+    ]
+    
+    deleted_count = 0
+    for source in sources_to_try:
+        results = collection.get(where={"source": source})
+        if results and results.get("ids"):
+            collection.delete(ids=results["ids"])
+            deleted_count += len(results["ids"])
+            
+    return deleted_count
 
-    EMPLOYEE QUESTION:
-    {query_text}
+def retrieve_and_answer(question: str, k: int = 3):
+    vector_store = get_vector_store()
+    
+    
+    results = vector_store.similarity_search(question, k=k)
+    
+    
+    context = "\n\n".join([f"Source: {os.path.basename(doc.metadata.get('source', 'Unknown Document'))} (Page {doc.metadata.get('page', 0) + 1})\nContent:\n{doc.page_content}" for doc in results])
+    prompt = f"""
+You are KnowledgeHub AI, an intelligent Enterprise Knowledge Assistant.
 
-    Provide your detailed synthesized response citing references from the sources:
-    """
+Your task is to answer questions ONLY using the retrieved context provided below.
 
+Instructions:
+1. Use only the information found in the context.
+2. Never invent, assume, or hallucinate facts.
+3. If the answer cannot be found in the context, respond exactly:
+   "I couldn't find that information in the uploaded documents."
+4. Keep answers concise, clear, and professional.
+5. When possible:
+   - Present information using bullet points or numbered lists.
+   - Include important values, dates, names, or figures exactly as written.
+6. If the retrieved context contains conflicting information, mention the conflict.
+7. Do not mention that you are an AI language model.
+8. ALWAYS cite your sources in the answer based on the 'Source:' headers in the context (e.g., "According to [Document Name]...").
+
+Retrieved Context:
+-----------------
+{context}
+
+User Question:
+{question}
+
+Answer:
+"""
     try:
-        prompt = f"System Instruction: {system_prompt}\n\n{user_prompt}"
-        completion = genai_client.models.generate_content(
-            model="gemma-4-31b-it",
-            contents=prompt
-        )
-        answer_text = completion.text
+        response = llm.invoke(prompt)
+        answer = response.content
     except Exception as e:
-        answer_text = f"An error occurred while generating the response: {str(e)}"
-
-    return RAGQueryResponse(
-        answer_text=answer_text,
-        references=references
-    )
+        answer = f"Error: {str(e)}"
+        
+    return {
+        "question": question,
+        "answer": answer,
+        "sources": [
+            {
+                "file": doc.metadata.get("source"),
+                "page": doc.metadata.get("page", 0) + 1
+            }
+            for doc in results
+        ]
+    }

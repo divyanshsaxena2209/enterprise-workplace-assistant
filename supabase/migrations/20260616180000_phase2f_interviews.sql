@@ -1,4 +1,4 @@
--- Phase 2F: Interviews
+
 CREATE TABLE IF NOT EXISTS public.interviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     application_id UUID NOT NULL REFERENCES public.applications(id) ON DELETE CASCADE,

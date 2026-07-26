@@ -57,7 +57,7 @@ export default function JobDetailPage() {
         Back to Requisitions
       </Link>
 
-      {/* Job Header */}
+      {}
       <div className="p-8 glass-panel-heavy rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-bl-full -z-10 blur-3xl pointer-events-none" />
         <div className="flex flex-col sm:flex-row justify-between items-start gap-6">
@@ -76,11 +76,11 @@ export default function JobDetailPage() {
           </div>
           <div>
             <span className={`px-4 py-2 text-xs uppercase tracking-widest font-black rounded-xl border shadow-sm backdrop-blur-md ${
-              job.status === "Published" 
+              job.status === "PUBLISHED" 
                 ? "bg-white/15 text-white border-white/20 shadow-[0_0_15px_rgba(255,255,255,0.1)]" 
                 : "bg-black/50 text-muted-foreground border-white/10"
             }`}>
-              {job.status || "Draft"}
+              {job.status || "DRAFT"}
             </span>
           </div>
         </div>
@@ -91,7 +91,7 @@ export default function JobDetailPage() {
         </div>
       </div>
 
-      {/* Candidates Section Header */}
+      {}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pt-6">
         <div>
           <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-3">

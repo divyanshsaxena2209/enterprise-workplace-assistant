@@ -12,7 +12,7 @@ from app.repositories.application_repository import ApplicationRepository
 from app.schemas.pipeline import PipelineDashboardResponse
 
 class PipelineService:
-    # Valid status transitions mapping
+    
     VALID_TRANSITIONS = {
         "Applied": ["Under Review"],
         "Under Review": ["Shortlisted", "Rejected"],
@@ -34,23 +34,23 @@ class PipelineService:
         Moves an application to a new status, validating the transition and recording the history.
         """
         try:
-            # 1. Fetch current application status
+            
             app_detail = self.app_repo.get_application(application_id)
             current_status = app_detail.application.status
 
-            # 2. Validate transition
+            
             if new_status == current_status:
-                return # No change needed
+                return 
 
             allowed_next_states = self.VALID_TRANSITIONS.get(current_status, [])
             if new_status not in allowed_next_states:
                 raise ValidationError(f"Invalid status transition from '{current_status}' to '{new_status}'. Allowed transitions: {allowed_next_states}")
 
-            # 3. Perform update (simulate transaction via sequence since Supabase py client lacks true transaction grouping easily)
-            # Update the status
+            
+            
             self.pipeline_repo.update_application_status(application_id, new_status)
 
-            # Insert history
+            
             history_data = {
                 "application_id": str(application_id),
                 "old_status": current_status,

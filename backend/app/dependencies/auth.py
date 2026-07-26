@@ -44,9 +44,9 @@ from app.schemas.profile import ProfileResponse
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Core dependency — authenticated user
-# ---------------------------------------------------------------------------
+
+
+
 
 
 def get_current_user(
@@ -65,11 +65,11 @@ def get_current_user(
         NotFoundError: if the user's profile doesn't exist in the DB.
         AuthenticationError: if the account is deactivated.
     """
-    # Fast path: middleware already resolved the user for this request.
+    
     if hasattr(request.state, "user") and request.state.user is not None:
         return request.state.user
 
-    # Slow path: resolve from token directly (e.g., when middleware is bypassed).
+    
     if credentials is None:
         raise AuthenticationError("Authorization header is missing.")
 
@@ -104,9 +104,9 @@ def get_current_user(
     return ProfileResponse.from_model(profile)
 
 
-# ---------------------------------------------------------------------------
-# Alias — semantic clarity
-# ---------------------------------------------------------------------------
+
+
+
 
 
 def require_authenticated_user(
@@ -119,9 +119,9 @@ def require_authenticated_user(
     return current_user
 
 
-# ---------------------------------------------------------------------------
-# Role-specific dependencies
-# ---------------------------------------------------------------------------
+
+
+
 
 
 def require_management(
@@ -164,9 +164,9 @@ def require_employee(
     return current_user
 
 
-# ---------------------------------------------------------------------------
-# Annotated shorthand types (optional convenience)
-# ---------------------------------------------------------------------------
+
+
+
 
 CurrentUser = Annotated[ProfileResponse, Depends(get_current_user)]
 ManagementUser = Annotated[ProfileResponse, Depends(require_management)]

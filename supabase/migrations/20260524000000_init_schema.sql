@@ -1,4 +1,4 @@
--- 1. Enums and Extensions
+
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 DO $$ 
@@ -14,7 +14,7 @@ BEGIN
     END IF;
 END $$;
 
--- 2. Profiles Table (Linked to auth.users)
+
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS on Profiles
+
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public read access to profiles" 
@@ -37,7 +37,7 @@ CREATE POLICY "Allow users to update their own profile"
     ON public.profiles FOR UPDATE 
     USING (auth.uid() = id);
 
--- 3. Jobs Table (Hiring module)
+
 CREATE TABLE IF NOT EXISTS public.jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS on Jobs
+
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow read access to all profiles for jobs"
@@ -65,7 +65,7 @@ CREATE POLICY "Allow HR admins to manage jobs"
         )
     );
 
--- 4. Candidates Table (Resume screening module)
+
 CREATE TABLE IF NOT EXISTS public.candidates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id UUID REFERENCES public.jobs(id) ON DELETE CASCADE,
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS public.candidates (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS on Candidates
+
 ALTER TABLE public.candidates ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow HR/Super admins to manage candidates"
@@ -94,7 +94,7 @@ CREATE POLICY "Allow HR/Super admins to manage candidates"
         )
     );
 
--- 5. Onboarding Steps Table
+
 CREATE TABLE IF NOT EXISTS public.onboarding_steps (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS public.onboarding_steps (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS on Onboarding Steps
+
 ALTER TABLE public.onboarding_steps ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all authenticated users to read onboarding steps"
@@ -121,7 +121,7 @@ CREATE POLICY "Allow HR/Super admins to manage onboarding steps"
         )
     );
 
--- 6. Employee Onboarding Tasks Table
+
 CREATE TABLE IF NOT EXISTS public.employee_onboarding_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS public.employee_onboarding_tasks (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS on Employee Onboarding Tasks
+
 ALTER TABLE public.employee_onboarding_tasks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow employees to view and update their own onboarding tasks"
@@ -154,7 +154,7 @@ CREATE POLICY "Allow HR/Super admins to view and manage all onboarding tasks"
         )
     );
 
--- 7. Company Documents Table (Knowledge RAG)
+
 CREATE TABLE IF NOT EXISTS public.company_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS public.company_documents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS on Company Documents
+
 ALTER TABLE public.company_documents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all authenticated users to read company documents"
@@ -184,7 +184,7 @@ CREATE POLICY "Allow HR/Super admins to manage company documents"
 
 
 
--- 10. Automatically Create Profile on User Signup (Trigger)
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN

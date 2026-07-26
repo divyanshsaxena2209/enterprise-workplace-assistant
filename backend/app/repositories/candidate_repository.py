@@ -27,16 +27,16 @@ class CandidateRepository:
         Returns the new candidate ID and resume ID.
         """
         try:
-            # 1. Create candidate
+            
             candidate_res = self._db.table("candidates").insert(candidate_data).execute()
             if not candidate_res.data:
                 raise DatabaseError("Failed to insert candidate.")
             candidate_id = candidate_res.data[0]["id"]
 
-            # 2. Add candidate_id to related data
+            
             resume_data["candidate_id"] = candidate_id
 
-            # 3. Create resume
+            
             resume_res = self._db.table("resumes").insert(resume_data).execute()
             resume_id = resume_res.data[0]["id"]
 
@@ -66,13 +66,13 @@ class CandidateRepository:
         Get a candidate by ID, including their resume.
         """
         try:
-            # Fetch Candidate
+            
             cand_res = self._db.table("candidates").select("*").eq("id", candidate_id).eq("is_deleted", False).execute()
             if not cand_res.data:
                 raise NotFoundError(f"Candidate with ID '{candidate_id}' not found.")
             candidate = CandidateResponse.model_validate(cand_res.data[0])
 
-            # Fetch Resume
+            
             resume_res = self._db.table("resumes").select("*").eq("candidate_id", candidate_id).order("created_at", desc=True).limit(1).execute()
             resume = ResumeResponse.model_validate(resume_res.data[0]) if resume_res.data else None
 
@@ -90,7 +90,7 @@ class CandidateRepository:
         Soft delete a candidate by setting is_deleted = True.
         """
         try:
-            # Check existence first
+            
             self.get_candidate_by_id(candidate_id)
             
             self._db.table("candidates").update({"is_deleted": True}).eq("id", candidate_id).execute()

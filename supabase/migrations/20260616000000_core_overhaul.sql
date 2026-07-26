@@ -1,8 +1,8 @@
--- Drop triggers and functions
+
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user();
 
--- Drop existing tables
+
 DROP TABLE IF EXISTS public.employee_onboarding_tasks CASCADE;
 DROP TABLE IF EXISTS public.onboarding_steps CASCADE;
 DROP TABLE IF EXISTS public.candidates CASCADE;
@@ -10,7 +10,7 @@ DROP TABLE IF EXISTS public.jobs CASCADE;
 DROP TABLE IF EXISTS public.company_documents CASCADE;
 DROP TABLE IF EXISTS public.profiles CASCADE;
 
--- Drop enums if they exist
+
 DO $$ 
 BEGIN
     DROP TYPE IF EXISTS user_role CASCADE;
@@ -18,7 +18,7 @@ BEGIN
     DROP TYPE IF EXISTS candidate_status CASCADE;
 END $$;
 
--- Create new profiles table
+
 CREATE TABLE public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE public.profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Enable RLS
+
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public read access to profiles" 
@@ -47,7 +47,7 @@ CREATE POLICY "Allow users to update their own profile"
     ON public.profiles FOR UPDATE 
     USING (auth.uid() = id);
 
--- Trigger for new user
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN

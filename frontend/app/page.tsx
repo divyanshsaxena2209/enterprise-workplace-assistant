@@ -40,11 +40,11 @@ export default function Home() {
     }
   ];
 
-  if (!mounted) return null; // Avoid hydration mismatch on initial render
+  if (!mounted) return null; 
 
   return (
     <div className="bg-background text-foreground min-h-screen font-sans overflow-x-hidden">
-      {/* Abstract Background Glows */}
+      {}
       <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/10 blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/10 blur-[120px]" />
@@ -77,7 +77,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section */}
+      {}
       <section className="relative max-w-7xl mx-auto px-6 pt-32 pb-24 md:pt-48 md:pb-32 text-center flex flex-col items-center">
         
 
@@ -106,11 +106,11 @@ export default function Home() {
           transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
         >
-          {/* Removed redundant buttons as requested */}
+          {}
         </motion.div>
       </section>
 
-      {/* Feature Showcase Grid */}
+      {}
       <section className="relative max-w-7xl mx-auto px-6 py-24 border-t border-white/5">
         <div className="mb-16">
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-white/50 inline-block mb-4">
@@ -148,7 +148,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Technical Specs Bento Box */}
+      {}
       <section id="architecture" className="max-w-7xl mx-auto px-6 py-24">
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
@@ -157,7 +157,7 @@ export default function Home() {
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           className="glass-panel rounded-3xl p-8 md:p-16 flex flex-col lg:flex-row items-center gap-12 relative overflow-hidden"
         >
-          {/* Subtle mesh background for bento box */}
+          {}
           <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
 
           <div className="flex-1 space-y-6 relative z-10">
@@ -188,7 +188,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Minimal Footer */}
+      {}
       <footer className="max-w-7xl mx-auto px-6 py-10 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Sparkles className="w-4 h-4" />

@@ -134,6 +134,24 @@ def reject_application(
     service.reject_application(application_id, current_user.id, request.notes)
     return {"message": "Application rejected."}
 
+class AcceptRequest(BaseModel):
+    notes: Optional[str] = None
+
+@router.post(
+    "/{application_id}/accept",
+    status_code=status.HTTP_200_OK,
+    summary="Accept application (Hire)",
+    description="Accepts an application and seeds onboarding. Restricted to Management."
+)
+def accept_application(
+    application_id: UUID,
+    request: AcceptRequest,
+    current_user: ProfileResponse = Depends(require_management),
+    service: ApplicationService = Depends(get_application_service)
+):
+    service.accept_application(application_id, current_user.id, request.notes)
+    return {"message": "Application accepted and candidate hired."}
+
 from app.schemas.interview import InterviewCreate, InterviewRespond, InterviewResponse
 
 @router.post(

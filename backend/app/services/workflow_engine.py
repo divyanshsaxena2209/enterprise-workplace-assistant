@@ -7,17 +7,17 @@ class WorkflowEngine:
     def instantiate_template_for_employee(db, employee_id: str, template_id: str):
         """Fetches a template and creates onboarding tasks for the employee."""
         try:
-            # 1. Fetch template
+            
             template_res = db.table("onboarding_templates").select("*").eq("id", template_id).execute()
             if not template_res.data:
                 raise ValueError("Template not found")
             template = template_res.data[0]
             
-            # 2. Extract tasks_json
+            
             tasks = template.get("tasks_json", [])
             tasks_to_insert = []
             
-            # 3. Create task entries with due dates
+            
             for task in tasks:
                 due_days = task.get("due_days", 7)
                 due_date = datetime.datetime.now() + datetime.timedelta(days=due_days)

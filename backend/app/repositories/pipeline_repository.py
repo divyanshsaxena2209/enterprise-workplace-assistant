@@ -24,7 +24,7 @@ class PipelineRepository:
 
     def insert_status_history(self, history_data: Dict[str, Any]) -> ApplicationStatusHistoryResponse:
         try:
-            # history_data should contain: application_id, old_status, new_status, changed_by, notes
+            
             res = self._db.table("application_status_history").insert(history_data).execute()
             if not res.data:
                 raise DatabaseError("Failed to insert status history.")
@@ -55,9 +55,9 @@ class PipelineRepository:
         metrics = {status.lower().replace(" ", "_"): 0 for status in statuses}
         
         try:
-            # We can use multiple count queries, or fetch all active applications' statuses
-            # For simplicity and given standard pagination, we'll run a single select of just the statuses
-            # In a true enterprise scale, this should be a PostgreSQL view or RPC function `get_status_counts()`.
+            
+            
+            
             res = self._db.table("applications").select("status").eq("is_deleted", False).execute()
             
             for row in res.data:

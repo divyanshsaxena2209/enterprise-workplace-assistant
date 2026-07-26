@@ -7,9 +7,9 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
-# ---------------------------------------------------------------------------
-# Structured output schemas (for Gemini AI)
-# ---------------------------------------------------------------------------
+
+
+
 
 class ParsedExperience(BaseModel):
     company: str = Field(description="Name of the company")
@@ -42,9 +42,9 @@ class ParsedResumeData(BaseModel):
     previous_companies: List[str] = Field(default_factory=list, description="List of previous employer names")
 
 
-# ---------------------------------------------------------------------------
-# API Response Schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 class ResumeResponse(BaseModel):
     """Safe representation of a resume record."""

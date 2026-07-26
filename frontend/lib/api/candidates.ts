@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
 const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
-  // Convert any existing headers to a plain object
+  
   const headers: Record<string, string> = {};
   if (options.headers) {
     const rawHeaders = new Headers(options.headers);
@@ -23,7 +24,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
     try {
       let token: string | null = null;
       
-      // Attempt fast synchronous retrieval to bypass deadlocks
+      
       if (typeof window !== "undefined") {
         try {
           const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!);
@@ -41,7 +42,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
         }
       }
       
-      // Fallback to getSession if not found
+      
       if (!token) {
         console.log(`[fetchWithAuth] Fast retrieval missed. Getting Supabase session...`);
         const supabase = createClient();
@@ -65,9 +66,9 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       } else {
-        // If we still don't have a token, we might actually be unauthenticated.
-        // Don't throw an aggressive error unless it's a critical route, just proceed without it.
-        // The backend will return 401 if it's required.
+        
+        
+        
         console.warn("[fetchWithAuth] Proceeding without Authorization header.");
       }
     } catch (err) {
@@ -158,8 +159,8 @@ export async function uploadResume(file: File) {
     headers.set("Authorization", `Bearer ${session.access_token}`);
   }
 
-  // NOTE: When using FormData, do NOT set the Content-Type header.
-  // The browser will automatically set it to multipart/form-data with the correct boundary.
+  
+  
   const response = await fetch(`${API_URL}/resume/upload`, {
     method: "POST",
     headers,

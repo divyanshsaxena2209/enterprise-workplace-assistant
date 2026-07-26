@@ -29,7 +29,7 @@ class ProfileModel:
     created_at: datetime
     updated_at: datetime
 
-    # Optional fields
+    
     employee_id: Optional[str] = None
     department: Optional[str] = None
     job_title: Optional[str] = None
@@ -44,14 +44,14 @@ class ProfileModel:
         Construct a ProfileModel from a raw Supabase row dict.
         Handles type coercion and optional-field defaults safely.
         """
-        # Coerce role string to enum; fall back to EMPLOYEE for unknown values.
+        
         raw_role = data.get("role", "EMPLOYEE")
         try:
             role = UserRole(raw_role)
         except ValueError:
             role = UserRole.EMPLOYEE
 
-        # Parse timestamps — Supabase returns ISO strings.
+        
         def _parse_dt(val: str | datetime | None) -> datetime:
             if val is None:
                 return datetime.utcnow()

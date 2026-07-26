@@ -17,9 +17,9 @@ interview_data = InterviewCreate(
     management_notes="test"
 )
 
-# Use the application ID from the user's current route
+
 app_id = UUID("7c0a40be-05ff-4840-9c09-700d1f2cb9cc")
-# Use a random UUID for user_id
+
 user_id = UUID("00000000-0000-0000-0000-000000000000")
 
 try:

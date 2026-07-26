@@ -61,7 +61,8 @@ export default function InterviewSchedulerModal({
       const supabase = createClient();
       const { data: session } = await supabase.auth.getSession();
       
-      const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+      if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
       const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
 
       const res = await fetch(`${API_URL}/applications/${applicationId}/interviews`, {
@@ -92,7 +93,7 @@ export default function InterviewSchedulerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="bg-black border border-border w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden relative" onClick={e => e.stopPropagation()}>
         
-        {/* Left Side: Form */}
+        {}
         <div className="w-full md:w-3/5 p-8 flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold tracking-tight">Schedule Interview</h2>
@@ -184,7 +185,7 @@ export default function InterviewSchedulerModal({
           </form>
         </div>
 
-        {/* Right Side: Candidate Profile summary */}
+        {}
         <div className="w-full md:w-2/5 bg-secondary/30 border-l border-border p-8 flex flex-col items-center justify-center relative overflow-hidden">
           <button onClick={onClose} className="absolute top-6 right-6 p-2 hover:bg-secondary rounded-full text-muted-foreground transition-colors hidden md:block z-10">
             <X size={20} />

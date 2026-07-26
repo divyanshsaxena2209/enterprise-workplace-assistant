@@ -9,9 +9,9 @@ from pydantic import BaseModel, HttpUrl
 from app.schemas.resume import ResumeResponse
 
 
-# ---------------------------------------------------------------------------
-# Candidate Output Schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 class CandidateResponse(BaseModel):
     """Public-safe representation of a candidate."""

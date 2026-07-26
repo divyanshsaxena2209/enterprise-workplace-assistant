@@ -14,8 +14,8 @@ from typing import Any
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 
-# HTTPBearer extractor used as a FastAPI Security dependency.
-# auto_error=False lets the middleware handle missing tokens gracefully.
+
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -27,8 +27,8 @@ def decode_jwt(token: str) -> dict[str, Any]:
     Raises AuthenticationError on any failure.
     """
     if not settings.SUPABASE_JWT_SECRET:
-        # Fall back to unverified decode in development if secret not set.
-        # In production this will raise because is_production guard below.
+        
+        
         if settings.is_production:
             raise AuthenticationError("JWT secret not configured on server.")
         try:
@@ -41,7 +41,7 @@ def decode_jwt(token: str) -> dict[str, Any]:
             raise AuthenticationError(f"Malformed JWT: {exc}") from exc
 
     try:
-        # TEMPORARY DEBUGGING
+        
         print("DEBUG TOKEN HEADER:", jwt.get_unverified_header(token))
         payload = jwt.decode(
             token,

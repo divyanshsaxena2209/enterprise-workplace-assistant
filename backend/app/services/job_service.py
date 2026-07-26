@@ -93,7 +93,7 @@ class JobService:
         if current_user.role != UserRole.MANAGEMENT:
             raise AuthorizationError("Only Management can publish jobs.")
             
-        # Get job to ensure it exists
+        
         job = self._repo.get_job_or_raise(job_id)
         
         if job.status == JobStatus.PUBLISHED:

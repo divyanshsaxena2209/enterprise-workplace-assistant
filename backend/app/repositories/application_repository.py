@@ -31,8 +31,8 @@ class ApplicationRepository:
                 raise DatabaseError("Failed to insert application.")
             return ApplicationResponse.model_validate(res.data[0])
         except Exception as exc:
-            # We catch specific duplicate errors in the service layer using string matching if needed,
-            # but raising DatabaseError preserves the stack and base type.
+            
+            
             raise DatabaseError(f"Failed to save application: {exc}") from exc
 
     def get_application(self, application_id: str | UUID) -> ApplicationDetailResponse:
@@ -97,17 +97,17 @@ class ApplicationRepository:
         except NotFoundError:
             raise
         except Exception as exc:
-            # Check if this is a PostgREST schema cache error (PGRST200)
+            
             exc_str = str(exc)
             if 'PGRST200' in exc_str or 'Could not find a relationship' in exc_str:
-                # Fallback: Sequential fetching
+                
                 res = self._db.table("applications").select("*").eq("id", str(application_id)).eq("is_deleted", False).execute()
                 if not res.data:
                     raise NotFoundError(f"Application with ID '{application_id}' not found.")
                 row = res.data[0]
                 application = ApplicationResponse.model_validate(row)
                 
-                # Fetch related
+                
                 job_res = self._db.table("jobs").select("*").eq("id", str(application.job_id)).execute()
                 job = JobResponse.model_validate(job_res.data[0]) if job_res.data else None
                 
@@ -167,12 +167,12 @@ class ApplicationRepository:
         Supports filtering by nested relationships (jobs, candidate_scores).
         """
         try:
-            # Determine if we need to inner join tables for filtering/sorting
+            
             needs_job = department is not None
             needs_score = recommendation is not None or min_score is not None or max_score is not None or sort_by == "match_score"
             needs_candidate = sort_by == "candidate_name"
 
-            # Ensure we always select candidates and scores for the dashboard UI
+            
             needs_job = department is not None
             
             select_clause = "*"
@@ -192,7 +192,7 @@ class ApplicationRepository:
 
             query = self._db.table("applications").select(select_clause, count="exact").eq("is_deleted", False)
             
-            # Base filters
+            
             if job_id:
                 query = query.eq("job_id", str(job_id))
             if candidate_id:
@@ -202,7 +202,7 @@ class ApplicationRepository:
             if user_id:
                 query = query.eq("user_id", str(user_id))
                 
-            # Nested filters
+            
             if department:
                 query = query.eq("jobs.department", department)
             if recommendation:
@@ -212,7 +212,7 @@ class ApplicationRepository:
             if max_score is not None:
                 query = query.lte("candidate_scores.match_percentage", max_score)
                 
-            # Sorting
+            
             if sort_by == "match_score":
                 query = query.order("match_percentage", foreignTable="candidate_scores", desc=sort_desc)
             elif sort_by == "candidate_name":
@@ -226,11 +226,11 @@ class ApplicationRepository:
             
             items = []
             for row in res.data:
-                # Strip out the nested joined data before validating to the base schema
+                
                 app_data = {k: v for k, v in row.items() if k not in ("jobs", "candidate_scores", "candidates")}
                 app = ApplicationResponse.model_validate(app_data)
                 
-                # Attach nested data for dashboard rendering
+                
                 if row.get("candidates"):
                     app.candidate = CandidateResponse.model_validate(row["candidates"])
                 if row.get("candidate_scores"):
@@ -247,11 +247,11 @@ class ApplicationRepository:
 
             total = res.count if res.count is not None else len(items)
             
-            # ATTACH RELATIVE SCORES
+            
             job_ids = list(set(str(app.job_id) for app in items if app.job_id and app.score))
             if job_ids:
                 try:
-                    # Query max match_percentage for each job using an inner join on applications
+                    
                     score_res = self._db.table("candidate_scores").select("match_percentage, applications!inner(job_id)").in_("applications.job_id", job_ids).execute()
                     max_scores = {}
                     for r in score_res.data:
@@ -269,12 +269,12 @@ class ApplicationRepository:
                             else:
                                 app.score.relative_score = min(100, int((app.score.match_percentage / m_score) * 100))
                 except Exception as ex:
-                    # Fallback to absolute score
+                    
                     for app in items:
                         if app.score:
                             app.score.relative_score = app.score.match_percentage
 
-            # Fetch interviews for these applications
+            
             app_ids = [str(app.id) for app in items]
             if app_ids:
                 try:
@@ -295,12 +295,12 @@ class ApplicationRepository:
 
             return items, total
         except Exception as exc:
-            # Check if this is a PostgREST schema cache error (PGRST200)
+            
             exc_str = str(exc)
             if 'PGRST200' in exc_str or 'Could not find a relationship' in exc_str:
-                # Fallback: Sequential fetching without joins
+                
                 try:
-                    # Query just applications
+                    
                     base_query = self._db.table("applications").select("*", count="exact").eq("is_deleted", False)
                     if job_id: base_query = base_query.eq("job_id", str(job_id))
                     if candidate_id: base_query = base_query.eq("candidate_id", str(candidate_id))
@@ -316,26 +316,26 @@ class ApplicationRepository:
                     for row in res.data:
                         app = ApplicationResponse.model_validate(row)
                         
-                        # Fetch Candidate
+                        
                         if app.candidate_id:
                             cand_res = self._db.table("candidates").select("*").eq("id", str(app.candidate_id)).execute()
                             if cand_res.data:
                                 app.candidate = CandidateResponse.model_validate(cand_res.data[0])
                         
-                        # Fetch Score
+                        
                         score_res = self._db.table("candidate_scores").select("*").eq("application_id", str(app.id)).execute()
                         if score_res.data:
                             app.score = CandidateScoreResponse.model_validate(score_res.data[0])
-                            # Relative score fallback
+                            
                             app.score.relative_score = app.score.match_percentage
                             
-                        # Fetch Job
+                        
                         if app.job_id:
                             job_res = self._db.table("jobs").select("*").eq("id", str(app.job_id)).execute()
                             if job_res.data:
                                 app.job = JobResponse.model_validate(job_res.data[0])
 
-                        # Fetch Interviews
+                        
                         try:
                             from app.schemas.interview import InterviewResponse
                             int_res = self._db.table("interviews").select("*").eq("application_id", str(app.id)).execute()

@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
 
-# Job Schemas
+
 class JobBase(BaseModel):
     title: str
     department: Optional[str] = None
@@ -25,7 +25,7 @@ class JobResponse(JobBase):
     class Config:
         from_attributes = True
 
-# Candidate Schemas
+
 class CandidateBase(BaseModel):
     name: str
     email: str
@@ -42,7 +42,7 @@ class CandidateResponse(CandidateBase):
     class Config:
         from_attributes = True
 
-# Resume Schemas
+
 class ResumeBase(BaseModel):
     candidate_id: UUID
     file_url: str
@@ -59,7 +59,7 @@ class ResumeResponse(ResumeBase):
     class Config:
         from_attributes = True
 
-# Candidate Score Schemas
+
 class CandidateScoreBase(BaseModel):
     application_id: UUID
     match_percentage: int = Field(ge=0, le=100)

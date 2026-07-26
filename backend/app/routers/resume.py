@@ -20,7 +20,7 @@ router = APIRouter(
     tags=["Resume Screening"],
 )
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 10 * 1024 * 1024  
 
 
 @router.post(
@@ -49,7 +49,7 @@ def upload_resume(
     - Saves Candidate and Resume to database.
     """
     
-    # 1. Validation
+    
     if not file.filename:
         raise BadRequestError("No filename provided.")
         
@@ -64,39 +64,39 @@ def upload_resume(
     if len(file_bytes) == 0:
         raise BadRequestError("Uploaded file is empty.")
 
-    # 2. Extract Text & Parse
+    
     parser = ResumeParserService()
     raw_text = parser.extract_text(file_bytes, file.filename)
     parsed_data = parser.parse_with_ai(raw_text)
 
-    # 3. Upload to Storage
+    
     client = get_supabase_client()
     
-    # Generate unique filename to prevent collisions
+    
     unique_filename = f"{uuid.uuid4()}_{file.filename.replace(' ', '_')}"
     
     try:
-        # Supabase Storage upload
+        
         client.storage.from_("resumes").upload(
             path=unique_filename,
             file=file_bytes,
             file_options={"content-type": file.content_type}
         )
         
-        # Get public URL
+        
         file_url = client.storage.from_("resumes").get_public_url(unique_filename)
     except Exception as exc:
         raise DatabaseError(f"Failed to upload resume to storage: {exc}") from exc
 
-    # 4. Save to Database
+    
     repo = CandidateRepository(client)
     
     candidate_data = {
         "full_name": parsed_data.full_name or "Unknown Candidate",
         "email": parsed_data.email,
         "phone": parsed_data.phone,
-        # Extract linkedin/portfolio from text if needed, but omitted for now as it's not strictly in schema.
-        # Could add basic extraction logic here if needed.
+        
+        
     }
     
     resume_data = {

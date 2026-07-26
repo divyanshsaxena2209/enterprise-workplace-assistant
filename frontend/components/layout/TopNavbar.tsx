@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, User, Settings, LogOut, ChevronDown, Loader2, FileText } from "lucide-react";
+import { Bell, User, Settings, LogOut, ChevronDown, Loader2, FileText, Home } from "lucide-react";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
 
@@ -37,8 +37,7 @@ export default function TopNavbar() {
   const allTabs = [
     { name: "Organizational Intelligence", href: "/knowledge", active: pathname.startsWith("/knowledge") },
     { name: "Talent Acquisition Pipeline", href: "/jobs", active: pathname.startsWith("/jobs") || pathname.startsWith("/candidates") },
-    { name: "Workforce Onboarding Operations", href: "/onboarding", active: pathname.startsWith("/onboarding") },
-    { name: "Operational Analytics", href: "/analytics", active: pathname.startsWith("/analytics") || pathname === "/dashboard", hidden: !hasAnalyticsAccess }
+    { name: "Workforce Onboarding Operations", href: "/onboarding", active: pathname.startsWith("/onboarding") }
   ];
 
   const tabs = allTabs.filter(t => !t.hidden);
@@ -70,7 +69,10 @@ export default function TopNavbar() {
 
       <div className="flex items-center gap-5">
         
-        <button className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/10 hover:text-white transition-colors relative border border-transparent hover:border-white/10">
+        <Link href="/dashboard" className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/10 hover:text-white transition-colors relative border border-transparent hover:border-white/10">
+          <Home size={18} />
+        </Link>
+        <button suppressHydrationWarning className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/10 hover:text-white transition-colors relative border border-transparent hover:border-white/10">
           <Bell size={18} />
           <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]"></span>
         </button>
@@ -113,6 +115,9 @@ export default function TopNavbar() {
               <div className="px-5 py-4 border-b border-white/5 bg-white/5">
                 <p className="text-sm font-bold text-white truncate">{profile.full_name}</p>
                 <p className="text-[11px] text-muted-foreground truncate font-medium mt-1">{profile.email}</p>
+                {profile.employee_id && (
+                  <p className="text-[11px] text-muted-foreground truncate font-medium mt-0.5">ID: {profile.employee_id}</p>
+                )}
                 {profile.department && (
                   <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest mt-2 bg-white/10 inline-block px-2 py-1 rounded-md">{profile.department}</p>
                 )}

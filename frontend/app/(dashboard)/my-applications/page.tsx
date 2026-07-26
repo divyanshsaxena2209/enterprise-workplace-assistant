@@ -3,13 +3,14 @@
 import React, { useEffect, useState } from "react";
 import { getMyApplications, respondInterview } from "@/lib/api/applications";
 import { FileText, Calendar, Clock, Link as LinkIcon, CheckCircle, XCircle, Clock4, Loader2 } from "lucide-react";
+import Link from "next/link";
 
 export default function MyApplicationsPage() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // States for response modal
+  
   const [selectedInterview, setSelectedInterview] = useState<any>(null);
   const [responseAction, setResponseAction] = useState<"Accepted" | "Rejected" | "Reschedule Requested" | null>(null);
   const [notes, setNotes] = useState("");
@@ -98,10 +99,12 @@ export default function MyApplicationsPage() {
               {app.interviews && app.interviews.length > 0 && (
                 <div className="mt-6 pt-6">
                   <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-6">Interview Thread</h4>
-                  <div className="relative border-l-2 border-border/60 ml-4 space-y-8">
+                  <div className="relative border-l border-foreground/20 ml-4 space-y-8">
                     {[...app.interviews].sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((interview: any) => (
                       <div key={interview.id} className="relative pl-6">
-                        <div className="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full border-[3px] border-background bg-foreground"></div>
+                        <svg className="absolute -left-[7.5px] top-1 w-[14px] h-[14px] text-foreground" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="7" cy="7" r="5" fill="var(--background)" stroke="currentColor" strokeWidth="2" />
+                        </svg>
                         <div className="bg-secondary/30 border border-border rounded-xl p-5 shadow-sm">
                           <div className="flex justify-between items-start mb-4">
                             <div>
@@ -181,6 +184,22 @@ export default function MyApplicationsPage() {
                         </div>
                       </div>
                     ))}
+                    
+                    {app.status === "Hired" && (
+                      <div className="relative pl-6 pt-2">
+                        <svg className="absolute -left-[7.5px] top-8 w-[14px] h-[14px] text-green-500" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="7" cy="7" r="5" fill="var(--background)" stroke="currentColor" strokeWidth="2" />
+                        </svg>
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-5 shadow-sm text-center animate-fade-in">
+                          <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-3" />
+                          <h4 className="text-lg font-bold text-foreground mb-2">Candidate Accepted</h4>
+                          <p className="text-sm text-muted-foreground mb-5 max-w-md mx-auto">Congratulations! Management has accepted your application and you have been hired. All further tracking has been moved to your onboarding operations tab.</p>
+                          <Link href="/onboarding" className="inline-block bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2.5 px-6 rounded-lg transition-colors shadow-sm">
+                            Proceed to Onboarding
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -189,7 +208,7 @@ export default function MyApplicationsPage() {
         </div>
       )}
 
-      {/* Response Modal */}
+      {}
       {selectedInterview && responseAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-background border border-border w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>

@@ -79,7 +79,7 @@ class JobRepository:
                 query = query.eq("location", location)
             
             if search:
-                # Basic ilike search on title or department
+                
                 query = query.or_(f"title.ilike.%{search}%,department.ilike.%{search}%")
             
             query = query.range(skip, skip + limit - 1).order("created_at", desc=True)
@@ -92,7 +92,7 @@ class JobRepository:
     def soft_delete_job(self, job_id: str) -> None:
         """Soft deletes a job by setting is_deleted = True."""
         try:
-            # Check existence first
+            
             self.get_job_or_raise(job_id)
             
             self._db.table("jobs").update({"is_deleted": True}).eq("id", job_id).execute()

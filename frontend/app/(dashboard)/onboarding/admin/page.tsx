@@ -22,7 +22,7 @@ export default function HRAdminDashboard() {
         </button>
       </div>
 
-      {/* Metrics */}
+      {}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="p-6 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
           <div className="flex items-center gap-3 mb-2">
@@ -55,7 +55,7 @@ export default function HRAdminDashboard() {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Active Onboardings */}
+        {}
         <div className="lg:w-2/3 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800">
             <h3 className="font-semibold text-lg">Active Onboarding Pipelines</h3>
@@ -84,7 +84,7 @@ export default function HRAdminDashboard() {
           </div>
         </div>
 
-        {/* Verification Queue */}
+        {}
         <div className="lg:w-1/3 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800">
             <h3 className="font-semibold text-lg">Document Verification</h3>

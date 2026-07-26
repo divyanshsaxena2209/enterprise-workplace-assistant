@@ -27,7 +27,7 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Do not remove this: it updates the session
+  
   const {
     data: { user },
   } = await supabase.auth.getUser()

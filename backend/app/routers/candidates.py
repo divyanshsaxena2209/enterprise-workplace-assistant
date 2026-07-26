@@ -50,8 +50,8 @@ def list_candidates(
         data=candidates,
         page=page,
         page_size=page_size,
-        # Note: Total count would require a separate count query in Supabase.
-        # For simplicity, returning 0 or omitting total if not strictly needed.
+        
+        
     )
 
 

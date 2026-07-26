@@ -1,11 +1,11 @@
--- Enterprise Workplace Assistant Platform Database Schema
 
--- Enums
+
+
 CREATE TYPE user_role AS ENUM ('admin', 'hr', 'manager', 'employee');
 CREATE TYPE task_status AS ENUM ('pending', 'in_progress', 'completed');
 CREATE TYPE resume_status AS ENUM ('pending', 'reviewed', 'rejected', 'shortlisted');
 
--- Users
+
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Candidates
+
 CREATE TABLE candidates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE candidates (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Resumes
+
 CREATE TABLE resumes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     candidate_id UUID REFERENCES candidates(id) ON DELETE CASCADE,
@@ -33,7 +33,7 @@ CREATE TABLE resumes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Onboarding Tasks
+
 CREATE TABLE onboarding_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -43,17 +43,17 @@ CREATE TABLE onboarding_tasks (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Company Documents (for Knowledge base RAG)
+
 CREATE TABLE company_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
     content_url TEXT NOT NULL,
-    embedding_id VARCHAR(255), -- Reference to ChromaDB/VectorDB id
+    embedding_id VARCHAR(255), 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 
--- AI Logs
+
 CREATE TABLE ai_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     prompt TEXT,
@@ -63,16 +63,16 @@ CREATE TABLE ai_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes
+
 CREATE INDEX idx_resumes_candidate ON resumes(candidate_id);
 CREATE INDEX idx_onboarding_user ON onboarding_tasks(user_id);
 
--- Phase 2: ATS Module Enhancements
+
 
 CREATE TYPE application_status AS ENUM ('Applied', 'Shortlisted', 'Interview', 'Rejected', 'Hired');
 CREATE TYPE job_status AS ENUM ('Draft', 'Open', 'Closed');
 
--- Jobs
+
 CREATE TABLE jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
@@ -87,7 +87,7 @@ CREATE TABLE jobs (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Applications
+
 CREATE TABLE applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
@@ -98,7 +98,7 @@ CREATE TABLE applications (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Candidate Scores (AI Evaluations)
+
 CREATE TABLE candidate_scores (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     application_id UUID REFERENCES applications(id) ON DELETE CASCADE UNIQUE,
@@ -111,7 +111,7 @@ CREATE TABLE candidate_scores (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Recruiter Notes
+
 CREATE TABLE recruiter_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     application_id UUID REFERENCES applications(id) ON DELETE CASCADE,
@@ -120,16 +120,16 @@ CREATE TABLE recruiter_notes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- New Indexes
+
 CREATE INDEX idx_applications_job ON applications(job_id);
 CREATE INDEX idx_applications_candidate ON applications(candidate_id);
 CREATE INDEX idx_candidate_scores_application ON candidate_scores(application_id);
 
--- Phase 3: Knowledge Assistant Enhancements
+
 
 CREATE TYPE document_status AS ENUM ('Processing', 'Active', 'Archived');
 
--- Documents
+
 CREATE TABLE documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
@@ -141,17 +141,17 @@ CREATE TABLE documents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Document Chunks (for metadata and traceability)
+
 CREATE TABLE document_chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     token_count INTEGER,
-    vector_id VARCHAR(255) UNIQUE NOT NULL, -- Corresponds to ChromaDB id
+    vector_id VARCHAR(255) UNIQUE NOT NULL, 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Chats
+
 CREATE TABLE chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -161,17 +161,17 @@ CREATE TABLE chats (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Chat Messages
+
 CREATE TABLE chat_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
-    role VARCHAR(50) NOT NULL, -- 'user' or 'assistant'
+    role VARCHAR(50) NOT NULL, 
     content TEXT NOT NULL,
-    citation_refs TEXT[], -- Array of chunk IDs or document IDs
+    citation_refs TEXT[], 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Retrieval Logs (for Analytics)
+
 CREATE TABLE retrieval_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     query TEXT NOT NULL,
@@ -181,18 +181,18 @@ CREATE TABLE retrieval_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes
+
 CREATE INDEX idx_document_chunks_doc ON document_chunks(document_id);
 CREATE INDEX idx_chats_user ON chats(user_id);
 CREATE INDEX idx_chat_messages_chat ON chat_messages(chat_id);
 
 
--- Phase 5: Onboarding & Workflow Engine
+
 
 CREATE TYPE employee_status AS ENUM ('Onboarding', 'Active', 'Offboarding', 'Terminated');
 CREATE TYPE doc_verification_status AS ENUM ('Pending', 'Approved', 'Rejected');
 
--- Employees
+
 CREATE TABLE employees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
@@ -208,33 +208,33 @@ CREATE TABLE employees (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Onboarding Templates
+
 CREATE TABLE onboarding_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     department VARCHAR(100),
     description TEXT,
-    tasks_json JSONB NOT NULL, -- Array of objects: {title, type, due_days}
+    tasks_json JSONB NOT NULL, 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Onboarding Tasks
+
 CREATE TABLE employee_onboarding_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
-    task_type VARCHAR(50) NOT NULL, -- 'Document', 'Form', 'Reading', 'Approval'
+    task_type VARCHAR(50) NOT NULL, 
     status VARCHAR(50) DEFAULT 'Pending',
     due_date TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Employee Documents
+
 CREATE TABLE employee_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
-    document_type VARCHAR(100) NOT NULL, -- 'ID Proof', 'Tax Form', etc.
+    document_type VARCHAR(100) NOT NULL, 
     file_url TEXT NOT NULL,
     verification_status doc_verification_status DEFAULT 'Pending',
     verified_by UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -242,7 +242,7 @@ CREATE TABLE employee_documents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Notifications
+
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -253,7 +253,7 @@ CREATE TABLE notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes
+
 CREATE INDEX idx_employee_onboarding_tasks_emp ON employee_onboarding_tasks(employee_id);
 CREATE INDEX idx_employee_docs_emp ON employee_documents(employee_id);
 CREATE INDEX idx_notifications_user ON notifications(user_id);

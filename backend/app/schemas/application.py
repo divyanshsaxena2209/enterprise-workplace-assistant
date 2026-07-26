@@ -10,9 +10,9 @@ from app.schemas.candidate_score import CandidateScoreResponse
 from app.schemas.pipeline import ApplicationStatusHistoryResponse
 from app.schemas.recruiter_notes import RecruiterNoteResponse
 
-# ---------------------------------------------------------------------------
-# Application Input Schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 class ApplicationCreate(BaseModel):
     """Schema for submitting a new application."""
@@ -21,9 +21,9 @@ class ApplicationCreate(BaseModel):
     resume_id: UUID
 
 
-# ---------------------------------------------------------------------------
-# Application Output Schemas
-# ---------------------------------------------------------------------------
+
+
+
 
 class ApplicationResponse(BaseModel):
     """Standard representation of an application."""
