@@ -18,10 +18,14 @@ AI-Powered Enterprise Workplace Assistant Platform monorepo. This platform serve
 - **Onboarding Templates:** Standardized templates and task lists for new hires.
 - **Employee Progress Tracking:** Employees can view their onboarding checklist and track their progress via an intuitive dashboard.
 - **Management Oversight:** HR and Management can monitor the progress of new hires and block/unblock tasks.
+- **Automated Task Assignment:** Streamlined assignment of onboarding tasks based on roles and departments.
+- **Status Updates & Notifications:** Real-time visibility into onboarding completion statuses.
 
-### 4. Organizational Intelligence (Knowledge Base)
+### 4. Organizational Intelligence (Knowledge Base) & AI Chatbot
 - **Company Documents:** Centralized storage for company policies, training materials, and documentation.
 - **Search & Retrieval:** Fast access to organizational knowledge.
+- **AI Chatbot (RAG):** Gemini-powered conversational agent that leverages Retrieval-Augmented Generation (RAG) using ChromaDB to accurately answer employee queries based on internal company documents.
+- **Department-Level Filtering:** Contextualized document retrieval based on the user's department for more accurate and relevant chatbot responses.
 
 ### 5. Custom Dashboards
 - **Management Dashboard:** A high-level overview of active jobs, total candidates, applications, and employee count with quick links to manage the organization.
