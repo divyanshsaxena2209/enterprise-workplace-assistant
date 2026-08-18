@@ -16,6 +16,8 @@ export default function KnowledgeDashboard() {
   const [toastMessage, setToastMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
   const [viewingDoc, setViewingDoc] = useState<{url: string, title: string} | null>(null);
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   useEffect(() => {
     const savedDocs = JSON.parse(localStorage.getItem('knowledge_documents') || '[]');
     setDocuments(savedDocs);
@@ -27,9 +29,13 @@ export default function KnowledgeDashboard() {
     e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete "${filename}" from the Knowledge Base? This cannot be undone.`)) return;
 
+    setIsDeleting(true);
     try {
       await deleteKnowledgeDocument(filename, file_url);
       
+      // Wait for a few loops of the animation before resolving
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       const updatedDocs = documents.filter(doc => doc.id !== docId);
       setDocuments(updatedDocs);
       localStorage.setItem('knowledge_documents', JSON.stringify(updatedDocs));
@@ -37,6 +43,8 @@ export default function KnowledgeDashboard() {
       setToastMessage({ type: 'success', text: `Successfully deleted ${filename} from the Knowledge Base.` });
     } catch (error: any) {
       setToastMessage({ type: 'error', text: error.message || "Failed to delete document." });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -100,9 +108,9 @@ export default function KnowledgeDashboard() {
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-foreground animate-pulse" />
-            Organizational Intelligence Hub
+            Knowledge Base
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Execute query pipelines and perform semantic search across corporate indices.</p>
+          <p className="text-sm text-muted-foreground mt-1">Search and ask questions about your company documents.</p>
         </div>
         <div className="flex gap-3">
           <div className="flex items-center gap-2">
@@ -124,28 +132,21 @@ export default function KnowledgeDashboard() {
           </div>
           <Link 
             href="/knowledge/chat" 
-            className="flex items-center gap-2 bg-foreground hover:bg-foreground/90 text-background px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
+            className="flex items-center gap-2 bg-transparent border border-white hover:bg-white/10 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer shadow-sm"
           >
             <MessageSquare size={14} />
-            Query Corporate Intelligence
+            Ask Questions
           </Link>
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Metrics */}
+      <div className="grid grid-cols-1 gap-6">
         <div className="p-6 bg-foreground rounded-2xl shadow-sm text-background flex flex-col justify-between h-40">
           <Database size={24} className="opacity-80" />
           <div>
             <h3 className="text-4xl font-black tracking-tight">{documents.length}</h3>
-            <p className="text-background/80 font-bold text-[10px] uppercase tracking-wider mt-2">Indexed Knowledge Documents</p>
-          </div>
-        </div>
-        <div className="p-6 bg-card border border-border rounded-2xl shadow-sm flex flex-col justify-between h-40">
-          <Search size={24} className="text-foreground" />
-          <div>
-            <h3 className="text-3xl font-bold tracking-tight">{searchesRun}</h3>
-            <p className="text-muted-foreground font-bold text-[10px] uppercase tracking-wider mt-2">Semantic Searches Run</p>
+            <p className="text-background/80 font-bold text-[10px] uppercase tracking-wider mt-2">Documents Uploaded</p>
           </div>
         </div>
       </div>
@@ -153,7 +154,7 @@ export default function KnowledgeDashboard() {
       {/* Document Records */}
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="p-5 border-b border-border/50 flex justify-between items-center bg-secondary/50">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-foreground">Recently Indexed Assets</h3>
+          <h3 className="font-bold text-xs uppercase tracking-wider text-foreground">Recent Documents</h3>
         </div>
         <div className="divide-y divide-border/50">
           {documents.map(doc => (
@@ -182,7 +183,7 @@ export default function KnowledgeDashboard() {
                   {doc.dept}
                 </span>
                 <button 
-                  className="text-red-500/70 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors" 
+                  className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
                   onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url)}
                   title="Delete Document"
                 >
@@ -200,16 +201,51 @@ export default function KnowledgeDashboard() {
       </div>
       </div>
       
-      {}
+      {/* Upload/Delete Overlay */}
+      {(isUploading || isDeleting) && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/60 backdrop-blur-md">
+          {isUploading && (
+            <div className="flex flex-col items-center gap-4 animate-in fade-in duration-300">
+              <div className="bg-green-500/10 p-6 rounded-full flex items-center justify-center">
+                <svg className="w-16 h-16 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" style={{ strokeDasharray: 70, strokeDashoffset: 70, animation: 'draw-erase-loop 2s ease-in-out infinite' }} />
+                  <path d="M14 2v4a2 2 0 0 0 2 2h4" style={{ strokeDasharray: 15, strokeDashoffset: 15, animation: 'draw-erase-loop 2s ease-in-out infinite 0.2s' }} />
+                  <path d="M12 18v-6" style={{ strokeDasharray: 10, strokeDashoffset: 10, animation: 'draw-erase-loop 2s ease-in-out infinite 0.4s' }} />
+                  <path d="M9 15l3-3 3 3" style={{ strokeDasharray: 10, strokeDashoffset: 10, animation: 'draw-erase-loop 2s ease-in-out infinite 0.6s' }} />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Indexing Document...</h2>
+              <p className="text-sm text-muted-foreground">Extracting and vectorizing into Qdrant DB</p>
+            </div>
+          )}
+          {isDeleting && (
+            <div className="flex flex-col items-center gap-4 animate-in fade-in duration-300">
+              <div className="bg-red-500/10 p-6 rounded-full flex items-center justify-center">
+                <svg className="w-16 h-16 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18" style={{ strokeDasharray: 24, strokeDashoffset: 24, animation: 'draw-erase-loop 1.2s ease-in-out infinite' }} />
+                  <path d="M6 6l12 12" style={{ strokeDasharray: 24, strokeDashoffset: 24, animation: 'draw-erase-loop 1.2s ease-in-out infinite 0.2s' }} />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Deleting Document...</h2>
+              <p className="text-sm text-muted-foreground">Removing from Qdrant DB</p>
+            </div>
+          )}
+
+        </div>,
+        document.body
+      )}
+
+      {/* Document Viewer */}
       {viewingDoc && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 sm:p-8">
           <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-4 border-b border-border bg-secondary/30">
-              <div className="flex items-center gap-3">
-                <FileText size={18} className="text-muted-foreground" />
-                <h3 className="font-bold text-sm text-foreground">{viewingDoc.title}</h3>
+            <div className="flex items-center justify-between p-4 border-b border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] bg-gradient-to-b from-zinc-800 to-black text-white relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+              <div className="flex items-center gap-3 relative z-10">
+                <FileText size={18} className="text-zinc-400" />
+                <h3 className="font-bold text-sm text-zinc-100">{viewingDoc.title}</h3>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 relative z-10">
                 <a 
                   href={viewingDoc.url} 
                   target="_blank" 

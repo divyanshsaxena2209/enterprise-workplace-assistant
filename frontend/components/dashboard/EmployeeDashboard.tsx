@@ -73,7 +73,6 @@ export default function EmployeeDashboard() {
     { title: "My Profile", icon: <User className="w-5 h-5" />, href: "/profile", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
     { title: "My Applications", icon: <FileText className="w-5 h-5" />, href: "/my-applications", color: "bg-green-500/10 text-green-500 border-green-500/20" },
     { title: "Knowledge Base", icon: <BookOpen className="w-5 h-5" />, href: "/knowledge", color: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
-    { title: "Settings", icon: <Settings className="w-5 h-5" />, href: "/settings", color: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
   ];
 
   return (

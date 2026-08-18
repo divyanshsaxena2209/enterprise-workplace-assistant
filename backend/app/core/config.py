@@ -42,12 +42,16 @@ class Settings(BaseSettings):
     
     
     GEMINI_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
 
     
     
     
     CHROMA_HOST: str = "localhost"
     CHROMA_PORT: int = 8080
+
+    QDRANT_URL: str = ""
+    QDRANT_API_KEY: str = ""
 
     
     

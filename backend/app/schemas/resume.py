@@ -31,15 +31,15 @@ class ParsedProject(BaseModel):
 
 class ParsedResumeData(BaseModel):
     """Schema for the structured JSON output from the AI resume parser."""
-    full_name: str = Field(default="", description="Candidate's full name")
-    email: str = Field(default="", description="Candidate's email address")
-    phone: str = Field(default="", description="Candidate's phone number")
-    skills: List[str] = Field(default_factory=list, description="List of technical and soft skills")
-    experience: List[ParsedExperience] = Field(default_factory=list, description="Professional experience history")
-    education: List[ParsedEducation] = Field(default_factory=list, description="Educational background")
-    certifications: List[str] = Field(default_factory=list, description="List of certifications")
-    projects: List[ParsedProject] = Field(default_factory=list, description="Notable projects")
-    previous_companies: List[str] = Field(default_factory=list, description="List of previous employer names")
+    full_name: str | None = Field(description="Candidate's full name")
+    email: str | None = Field(description="Candidate's email address")
+    phone: str | None = Field(description="Candidate's phone number")
+    skills: List[str] | None = Field(description="List of technical and soft skills")
+    experience: List[ParsedExperience] | None = Field(description="Professional experience history")
+    education: List[ParsedEducation] | None = Field(description="Educational background")
+    certifications: List[str] | None = Field(description="List of certifications")
+    projects: List[ParsedProject] | None = Field(description="Notable projects")
+    previous_companies: List[str] | None = Field(description="List of previous employer names")
 
 
 

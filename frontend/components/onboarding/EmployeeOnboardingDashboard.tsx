@@ -5,6 +5,8 @@ import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, Clock, Loader2, AlertTriangle, PlayCircle, HelpCircle, Circle, Calendar, ChevronRight } from "lucide-react";
 import LockedFeature from "@/components/layout/LockedFeature";
+import { getMyApplications } from "@/lib/api/applications";
+import { Briefcase, ArrowLeft } from "lucide-react";
 
 interface Step {
   id: string;
@@ -26,7 +28,24 @@ export default function EmployeeOnboardingDashboard() {
   const { profile, isHired, loading: profileLoading } = useUser();
   const supabase = createClient();
   const [progressData, setProgressData] = useState<Progress[]>([]);
+  const [hiredJobs, setHiredJobs] = useState<any[]>([]);
+  const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        const res = await getMyApplications(1, 100);
+        const hired = (res.items || []).filter((app: any) => app.status === "Hired" || app.status === "HIRED");
+        setHiredJobs(hired);
+      } catch (e) {
+        console.error("Failed to fetch hired jobs:", e);
+      }
+    };
+    if (profile && isHired) {
+      fetchJobs();
+    }
+  }, [profile, isHired]);
 
   const fetchProgress = React.useCallback(async () => {
     if (!profile) return;
@@ -44,7 +63,7 @@ export default function EmployeeOnboardingDashboard() {
       if (error) {
         console.error("Error fetching onboarding progress:", error);
       } else if (data) {
-        const mapped: Progress[] = data.map((d: any) => ({
+        let mapped: Progress[] = data.map((d: any) => ({
           id: d.id,
           step_id: d.step_id,
           status: d.status,
@@ -53,6 +72,10 @@ export default function EmployeeOnboardingDashboard() {
           step: d.onboarding_steps,
         })).sort((a: any, b: any) => (a.step?.step_order || 0) - (b.step?.step_order || 0));
 
+        if (selectedJob) {
+          mapped = mapped.filter(m => m.notes && m.notes.includes(`APP_ID:${selectedJob.id}`));
+        }
+
         setProgressData(mapped);
       }
     } catch (err) {
@@ -60,7 +83,7 @@ export default function EmployeeOnboardingDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [profile, supabase]);
+  }, [profile, supabase, selectedJob]);
 
   useEffect(() => {
     if (!profileLoading && profile) {
@@ -114,9 +137,50 @@ export default function EmployeeOnboardingDashboard() {
 
   return (
     <LockedFeature isLocked={!isHired}>
-      <div className="max-w-7xl mx-auto space-y-10 pb-20 animate-in fade-in duration-700">
-        
-        {}
+      {!selectedJob ? (
+        <div className="space-y-8 animate-in fade-in duration-700">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-white mb-2">Workforce Onboarding</h1>
+            <p className="text-sm text-muted-foreground">Select a position to view its onboarding roadmap.</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {hiredJobs.length === 0 ? (
+              <div className="col-span-full p-8 text-center glass-panel rounded-2xl border-dashed">
+                <Briefcase className="w-12 h-12 mb-4 mx-auto opacity-20" />
+                <p className="text-sm font-semibold text-muted-foreground">No onboarding profiles found.</p>
+              </div>
+            ) : (
+              hiredJobs.map(app => (
+                <div 
+                  key={app.id} 
+                  onClick={() => setSelectedJob(app)}
+                  className="p-6 glass-panel rounded-2xl hover:border-white/20 hover:bg-white/5 cursor-pointer transition-all duration-300 flex items-center gap-5 group hover-lift"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-black/50 flex items-center justify-center text-muted-foreground group-hover:text-white transition-colors border border-white/10 shadow-inner">
+                    <Briefcase size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base tracking-tight text-white">{app.job?.title || "Unknown Position"}</h3>
+                    <div className="text-xs text-muted-foreground mt-1 font-medium">{app.job?.department || "General"}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="max-w-7xl mx-auto space-y-10 pb-20 animate-in fade-in duration-700">
+          
+          <button 
+            onClick={() => setSelectedJob(null)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-white transition-colors"
+          >
+            <ArrowLeft size={16} />
+            Back to Positions
+          </button>
+
+          {}
         <div className="relative overflow-hidden rounded-3xl bg-card border border-border shadow-2xl p-10 flex flex-col md:flex-row items-center gap-12">
           {}
           <div className="relative w-48 h-48 flex-shrink-0 flex items-center justify-center">
@@ -255,6 +319,7 @@ export default function EmployeeOnboardingDashboard() {
 
         </div>
       </div>
+      )}
     </LockedFeature>
   );
 }

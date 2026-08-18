@@ -32,20 +32,16 @@ export default function LoginPage() {
 
       if (data?.user) {
         document.cookie = "guest_mode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
+        return; // Prevents setLoading(false) from running so the loading spinner stays until page unloads
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials. Please verify your email and password.";
       setError(errorMessage);
-    } finally {
       setLoading(false);
     }
   };
 
-  const handleGuestLogin = () => {
-    document.cookie = "guest_mode=true; path=/";
-    router.push("/dashboard");
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background text-foreground selection:bg-foreground selection:text-background px-4">
@@ -104,7 +100,7 @@ export default function LoginPage() {
             type="submit" 
             disabled={loading}
             suppressHydrationWarning
-            className="w-full py-2.5 px-4 bg-foreground hover:bg-foreground/90 text-background rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+            className="w-full py-2.5 px-4 bg-transparent border border-white hover:bg-white/10 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
           >
             {loading ? (
               <>

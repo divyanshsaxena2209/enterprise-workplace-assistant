@@ -42,6 +42,8 @@ const guestProfile: UserProfile = {
   created_at: new Date().toISOString(),
 };
 
+let globalAuthSessionPromise: Promise<any> | null = null;
+
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
@@ -55,8 +57,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     try {
       let session = sessionArg;
       if (!session) {
-        const { data } = await supabase.auth.getSession();
-        session = data.session;
+        if (!globalAuthSessionPromise) {
+          globalAuthSessionPromise = supabase.auth.getSession();
+        }
+        
+        const timeoutPromise = new Promise<{data: any, error: any}>((_, reject) => 
+          setTimeout(() => reject(new Error("Supabase getSession timed out in UserContext")), 30000)
+        );
+        
+        const result = await Promise.race([globalAuthSessionPromise, timeoutPromise]);
+        session = result.data?.session;
       }
       
       const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');

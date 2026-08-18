@@ -37,8 +37,9 @@ if __name__ == "__main__":
     import subprocess
     import sys
     import os
-    port = settings.PORT
+    import socket
     
+    port = 8555
     backend_dir = os.path.dirname(os.path.abspath(__file__))
     
     while True:
@@ -68,4 +69,10 @@ if __name__ == "__main__":
                 process.wait()
             except KeyboardInterrupt:
                 process.terminate()
-            break
+                break
+                
+            if process.returncode != 0:
+                print(f"[WARN] Uvicorn crashed on port {port} after binding, trying port {port + 1}...")
+                port += 1
+            else:
+                break

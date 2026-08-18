@@ -67,8 +67,8 @@ export async function checkIsHired(): Promise<boolean> {
     const data = await getMyApplications(1, 100);
     if (!data || !data.items) return false;
     return data.items.some((app: any) => app.status === "Hired");
-  } catch (err) {
-    console.error("Failed to check hired status:", err);
+  } catch (err: any) {
+    console.warn("Failed to check hired status:", err.message || err);
     return false;
   }
 }

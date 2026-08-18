@@ -14,8 +14,20 @@ from app.core.config import settings
 from app.middleware.auth_middleware import AuthMiddleware
 from app.middleware.error_middleware import register_exception_handlers
 
+import httpx
+_orig_init = httpx.Client.__init__
+def _new_init(self, *args, **kwargs):
+    kwargs['verify'] = False
+    kwargs['http2'] = False
+    _orig_init(self, *args, **kwargs)
+httpx.Client.__init__ = _new_init
 
-
+_orig_async_init = httpx.AsyncClient.__init__
+def _new_async_init(self, *args, **kwargs):
+    kwargs['verify'] = False
+    kwargs['http2'] = False
+    _orig_async_init(self, *args, **kwargs)
+httpx.AsyncClient.__init__ = _new_async_init
 
 logging.basicConfig(
     level=logging.DEBUG if settings.is_development else logging.INFO,
@@ -160,5 +172,3 @@ def health_check() -> dict:
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
     }
-
-

@@ -6,11 +6,12 @@ import { Plus, Briefcase, MapPin, Users, Sparkles, Loader2, AlertCircle, X, Chev
 import { useRouter } from "next/navigation";
 import { getJobs, createJob, publishJob } from "@/lib/api/jobs";
 import { uploadResume } from "@/lib/api/candidates";
-import { createApplication } from "@/lib/api/applications";
+import { createApplication, getMyApplications } from "@/lib/api/applications";
 import { useUser } from "@/lib/context/UserContext";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
+  const [myApplications, setMyApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -44,6 +45,14 @@ export default function JobsPage() {
     try {
       const response = await getJobs();
       setJobs(response.data || []);
+      if (profile?.role !== "MANAGEMENT") {
+        try {
+          const myApps = await getMyApplications(1, 100);
+          setMyApplications(myApps.items || []);
+        } catch (e: any) {
+          console.warn("Failed to fetch my applications:", e.message || e);
+        }
+      }
     } catch (err: any) {
       setError(err.message || "Failed to fetch job requisitions.");
     } finally {
@@ -65,10 +74,10 @@ export default function JobsPage() {
             <div className="p-2 bg-white/10 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(255,255,255,0.1)]">
               <Sparkles className="w-6 h-6 text-white animate-pulse" />
             </div>
-            Talent Acquisition Operations
+            Jobs & Candidates
           </h1>
           <p className="text-sm text-muted-foreground mt-2 max-w-xl leading-relaxed">
-            Manage active corporate openings, track application pipelines, and deploy position templates.
+            Manage job postings and review candidate applications.
           </p>
         </div>
         {isManagement && (
@@ -77,7 +86,7 @@ export default function JobsPage() {
             className="flex items-center gap-2 bg-white text-black hover:bg-gray-200 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover-lift cursor-pointer"
           >
             <Plus size={16} />
-            Initiate
+            New Job
           </button>
         )}
       </div>
@@ -132,18 +141,24 @@ export default function JobsPage() {
                   {job.status || "Draft"}
                 </span>
                 {!isManagement && job.status === "Published" && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedJobId(job.id);
-                      setApplyModalOpen(true);
-                      setApplySuccess(false);
-                      setResumeFile(null);
-                    }}
-                    className="ml-4 px-5 py-2 bg-white text-black hover:bg-gray-200 rounded-lg text-[10px] uppercase tracking-widest font-black transition-all shadow-[0_0_15px_rgba(255,255,255,0.2)] hover:shadow-[0_0_25px_rgba(255,255,255,0.4)]"
-                  >
-                    Apply Now
-                  </button>
+                  myApplications.some(app => app.job_id === job.id) ? (
+                    <span className="ml-4 px-5 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-[10px] uppercase tracking-widest font-black flex-shrink-0">
+                      Applied
+                    </span>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedJobId(job.id);
+                        setApplyModalOpen(true);
+                        setApplySuccess(false);
+                        setResumeFile(null);
+                      }}
+                      className="ml-4 px-5 py-2 bg-white text-black hover:bg-gray-200 rounded-lg text-[10px] uppercase tracking-widest font-black transition-all shadow-[0_0_15px_rgba(255,255,255,0.2)] hover:shadow-[0_0_25px_rgba(255,255,255,0.4)]"
+                    >
+                      Apply Now
+                    </button>
+                  )
                 )}
                 {isManagement && job.status === "Draft" && (
                   <button
@@ -180,7 +195,7 @@ export default function JobsPage() {
               >
                 <X size={20} />
               </button>
-              <h2 className="text-xl font-black tracking-tight text-white m-0 py-1">Initiate Job Requisition</h2>
+              <h2 className="text-xl font-black tracking-tight text-white m-0 py-1">Create New Job</h2>
             </div>
 
             <form onSubmit={async (e) => {

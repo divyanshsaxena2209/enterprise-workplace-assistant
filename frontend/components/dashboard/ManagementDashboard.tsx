@@ -23,10 +23,10 @@ export default function ManagementDashboard() {
       setLoading(true);
       try {
         const [jobsRes, candidatesRes, applicationsRes, profilesRes] = await Promise.all([
-          supabase.from("jobs").select("id", { count: "exact", head: true }).eq("status", "PUBLISHED"),
+          supabase.from("jobs").select("id", { count: "exact", head: true }).in("status", ["PUBLISHED", "Published"]),
           supabase.from("candidates").select("id", { count: "exact", head: true }),
           supabase.from("applications").select("id", { count: "exact", head: true }),
-          supabase.from("profiles").select("id", { count: "exact", head: true }).in("role", ["EMPLOYEE", "MANAGEMENT", "HR"])
+          supabase.from("profiles").select("id", { count: "exact", head: true }).in("role", ["EMPLOYEE", "MANAGEMENT", "HR", "ADMIN"])
         ]);
 
         setStats({
@@ -57,7 +57,6 @@ export default function ManagementDashboard() {
 
   const quickLinks = [
     { title: "Manage Jobs", icon: <Briefcase className="w-5 h-5" />, href: "/jobs", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
-    { title: "Talent Pool", icon: <Users className="w-5 h-5" />, href: "/candidates", color: "bg-green-500/10 text-green-500 border-green-500/20" },
     { title: "Knowledge Base", icon: <BookOpen className="w-5 h-5" />, href: "/knowledge", color: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
     { title: "Onboarding Setup", icon: <UserPlus className="w-5 h-5" />, href: "/onboarding", color: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
   ];
@@ -71,14 +70,14 @@ export default function ManagementDashboard() {
         <div className="relative z-10">
           <h1 className="text-3xl font-black tracking-tight">Welcome, {profile?.full_name?.split(' ')[0] || "Manager"}!</h1>
           <p className="text-background/80 mt-2 max-w-xl text-sm leading-relaxed">
-            Here is a quick overview of the organization's current operations. Navigate through modules to manage jobs, candidates, and employee resources.
+            Manage your team's jobs, candidates, and resources from here.
           </p>
         </div>
       </div>
 
       {}
       <div>
-        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Operational Overview</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Overview</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard title="Active Jobs" value={stats.jobsCount.toString()} icon={<Briefcase size={16} />} />
           <StatCard title="Total Candidates" value={stats.candidatesCount.toString()} icon={<Users size={16} />} />
@@ -89,7 +88,7 @@ export default function ManagementDashboard() {
 
       {}
       <div>
-        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Quick Navigation</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Shortcuts</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {quickLinks.map((link) => (
             <Link 

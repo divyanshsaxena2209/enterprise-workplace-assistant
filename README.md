@@ -18,10 +18,14 @@ AI-Powered Enterprise Workplace Assistant Platform monorepo. This platform serve
 - **Onboarding Templates:** Standardized templates and task lists for new hires.
 - **Employee Progress Tracking:** Employees can view their onboarding checklist and track their progress via an intuitive dashboard.
 - **Management Oversight:** HR and Management can monitor the progress of new hires and block/unblock tasks.
+- **Automated Task Assignment:** Streamlined assignment of onboarding tasks based on roles and departments.
+- **Status Updates & Notifications:** Real-time visibility into onboarding completion statuses.
 
-### 4. Organizational Intelligence (Knowledge Base)
+### 4. Organizational Intelligence (Knowledge Base) & AI Chatbot
 - **Company Documents:** Centralized storage for company policies, training materials, and documentation.
 - **Search & Retrieval:** Fast access to organizational knowledge.
+- **AI Chatbot (RAG):** Gemini-powered conversational agent that leverages Retrieval-Augmented Generation (RAG) using ChromaDB to accurately answer employee queries based on internal company documents.
+- **Department-Level Filtering:** Contextualized document retrieval based on the user's department for more accurate and relevant chatbot responses.
 
 ### 5. Custom Dashboards
 - **Management Dashboard:** A high-level overview of active jobs, total candidates, applications, and employee count with quick links to manage the organization.
@@ -51,20 +55,21 @@ Copy the `.env.example` to `.env` in the respective directories:
 Fill in the necessary credentials (Supabase, OpenAI).
 
 ### 2. Services
-Start local services like ChromaDB using Docker:
-```bash
-docker-compose up -d
-```
+This project uses **Qdrant Cloud** for vector storage, so no local Docker containers are required. Ensure your Qdrant API key and URL are properly configured in your `.env` files.
 
 ### 3. Backend Setup
+The backend utilizes a dynamic port allocation script to avoid port conflicts.
 ```bash
 cd backend
 python -m venv venv
 # Windows: venv\Scripts\activate
 # Unix: source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+
+# Start the backend with the dynamic port finder
+python start_backend.py
 ```
+*Note: `start_backend.py` will automatically find an available port and update the `NEXT_PUBLIC_API_URL` inside `frontend/.env.local` for you.*
 
 ### 4. Frontend Setup
 ```bash

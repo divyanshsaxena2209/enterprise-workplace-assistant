@@ -14,8 +14,8 @@ export default function HRAdminDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">HR Onboarding Center</h1>
-          <p className="text-gray-500">Manage new hires, approve documents, and track onboarding pipelines.</p>
+          <h1 className="text-2xl font-bold">Onboarding Center</h1>
+          <p className="text-gray-500">Manage new hires and track their progress.</p>
         </div>
         <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
           Create New Employee
@@ -27,7 +27,7 @@ export default function HRAdminDashboard() {
         <div className="p-6 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
           <div className="flex items-center gap-3 mb-2">
             <Users size={18} className="text-blue-500" />
-            <h3 className="text-gray-500 text-sm font-medium">In Pipeline</h3>
+            <h3 className="text-gray-500 text-sm font-medium">In Progress</h3>
           </div>
           <p className="text-3xl font-bold">12</p>
         </div>
@@ -58,7 +58,7 @@ export default function HRAdminDashboard() {
         {}
         <div className="lg:w-2/3 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800">
-            <h3 className="font-semibold text-lg">Active Onboarding Pipelines</h3>
+            <h3 className="font-semibold text-lg">Active Onboarding</h3>
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {employees.map(emp => (
@@ -87,7 +87,7 @@ export default function HRAdminDashboard() {
         {}
         <div className="lg:w-1/3 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800">
-            <h3 className="font-semibold text-lg">Document Verification</h3>
+            <h3 className="font-semibold text-lg">Review Documents</h3>
           </div>
           <div className="p-4 space-y-3">
             <div className="p-4 border border-yellow-200 dark:border-yellow-900/30 bg-yellow-50 dark:bg-yellow-900/10 rounded-xl">

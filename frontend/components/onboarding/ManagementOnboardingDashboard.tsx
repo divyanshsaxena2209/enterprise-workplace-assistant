@@ -18,8 +18,11 @@ interface Employee {
   progress: any[];
 }
 
+import { useSearchParams } from "next/navigation";
+
 export default function ManagementOnboardingDashboard() {
   const { profile, loading: profileLoading } = useUser();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -47,17 +50,64 @@ export default function ManagementOnboardingDashboard() {
         const activeEmployees = profData.filter((emp: any) => 
           emp.employee_onboarding_progress && emp.employee_onboarding_progress.length > 0
         );
+        const { data: appsData } = await supabase.from("applications").select(`id, jobs(title, department)`).in("status", ["Hired", "HIRED"]);
+        const appMap = new Map();
+        if (appsData) {
+          appsData.forEach((app: any) => {
+            appMap.set(app.id, app.jobs);
+          });
+        }
+
+        const mapped: any[] = [];
+        activeEmployees.forEach((emp: any) => {
+          const appIds = new Set<string>();
+          emp.employee_onboarding_progress.forEach((p: any) => {
+            const match = p.notes?.match(/APP_ID:([a-f0-9-]+)/);
+            if (match) appIds.add(match[1]);
+          });
+
+          if (appIds.size === 0) {
+            mapped.push({
+              id: emp.id,
+              full_name: emp.full_name,
+              email: emp.email,
+              department: emp.department,
+              job_title: emp.job_title,
+              employee_id: emp.employee_id,
+              progress: emp.employee_onboarding_progress
+            });
+          } else {
+            appIds.forEach(appId => {
+              const filteredProgress = emp.employee_onboarding_progress.filter((p: any) => p.notes?.includes(`APP_ID:${appId}`));
+              const jobData = appMap.get(appId) || { title: emp.job_title, department: emp.department };
+              mapped.push({
+                id: `${emp.id}_${appId}`,
+                full_name: emp.full_name,
+                email: emp.email,
+                department: jobData.department || emp.department,
+                job_title: jobData.title || emp.job_title,
+                employee_id: emp.employee_id,
+                progress: filteredProgress
+              });
+            });
+          }
+        });
         
-        const mapped = activeEmployees.map((emp: any) => ({
-          id: emp.id,
-          full_name: emp.full_name,
-          email: emp.email,
-          department: emp.department,
-          job_title: emp.job_title,
-          employee_id: emp.employee_id,
-          progress: emp.employee_onboarding_progress
-        }));
         setEmployees(mapped);
+        
+        const targetId = searchParams.get("employee_id");
+        const targetEmail = searchParams.get("employee_email");
+        if (targetEmail || targetId) {
+          const targetEmp = mapped.find((e: any) => 
+            (targetEmail && e.email === targetEmail) || 
+            (targetId && (e.id === targetId || e.employee_id === targetId))
+          );
+          if (targetEmp) {
+            setSelectedEmployee(targetEmp);
+            return;
+          }
+        }
+        
         setSelectedEmployee(prev => {
           if (!prev) return prev;
           return mapped.find((e: any) => e.id === prev.id) || prev;
@@ -155,7 +205,7 @@ export default function ManagementOnboardingDashboard() {
               <div className="flex flex-col items-center justify-center p-12 bg-card border border-border rounded-3xl border-dashed">
                 <CheckCircle className="w-12 h-12 text-muted-foreground/30 mb-4" />
                 <p className="text-muted-foreground font-semibold">No onboarding records found.</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">Accept a candidate in the Talent Acquisition pipeline to see them here.</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">Accept a candidate in Talent Acquisition to see them here.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">

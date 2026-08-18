@@ -114,6 +114,16 @@ class ApplicationService:
         except Exception:
             pass
 
+        try:
+            from app.schemas.interview import InterviewResponse
+            interviews_res = self.client.table("interviews").select("*").eq("application_id", str(application_id)).execute()
+            if interviews_res.data:
+                app_detail.interviews = [InterviewResponse.model_validate(i) for i in interviews_res.data]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Failed to fetch interviews: %s", e)
+            pass
+
         return app_detail
 
     def list_applications(
@@ -215,16 +225,19 @@ class ApplicationService:
         logger = logging.getLogger(__name__)
         
         
-        candidate_res = self.client.table("candidates").select("email, full_name, jobs(title, department)").eq("id", str(candidate_id)).execute()
+        candidate_res = self.client.table("candidates").select("email, full_name").eq("id", str(candidate_id)).execute()
         if not candidate_res.data:
             logger.error("Candidate not found: %s", candidate_id)
             return
-            
-        candidate_email = candidate_res.data[0]["email"]
-        candidate_name = candidate_res.data[0]["full_name"]
-        job_data = candidate_res.data[0].get("jobs") or {}
-        job_title = job_data.get("title", "")
-        department = job_data.get("department", "")
+        candidate_email = candidate_res.data[0].get("email")
+        candidate_name = candidate_res.data[0].get("full_name")
+        
+        job_res = self.client.table("jobs").select("title, department").eq("id", str(app_detail.application.job_id)).execute()
+        if not job_res.data:
+            logger.error("Job not found: %s", app_detail.application.job_id)
+            return
+        job_title = job_res.data[0].get("title", "")
+        department = job_res.data[0].get("department", "")
         
         profile_res = self.client.table("profiles").select("id, employee_id").eq("email", candidate_email).execute()
         profile_id = None
@@ -279,7 +292,7 @@ class ApplicationService:
                                 "employee_id": str(profile_id),
                                 "step_id": new_step_id,
                                 "status": "PENDING",
-                                "notes": "Assigned upon hiring."
+                                "notes": f"Assigned upon hiring. | APP_ID:{application_id}"
                             })
                     if progress_inserts:
                         self.client.table("employee_onboarding_progress").insert(progress_inserts).execute()

@@ -8,6 +8,8 @@ from typing import List
 from pydantic import BaseModel, Field
 from google import genai
 
+from app.services.llm_fallback import execute_with_fallback
+
 from app.core.config import settings
 from app.core.exceptions import ServiceUnavailableError
 from app.schemas.resume import ParsedResumeData
@@ -82,8 +84,8 @@ class CandidateEvaluatorService:
             
             prompt = f"System Instruction: {system_prompt}\n\n{prompt_content}"
             
-            response = client.models.generate_content(
-                model="gemma-4-31b-it",
+            response = execute_with_fallback(
+                client=client,
                 contents=prompt,
                 config=genai.types.GenerateContentConfig(
                     response_mime_type="application/json",

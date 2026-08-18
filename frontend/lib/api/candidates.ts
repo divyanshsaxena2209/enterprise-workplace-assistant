@@ -4,7 +4,10 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
 const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
 
-export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
+let cachedAccessToken: string | null = null;
+let tokenRefreshPromise: Promise<string> | null = null;
+
+export async function fetchWithAuth(endpoint: string, options: RequestInit & { timeoutMs?: number } = {}) {
   
   const headers: Record<string, string> = {};
   if (options.headers) {
@@ -21,62 +24,47 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   if (isGuest) {
     headers["Authorization"] = "Bearer guest";
   } else {
-    try {
-      let token: string | null = null;
-      
-      
-      if (typeof window !== "undefined") {
-        try {
-          const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!);
-          const projectRef = url.hostname.split('.')[0];
-          const storageKey = `sb-${projectRef}-auth-token`;
-          const storedSession = localStorage.getItem(storageKey);
-          if (storedSession) {
-            const parsed = JSON.parse(storedSession);
-            if (parsed && parsed.access_token) {
-              token = parsed.access_token;
+    if (typeof window !== "undefined") {
+      if (!cachedAccessToken) {
+        if (!tokenRefreshPromise) {
+          tokenRefreshPromise = (async () => {
+            const supabase = createClient();
+            const timeoutPromise = new Promise<{data: any, error: any}>((_, reject) => 
+              setTimeout(() => reject(new Error("Supabase getSession timed out")), 30000)
+            );
+            
+            try {
+              const result = await Promise.race([supabase.auth.getSession(), timeoutPromise]);
+              if (result.error || !result.data?.session?.access_token) {
+                throw new Error(result.error?.message || "User is not authenticated");
+              }
+              return result.data.session.access_token;
+            } catch (err) {
+              throw err;
             }
-          }
-        } catch (e) {
-          console.warn("Fast token retrieval failed", e);
+          })();
+        }
+        
+        try {
+          cachedAccessToken = await tokenRefreshPromise;
+        } catch (err) {
+          tokenRefreshPromise = null;
+          throw err;
+        } finally {
+          tokenRefreshPromise = null;
         }
       }
       
-      
-      if (!token) {
-        console.log(`[fetchWithAuth] Fast retrieval missed. Getting Supabase session...`);
-        const supabase = createClient();
-        
-        let sessionTimeoutId: any;
-        const sessionPromise = supabase.auth.getSession();
-        const sessionTimeout = new Promise<any>((resolve) => {
-          sessionTimeoutId = setTimeout(() => resolve({ timeout: true, type: 'session' }), 3000);
-        });
-        
-        const sessionResult = await Promise.race([sessionPromise, sessionTimeout]);
-        clearTimeout(sessionTimeoutId);
-        
-        if (sessionResult?.timeout) {
-          console.warn("[fetchWithAuth] Supabase getSession timed out.");
-        } else {
-          token = sessionResult?.data?.session?.access_token || null;
-        }
-      }
-      
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      } else {
-        
-        
-        
-        console.warn("[fetchWithAuth] Proceeding without Authorization header.");
-      }
-    } catch (err) {
-      console.error("[fetchWithAuth] Failed to retrieve supabase session", err);
+      headers["Authorization"] = `Bearer ${cachedAccessToken}`;
     }
   }
+  
+  const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type');
+  if (!hasContentType && typeof options.body === "string") {
+    headers["Content-Type"] = "application/json";
+  }
 
-  console.log(`[fetchWithAuth] Executing fetch...`);
+  console.log(`[fetchWithAuth] Executing fetch with headers:`, headers);
   
   let fetchPromise;
   try {
@@ -99,7 +87,8 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   
   let fetchTimeoutId: any;
   const fetchTimeout = new Promise<any>((resolve) => {
-    fetchTimeoutId = setTimeout(() => resolve({ timeout: true, type: 'fetch' }), 10000);
+    const ms = options.timeoutMs || 60000;
+    fetchTimeoutId = setTimeout(() => resolve({ timeout: true, type: 'fetch' }), ms);
   });
   
   let response: any;
@@ -115,12 +104,16 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   }
   
   if (response?.timeout) {
-    throw new Error("Fetch timed out after 10s");
+    const ms = options.timeoutMs || 60000;
+    throw new Error(`Fetch timed out after ${ms / 1000}s`);
   }
 
   console.log(`[fetchWithAuth] Fetch completed with status:`, response.status);
 
   if (!response.ok) {
+    if (response.status === 401) {
+      cachedAccessToken = null;
+    }
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.message || errorData.detail || `API Error: ${response.status}`);
   }
@@ -128,13 +121,13 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   const jsonPromise = response.json();
   let jsonTimeoutId: any;
   const jsonTimeout = new Promise<any>((resolve) => {
-    jsonTimeoutId = setTimeout(() => resolve({ timeout: true, type: 'json' }), 5000);
+    jsonTimeoutId = setTimeout(() => resolve({ timeout: true, type: 'json' }), 30000);
   });
   const jsonResult = await Promise.race([jsonPromise, jsonTimeout]);
   clearTimeout(jsonTimeoutId);
   
   if (jsonResult?.timeout) {
-    throw new Error("Response JSON parsing timed out after 5s");
+    throw new Error("Response JSON parsing timed out after 30s");
   }
   return jsonResult;
 }
@@ -148,29 +141,11 @@ export async function getCandidate(id: string) {
 }
 
 export async function uploadResume(file: File) {
-  const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-
   const formData = new FormData();
   formData.append("file", file);
 
-  const headers = new Headers();
-  if (session?.access_token) {
-    headers.set("Authorization", `Bearer ${session.access_token}`);
-  }
-
-  
-  
-  const response = await fetch(`${API_URL}/resume/upload`, {
+  return fetchWithAuth("/resume/upload", {
     method: "POST",
-    headers,
     body: formData,
   });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || errorData.detail || `Upload Failed: ${response.status}`);
-  }
-
-  return response.json();
 }

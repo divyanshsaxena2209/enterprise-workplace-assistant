@@ -3,6 +3,7 @@ import chromadb
 from google import genai
 from pydantic import BaseModel
 from app.core.config import settings
+from app.services.llm_fallback import execute_with_fallback
 
 class AIService:
     def __init__(self):
@@ -15,11 +16,14 @@ class AIService:
         
         self.document_collection = self.chroma_client.get_or_create_collection(name="company_documents")
 
-    def generate_completion(self, system_prompt: str, user_prompt: str, model: str = "gemma-4-31b-it"):
+    def generate_completion(self, system_prompt: str, user_prompt: str, model: str = "gemini-3.6-flash"):
         """Wrapper for basic Chat Completions using Gemini."""
         prompt = f"System: {system_prompt}\n\nUser: {user_prompt}"
-        response = self.genai_client.models.generate_content(
-            model=model,
+        # Start the fallback chain with the preferred model, overriding the default list if needed,
+        # but here we'll let the fallback handle it and just pass models=[model] + default_models 
+        # or simply rely on the default. Let's rely on the default fallback list.
+        response = execute_with_fallback(
+            client=self.genai_client,
             contents=prompt
         )
         return response.text
@@ -54,8 +58,8 @@ class AIService:
         
         prompt = f"System Instruction: {system_prompt}\n\n{user_prompt}"
         
-        response = self.genai_client.models.generate_content(
-            model="gemma-4-31b-it",
+        response = execute_with_fallback(
+            client=self.genai_client,
             contents=prompt,
             config=genai.types.GenerateContentConfig(
                 response_mime_type="application/json",

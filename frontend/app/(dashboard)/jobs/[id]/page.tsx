@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Upload, Search, Filter, MoreHorizontal, FileText, Sparkles, CheckCircle2, Loader2, AlertCircle, ArrowLeft, MapPin, Users, Briefcase, UserCircle } from "lucide-react";
+import { Upload, Search, Filter, MoreHorizontal, FileText, Sparkles, CheckCircle2, Loader2, AlertCircle, ArrowLeft, MapPin, Users, Briefcase, UserCircle, X } from "lucide-react";
 import { uploadResume } from "@/lib/api/candidates";
-import { getApplications, createApplication } from "@/lib/api/applications";
+import { getApplications, createApplication, getMyApplications, getApplicationDetails, respondInterview } from "@/lib/api/applications";
 import { getJob } from "@/lib/api/jobs";
+import { useUser } from "@/lib/context/UserContext";
 
 export default function JobDetailPage() {
   const params = useParams();
@@ -15,13 +17,38 @@ export default function JobDetailPage() {
   const [jobLoading, setJobLoading] = useState(true);
   const [jobError, setJobError] = useState<string | null>(null);
 
+  const { profile } = useUser();
+  const isManagement = profile?.role === "MANAGEMENT";
+
   const [activeTab, setActiveTab] = useState("candidates");
+  const [myApplications, setMyApplications] = useState<any[]>([]);
+  const [myApplicationDetails, setMyApplicationDetails] = useState<any>(null);
+  const [respondNotes, setRespondNotes] = useState("");
+  const [isResponding, setIsResponding] = useState(false);
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applySuccess, setApplySuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   useEffect(() => {
     const fetchJobDetails = async () => {
       try {
         const jobData = await getJob(id);
         setJob(jobData);
+        if (profile?.role !== "MANAGEMENT") {
+          try {
+            const myApps = await getMyApplications(1, 100);
+            setMyApplications(myApps.items || []);
+            const myApp = myApps.items?.find((app: any) => app.job_id === id);
+            if (myApp) {
+              const details = await getApplicationDetails(myApp.id);
+              setMyApplicationDetails(details);
+            }
+          } catch (e: any) {
+            console.warn("Failed to load my applications:", e.message || e);
+          }
+        }
       } catch (err: any) {
         setJobError(err.message || "Failed to load job details.");
       } finally {
@@ -92,40 +119,263 @@ export default function JobDetailPage() {
       </div>
 
       {}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pt-6">
-        <div>
-          <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-3">
-            <Sparkles className="w-5 h-5 text-white animate-pulse" />
-            Candidate Pipeline
-          </h2>
-          <p className="text-xs text-muted-foreground mt-1 uppercase tracking-widest font-bold">Manage applicants for this specific requisition.</p>
+      {isManagement ? (
+        <>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pt-6">
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-white animate-pulse" />
+                Candidates
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1 uppercase tracking-widest font-bold">Manage applicants for this specific requisition.</p>
+            </div>
+            
+            <div className="flex p-1.5 glass-panel rounded-2xl shadow-xl">
+              <button
+                onClick={() => setActiveTab("candidates")}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+                  activeTab === "candidates" 
+                    ? "bg-white/15 shadow-[0_0_15px_rgba(255,255,255,0.1)] text-white border border-white/10" 
+                    : "text-muted-foreground hover:text-white hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                Evaluated Personnel
+              </button>
+              <button
+                onClick={() => setActiveTab("upload")}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
+                  activeTab === "upload" 
+                    ? "bg-white/15 shadow-[0_0_15px_rgba(255,255,255,0.1)] text-white border border-white/10" 
+                    : "text-muted-foreground hover:text-white hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                Ingest Resumes
+              </button>
+            </div>
+          </div>
+          {activeTab === "upload" ? <ResumeUploadFlow jobId={id} onComplete={() => setActiveTab("candidates")} /> : <CandidateDashboard jobId={id} />}
+        </>
+      ) : (
+        <div className="pt-6 border-t border-white/10 flex flex-col items-center text-center">
+          <h2 className="text-xl font-black tracking-tight text-white mb-2">Interested in this position?</h2>
+          <p className="text-sm text-muted-foreground mb-6">Apply now to submit your resume and enter the candidate pool.</p>
+          {myApplications.some(app => app.job_id === id) ? (
+            <div className="w-full max-w-2xl mx-auto space-y-4">
+              {(!myApplicationDetails?.interviews || myApplicationDetails.interviews.length === 0) && (
+                <div className="px-8 py-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                  <CheckCircle2 size={18} />
+                  You have applied
+                </div>
+              )}
+              
+              {myApplicationDetails?.interviews && myApplicationDetails.interviews.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-left">
+                  <h3 className="font-black text-lg text-white mb-4 flex items-center gap-2">
+                    <Sparkles size={18} className="text-yellow-400" />
+                    Interview Scheduled
+                  </h3>
+                  <div className="space-y-4">
+                    {myApplicationDetails.interviews.map((interview: any) => (
+                      <div key={interview.id} className="p-4 bg-black/40 rounded-xl border border-white/10 relative">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Scheduled For</p>
+                            <p className="text-sm font-bold text-white">{new Date(interview.scheduled_at).toLocaleString()}</p>
+                          </div>
+                          <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest bg-white/10 text-white rounded">
+                            {interview.status}
+                          </span>
+                        </div>
+                        {interview.meeting_link && (
+                          <div className="mb-4">
+                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Meeting Link</p>
+                            <a href={interview.meeting_link} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline font-medium break-all">
+                              {interview.meeting_link}
+                            </a>
+                          </div>
+                        )}
+                        {interview.status === "Accepted" ? (
+                          <div className="mt-4 p-4 bg-green-500/10 rounded-xl border border-green-500/20 text-center">
+                            <p className="text-sm font-black text-green-400 uppercase tracking-widest mb-1">Interview Confirmed</p>
+                            <p className="text-xs text-green-400/80">You have confirmed your attendance.</p>
+                            {interview.candidate_notes && (
+                              <div className="mt-3 pt-3 border-t border-green-500/20 text-left">
+                                <p className="text-[10px] text-green-400/60 font-bold uppercase tracking-widest mb-1">Your Note:</p>
+                                <p className="text-xs text-green-400/90 font-medium">{interview.candidate_notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : interview.status === "Reschedule Requested" ? (
+                          <div className="mt-4 p-4 bg-orange-500/10 rounded-xl border border-orange-500/20 text-center">
+                            <p className="text-sm font-black text-orange-400 uppercase tracking-widest mb-1">Reschedule Requested</p>
+                            <p className="text-xs text-orange-400/80">Awaiting recruiter response.</p>
+                            {interview.candidate_notes && (
+                              <div className="mt-3 pt-3 border-t border-orange-500/20 text-left">
+                                <p className="text-[10px] text-orange-400/60 font-bold uppercase tracking-widest mb-1">Your Note:</p>
+                                <p className="text-xs text-orange-400/90 font-medium">{interview.candidate_notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-4 pt-4 border-t border-white/10">
+                            <p className="text-xs text-muted-foreground mb-2">Please respond to confirm your attendance or request a reschedule.</p>
+                            <textarea 
+                              placeholder="Any notes for the recruiter? (e.g. 'I will be there!' or 'Can we reschedule to 3PM?')"
+                              className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 min-h-[80px] mb-3"
+                              value={respondNotes}
+                              onChange={e => setRespondNotes(e.target.value)}
+                            />
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={async () => {
+                                  setIsResponding(true);
+                                  try {
+                                    await respondInterview(myApplicationDetails.application.id, interview.id, 'Accepted', respondNotes);
+                                    const details = await getApplicationDetails(myApplicationDetails.application.id);
+                                    setMyApplicationDetails(details);
+                                  } catch (e: any) { alert(e.message); }
+                                  finally { setIsResponding(false); }
+                                }}
+                                disabled={isResponding}
+                                className="flex-1 bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-500/30 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50"
+                              >
+                                Accept Time
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                  setIsResponding(true);
+                                  try {
+                                    await respondInterview(myApplicationDetails.application.id, interview.id, 'Reschedule Requested', respondNotes);
+                                    const details = await getApplicationDetails(myApplicationDetails.application.id);
+                                    setMyApplicationDetails(details);
+                                  } catch (e: any) { alert(e.message); }
+                                  finally { setIsResponding(false); }
+                                }}
+                                disabled={isResponding}
+                                className="flex-1 bg-white/10 text-white hover:bg-white/20 border border-white/10 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50"
+                              >
+                                Request Reschedule
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setApplyModalOpen(true);
+                setApplySuccess(false);
+                setResumeFile(null);
+                setSubmitError(null);
+              }}
+              className="px-8 py-4 bg-white text-black hover:bg-gray-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(255,255,255,0.2)] hover:shadow-[0_0_25px_rgba(255,255,255,0.4)]"
+            >
+              Apply Now
+            </button>
+          )}
         </div>
-        
-        <div className="flex p-1.5 glass-panel rounded-2xl shadow-xl">
-          <button
-            onClick={() => setActiveTab("candidates")}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
-              activeTab === "candidates" 
-                ? "bg-white/15 shadow-[0_0_15px_rgba(255,255,255,0.1)] text-white border border-white/10" 
-                : "text-muted-foreground hover:text-white hover:bg-white/5 border border-transparent"
-            }`}
-          >
-            Evaluated Personnel
-          </button>
-          <button
-            onClick={() => setActiveTab("upload")}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer ${
-              activeTab === "upload" 
-                ? "bg-white/15 shadow-[0_0_15px_rgba(255,255,255,0.1)] text-white border border-white/10" 
-                : "text-muted-foreground hover:text-white hover:bg-white/5 border border-transparent"
-            }`}
-          >
-            Ingest Resumes
-          </button>
-        </div>
-      </div>
+      )}
 
-      {activeTab === "upload" ? <ResumeUploadFlow jobId={id} onComplete={() => setActiveTab("candidates")} /> : <CandidateDashboard jobId={id} />}
+      {}
+      {applyModalOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-white/20 rounded-2xl w-full max-w-md shadow-2xl relative flex flex-col overflow-hidden">
+            <div className="p-6 pb-4 flex-shrink-0 border-b border-white/10 relative">
+              <button 
+                onClick={() => setApplyModalOpen(false)}
+                className="absolute top-6 right-6 text-muted-foreground hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+              <h2 className="text-xl font-black tracking-tight text-white m-0 py-1">Apply for Position</h2>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {applySuccess ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
+                    <Sparkles className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Application Submitted!</h3>
+                  <p className="text-sm text-muted-foreground">Your resume has been uploaded and passed to our intelligence engine.</p>
+                  <button 
+                    onClick={() => {
+                      setApplyModalOpen(false);
+                      try {
+                        getMyApplications(1, 100).then(res => setMyApplications(res.items || []));
+                      } catch(e){}
+                    }}
+                    className="mt-6 px-6 py-2.5 bg-white text-black hover:bg-gray-200 rounded-lg text-sm font-black uppercase tracking-wider w-full"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {submitError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm font-semibold text-center">
+                      {submitError}
+                    </div>
+                  )}
+                  
+                  <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center bg-black/30 hover:bg-black/50 transition-colors relative">
+                    <input 
+                      type="file" 
+                      accept=".pdf,.doc,.docx"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setResumeFile(e.target.files[0]);
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm font-semibold text-white mb-1">
+                      {resumeFile ? resumeFile.name : "Click or drag resume here"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">PDF or DOCX up to 10MB</p>
+                  </div>
+
+                  <button 
+                    disabled={!resumeFile || applyLoading}
+                    onClick={async () => {
+                      if (!resumeFile) return;
+                      setApplyLoading(true);
+                      setSubmitError(null);
+                      try {
+                        const uploadRes = await uploadResume(resumeFile);
+                        if (uploadRes.candidate_id && uploadRes.resume_id) {
+                          await createApplication({
+                            job_id: id,
+                            candidate_id: uploadRes.candidate_id,
+                            resume_id: uploadRes.resume_id
+                          });
+                          setApplySuccess(true);
+                        }
+                      } catch (err: any) {
+                        setSubmitError(err.message || "Failed to submit application.");
+                      } finally {
+                        setApplyLoading(false);
+                      }
+                    }}
+                    className="w-full px-6 py-3 rounded-xl text-sm font-black uppercase tracking-wider bg-white text-black hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {applyLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+                    Submit Application
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
     </div>
   );
 }
@@ -305,7 +555,7 @@ function CandidateDashboard({ jobId }: { jobId: string }) {
                   
                   <div className="flex items-end justify-between border-t border-white/5 pt-4 mt-auto">
                     <div className="flex-1 mr-4">
-                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mb-1">Match Index</div>
+                      <div className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mb-1">Match Score</div>
                       <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden shadow-inner">
                         <div
                           className={`h-full transition-all duration-1000 ease-out ${isHighMatch ? 'bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]' : 'bg-white/40'}`}

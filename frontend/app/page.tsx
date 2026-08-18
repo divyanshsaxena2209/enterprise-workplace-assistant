@@ -24,18 +24,18 @@ export default function Home() {
 
   const modules = [
     {
-      title: "Talent Acquisition",
-      desc: "Perform candidate assessments with automated PDF/DOCX parsing, indexing, and scoring models.",
+      title: "Recruiting & Hiring",
+      desc: "Easily track jobs, review candidates, and hire the right people.",
       icon: Briefcase,
     },
     {
-      title: "Workforce Onboarding",
-      desc: "Track milestones, secure onboarding documentation, and audit operational tasks for new hires.",
+      title: "Onboarding",
+      desc: "Manage new hires, track their progress, and ensure a smooth start.",
       icon: ClipboardCheck,
     },
     {
-      title: "Organizational Intel",
-      desc: "Query standard operating procedures and policy compliance records using semantic RAG capabilities.",
+      title: "Knowledge Base",
+      desc: "Upload and search through all your company's important documents and policies in one place.",
       icon: BookOpen,
     }
   ];
@@ -52,24 +52,16 @@ export default function Home() {
 
       <header className="h-20 max-w-7xl mx-auto px-6 flex items-center justify-end z-50 relative">
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => {
-              document.cookie = "guest_mode=true; path=/";
-              window.location.href = "/dashboard";
-            }}
-            className="px-4 py-2 border border-white/10 rounded-lg hover:bg-white/5 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all active:scale-95 cursor-pointer"
-          >
-            Guest Mode
-          </button>
+
           <Link
             href="/login"
-            className="px-4 py-2 border border-white/10 rounded-lg hover:bg-white/5 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all active:scale-95 cursor-pointer"
+            className="px-4 py-2 border border-white rounded-lg hover:bg-white/10 text-xs font-bold uppercase tracking-widest text-white transition-all active:scale-95 cursor-pointer"
           >
             Sign In
           </Link>
           <Link
             href="/signup"
-            className="group flex items-center gap-2 bg-foreground text-background hover:bg-foreground/90 px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all shadow-sm active:scale-95 cursor-pointer"
+            className="group flex items-center gap-2 bg-transparent border border-white hover:bg-white/10 text-white px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all active:scale-95 cursor-pointer"
           >
             <span>Create Account</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
@@ -86,9 +78,9 @@ export default function Home() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          className="text-5xl md:text-8xl font-black tracking-tighter max-w-5xl mx-auto leading-[0.95] text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 mb-6"
+          className="text-5xl md:text-7xl font-black tracking-tighter max-w-7xl mx-auto leading-[0.95] text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 mb-6"
         >
-          Intelligence for the <br /> Modern Enterprise.
+          Intelligent management <br /> for the modern workforce.
         </motion.h1>
 
         <motion.p 
@@ -97,7 +89,7 @@ export default function Home() {
           transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="text-muted-foreground text-base md:text-xl max-w-2xl mx-auto leading-relaxed mb-10 font-medium"
         >
-          Unify your talent pipeline, automate onboarding operations, and centralize organizational knowledge in one secure environment.
+          Unify your hiring, automate onboarding, and centralize company knowledge in one secure place.
         </motion.p>
 
         <motion.div 
@@ -114,10 +106,10 @@ export default function Home() {
       <section className="relative max-w-7xl mx-auto px-6 py-24 border-t border-white/5">
         <div className="mb-16">
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-white/50 inline-block mb-4">
-            Core Infrastructure
+            Core Features
           </h2>
           <p className="text-muted-foreground max-w-xl text-lg">
-            Purpose-built operational portals tailored for scale.
+            Everything you need to run your team smoothly.
           </p>
         </div>
 
@@ -165,24 +157,24 @@ export default function Home() {
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Enterprise Grade</span>
             </div>
-            <h3 className="font-bold text-3xl md:text-5xl leading-[1.1] tracking-tight">Zero-Trust Security & <br/> Infinite Scale.</h3>
+            <h3 className="font-bold text-3xl md:text-5xl leading-[1.1] tracking-tight">Secure & Scalable.</h3>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-lg">
-              Engineered with Type-safe routing, isolated document vectors, and fine-grained row level authorization schemas.
+              Built with security in mind to keep your company's data safe, organized, and private.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4 w-full lg:w-auto relative z-10">
             <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-center flex flex-col items-center justify-center shadow-2xl hover:-translate-y-1 transition-transform duration-300">
               <Zap className="w-6 h-6 text-foreground mb-4" />
-              <h4 className="font-semibold text-xs tracking-widest uppercase">Edge Deploy</h4>
+              <h4 className="font-semibold text-xs tracking-widest uppercase">Easy Setup</h4>
             </div>
             <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-center flex flex-col items-center justify-center shadow-2xl hover:-translate-y-1 transition-transform duration-300">
               <ShieldCheck className="w-6 h-6 text-foreground mb-4" />
-              <h4 className="font-semibold text-xs tracking-widest uppercase">Strict RLS</h4>
+              <h4 className="font-semibold text-xs tracking-widest uppercase">Private</h4>
             </div>
             <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-center flex flex-col items-center justify-center shadow-2xl hover:-translate-y-1 transition-transform duration-300 col-span-2">
               <Globe className="w-6 h-6 text-foreground mb-4" />
-              <h4 className="font-semibold text-xs tracking-widest uppercase">Global Distribution</h4>
+              <h4 className="font-semibold text-xs tracking-widest uppercase">Fast Everywhere</h4>
             </div>
           </div>
         </motion.div>
@@ -193,11 +185,6 @@ export default function Home() {
         <div className="flex items-center gap-2 text-muted-foreground">
           <Sparkles className="w-4 h-4" />
           <span className="text-[10px] font-bold uppercase tracking-widest">© 2026 Workforce OS.</span>
-        </div>
-        <div className="flex gap-6">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-foreground transition-colors cursor-pointer">Privacy</span>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-foreground transition-colors cursor-pointer">Terms</span>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-foreground transition-colors cursor-pointer">System Status</span>
         </div>
       </footer>
     </div>

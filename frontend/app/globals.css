@@ -87,6 +87,28 @@ body {
   background: var(--muted-foreground);
 }
 
+.chatbot-scrollbar {
+  scrollbar-color: #6b7280 transparent;
+  scrollbar-width: thin;
+}
+
+.chatbot-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chatbot-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chatbot-scrollbar::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border-radius: 9999px;
+}
+
+.chatbot-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 .glass-panel {
   background: rgba(15, 15, 18, 0.6);
   backdrop-filter: blur(24px);
@@ -119,3 +141,7 @@ button:active {
   transform: scale(0.96) !important;
 }
 
+
+@keyframes smooth-bounce { 0%, 100% { transform: translateY(-15%); } 50% { transform: translateY(10%); } }
+@keyframes draw-cross { to { stroke-dashoffset: 0; } }
+@keyframes draw-erase-loop { 0%, 100% { stroke-dashoffset: 24; opacity: 0.2; } 20%, 80% { stroke-dashoffset: 0; opacity: 1; } }

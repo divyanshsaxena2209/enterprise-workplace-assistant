@@ -9,6 +9,7 @@ from typing import Optional
 import PyPDF2
 import docx2txt
 from google import genai
+from app.services.llm_fallback import execute_with_fallback
 
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ServiceUnavailableError
@@ -68,8 +69,8 @@ class ResumeParserService:
             
             prompt = f"System Instruction: {system_instruction}\n\nCandidate Resume:\n{raw_text}"
             
-            response = client.models.generate_content(
-                model="gemma-4-31b-it",
+            response = execute_with_fallback(
+                client=client,
                 contents=prompt,
                 config=genai.types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -84,7 +85,6 @@ class ResumeParserService:
                 raise ServiceUnavailableError("AI model returned an empty response.")
                 
             return parsed_data
-            
         except Exception as exc:
-            logger.error("Unexpected error during resume AI parsing: %s", exc)
+            logger.error(f"Error during AI parsing: {exc}")
             raise ServiceUnavailableError("Failed to structure the resume data.") from exc

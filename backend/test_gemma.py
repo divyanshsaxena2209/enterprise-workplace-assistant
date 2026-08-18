@@ -8,7 +8,7 @@ class MySchema(BaseModel):
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 print(client.models.generate_content(
-    model='gemma-4-31b-it', 
+    model='gemini-flash-latest', 
     contents='say hello', 
     config=genai.types.GenerateContentConfig(
         response_mime_type='application/json', 

@@ -27,20 +27,39 @@ export default function TopNavbar() {
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise(resolve => setTimeout(resolve, 800))
+      ]);
+    } catch (error) {
+      console.error("Error signing out:", error);
+    } finally {
+      // Forcefully clear all Supabase auth cookies locally
+      const cookies = document.cookie.split(";");
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i];
+        const eqPos = cookie.indexOf("=");
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+        if (name.startsWith("sb-")) {
+          document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        }
+      }
+      try { localStorage.clear(); } catch(e) {}
+      window.location.href = "/";
+    }
   };
 
   const isManagement = profile?.role === "MANAGEMENT" || profile?.role === "ADMIN" || profile?.role === "HR";
   const hasAnalyticsAccess = isManagement || !!profile?.employee_id;
 
   const allTabs = [
-    { name: "Organizational Intelligence", href: "/knowledge", active: pathname.startsWith("/knowledge") },
-    { name: "Talent Acquisition Pipeline", href: "/jobs", active: pathname.startsWith("/jobs") || pathname.startsWith("/candidates") },
-    { name: "Workforce Onboarding Operations", href: "/onboarding", active: pathname.startsWith("/onboarding") }
+    { name: "Knowledge Base", href: "/knowledge", active: pathname.startsWith("/knowledge") },
+    { name: "Jobs & Hiring", href: "/jobs", active: pathname.startsWith("/jobs") || pathname.startsWith("/candidates") },
+    { name: "Onboarding", href: "/onboarding", active: pathname.startsWith("/onboarding") }
   ];
 
-  const tabs = allTabs.filter(t => !t.hidden);
+  const tabs = allTabs.filter(t => !(t as any).hidden);
 
   return (
     <header className="h-20 glass-panel border-b border-white/5 flex items-center justify-between px-8 sticky top-0 z-30 select-none">
@@ -72,11 +91,6 @@ export default function TopNavbar() {
         <Link href="/dashboard" className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/10 hover:text-white transition-colors relative border border-transparent hover:border-white/10">
           <Home size={18} />
         </Link>
-        <button suppressHydrationWarning className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/10 hover:text-white transition-colors relative border border-transparent hover:border-white/10">
-          <Bell size={18} />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.8)]"></span>
-        </button>
-
         <div className="h-6 w-px bg-white/10"></div>
 
         <div className="relative" ref={dropdownRef}>
@@ -142,15 +156,7 @@ export default function TopNavbar() {
                     My Applications
                   </Link>
                 )}
-                <Link
-                  href="/settings"
-                  onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all"
-                >
-                  <Settings size={16} />
-                  System Settings
-                </Link>
-                
+
                 <div className="h-px bg-white/5 my-2 mx-2"></div>
                 
                 <button

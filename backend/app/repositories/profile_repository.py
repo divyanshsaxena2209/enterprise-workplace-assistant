@@ -42,7 +42,19 @@ class ProfileRepository:
                 .execute()
             )
         except Exception as exc:
-            raise DatabaseError(f"Failed to fetch profile by ID: {exc}") from exc
+            if "10053" in str(exc) or "aborted" in str(exc).lower():
+                try:
+                    response = (
+                        self._db.table(_TABLE)
+                        .select("*")
+                        .eq("id", user_id)
+                        .limit(1)
+                        .execute()
+                    )
+                except Exception as retry_exc:
+                    raise DatabaseError(f"Failed to fetch profile by ID after retry: {retry_exc}") from retry_exc
+            else:
+                raise DatabaseError(f"Failed to fetch profile by ID: {exc}") from exc
 
         if not response.data:
             return None

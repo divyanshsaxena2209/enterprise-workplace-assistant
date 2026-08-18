@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot } from "lucide-react";
+import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 
 import { useParams } from "next/navigation";
@@ -112,10 +112,24 @@ export default function CandidateDetailPage() {
       <div className="flex flex-col lg:flex-row gap-6">
         {}
         <div className="lg:w-1/2 space-y-6">
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm relative overflow-hidden">
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm relative">
             {application?.status?.toUpperCase() === "REJECTED" && (
-              <div className="absolute top-6 right-8 w-24 h-24 rounded-full border-4 border-red-600 text-red-600 flex items-center justify-center -rotate-12 opacity-90 shadow-lg bg-red-950/20 backdrop-blur-sm z-20 pointer-events-none">
-                <span className="text-sm font-black uppercase tracking-widest">Rejected</span>
+              <div className="absolute top-4 -left-6 flex items-center justify-center -rotate-12 opacity-90 pointer-events-none z-20">
+                <div className="w-28 h-28 rounded-full border-4 border-double border-red-600 absolute bg-background/40 backdrop-blur-[2px]"></div>
+                <div className="w-24 h-24 rounded-full border border-red-600 absolute"></div>
+                <div className="bg-background px-3 py-1 border-[3px] border-red-600 z-10 rounded-sm shadow-[0_0_15px_rgba(220,38,38,0.3)]">
+                  <span className="text-xl font-black uppercase tracking-widest text-white" style={{ WebkitTextStroke: "1px #dc2626" }}>REJECTED</span>
+                </div>
+              </div>
+            )}
+            
+            {application?.status?.toUpperCase() === "HIRED" && (
+              <div className="absolute top-4 -left-6 flex items-center justify-center -rotate-12 opacity-90 pointer-events-none z-20">
+                <div className="w-28 h-28 rounded-full border-4 border-double border-green-500 absolute bg-background/40 backdrop-blur-[2px]"></div>
+                <div className="w-24 h-24 rounded-full border border-green-500 absolute"></div>
+                <div className="bg-background px-3 py-1 border-[3px] border-green-500 z-10 rounded-sm shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                  <span className="text-xl font-black uppercase tracking-widest text-white" style={{ WebkitTextStroke: "1px #22c55e" }}>ACCEPTED</span>
+                </div>
               </div>
             )}
             <div className="flex items-start justify-between relative z-10">
@@ -231,34 +245,6 @@ export default function CandidateDetailPage() {
             </div>
           </div>
           
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-            <h3 className="font-semibold text-sm uppercase tracking-wide text-foreground mb-4">Recruiter Actions</h3>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button 
-                onClick={handleAccept}
-                disabled={accepting || application?.status === "Rejected" || application?.status === "Hired"}
-                className="flex-1 bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(34,197,94,0.1)] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)] disabled:opacity-50"
-              >
-                {accepting ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
-                Accept Candidate
-              </button>
-              <button 
-                onClick={() => setIsInterviewModalOpen(true)}
-                disabled={application?.status === "Rejected" || application?.status === "Hired"}
-                className="flex-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(234,179,8,0.1)] hover:shadow-[0_0_20px_rgba(234,179,8,0.2)] disabled:opacity-50"
-              >
-                Schedule Interview
-              </button>
-              <button 
-                onClick={handleReject}
-                disabled={rejecting || application?.status === "Rejected" || application?.status === "Hired"}
-                className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(239,68,68,0.1)] hover:shadow-[0_0_20px_rgba(239,68,68,0.2)] disabled:opacity-50"
-              >
-                {rejecting ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
-                Reject Candidate
-              </button>
-            </div>
-          </div>
 
           {interviews.length > 0 && (
             <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
@@ -273,19 +259,91 @@ export default function CandidateDetailPage() {
                       </span>
                     </div>
                     {interview.meeting_link && (
-                      <a href={interview.meeting_link} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline mb-2 block">
-                        {interview.meeting_link}
-                      </a>
+                      <div className="mb-2">
+                        <a href={interview.meeting_link} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline">
+                          {interview.meeting_link}
+                        </a>
+                      </div>
+                    )}
+                    {interview.management_notes && (
+                      <div className="mt-3 p-3 bg-card rounded border border-border/50">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Recruiter Note:</p>
+                        <p className="text-sm">{interview.management_notes}</p>
+                      </div>
                     )}
                     {interview.candidate_notes && (
                       <div className="mt-3 p-3 bg-background rounded border border-border/50">
-                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Candidate Response:</p>
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Candidate Response:</p>
                         <p className="text-sm">{interview.candidate_notes}</p>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          
+          {application?.status?.toUpperCase() === "HIRED" ? (
+            <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-6 shadow-sm flex flex-col items-center justify-center gap-3 relative">
+              <CheckCircle2 size={48} className="text-green-500" />
+              <h3 className="font-black text-xl uppercase tracking-widest text-green-500">Candidate Hired</h3>
+              <p className="text-sm text-green-500/80 font-medium">This candidate's workforce onboarding has been initiated.</p>
+              
+              <button 
+                onClick={handleAccept}
+                disabled={accepting}
+                className="mt-2 text-[10px] uppercase tracking-widest font-bold px-3 py-1.5 bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors disabled:opacity-50"
+              >
+                {accepting ? "Initializing..." : "Force Initialize Onboarding"}
+              </button>
+            </div>
+          ) : application?.status?.toUpperCase() === "REJECTED" ? (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 shadow-sm flex flex-col items-center justify-center gap-3">
+              <AlertCircle size={48} className="text-red-500" />
+              <h3 className="font-black text-xl uppercase tracking-widest text-red-500">Candidate Rejected</h3>
+              <p className="text-sm text-red-500/80 font-medium">This candidate will not proceed further.</p>
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+              <h3 className="font-semibold text-sm uppercase tracking-wide text-foreground mb-4">Recruiter Actions</h3>
+              
+              {interviews.length > 0 ? (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button 
+                    onClick={handleAccept}
+                    disabled={accepting}
+                    className="flex-1 bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(34,197,94,0.1)] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)] disabled:opacity-50"
+                  >
+                    {accepting ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
+                    Hire Candidate
+                  </button>
+                  <button 
+                    onClick={handleReject}
+                    disabled={rejecting}
+                    className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(239,68,68,0.1)] hover:shadow-[0_0_20px_rgba(239,68,68,0.2)] disabled:opacity-50"
+                  >
+                    {rejecting ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
+                    Reject Candidate
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button 
+                    onClick={() => setIsInterviewModalOpen(true)}
+                    className="flex-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(234,179,8,0.1)] hover:shadow-[0_0_20px_rgba(234,179,8,0.2)]"
+                  >
+                    Schedule Interview
+                  </button>
+                  <button 
+                    onClick={handleReject}
+                    disabled={rejecting}
+                    className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 backdrop-blur-md py-2.5 rounded-md text-sm font-semibold transition-all shadow-[0_0_15px_rgba(239,68,68,0.1)] hover:shadow-[0_0_20px_rgba(239,68,68,0.2)] disabled:opacity-50"
+                  >
+                    {rejecting ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
+                    Reject Candidate
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

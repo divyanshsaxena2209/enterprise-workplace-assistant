@@ -43,9 +43,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             request.url.path,
             exc.message,
         )
+        
+        message = exc.message
+        if "10053" in message or "10054" in message or "aborted by the software" in message:
+            message = "Connection to the database was temporarily interrupted. Please refresh the page."
+            
         return JSONResponse(
             status_code=exc.http_status,
-            content=_error_body(exc.message, exc.error_code),
+            content=_error_body(message, exc.error_code),
         )
 
     
@@ -95,11 +100,16 @@ def register_exception_handlers(app: FastAPI) -> None:
             "Unhandled exception on %s %s", request.method, request.url.path
         )
         
-        message = (
-            str(exc)
-            if settings.is_development
-            else "An internal server error occurred. Please try again later."
-        )
+        exc_str = str(exc)
+        if "10053" in exc_str or "10054" in exc_str or "aborted by the software" in exc_str:
+            message = "Connection to the database was temporarily interrupted. Please refresh the page."
+        else:
+            message = (
+                exc_str
+                if settings.is_development
+                else "An internal server error occurred. Please try again later."
+            )
+            
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=_error_body(message, "INTERNAL_ERROR"),

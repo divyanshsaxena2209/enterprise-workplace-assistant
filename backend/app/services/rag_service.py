@@ -5,12 +5,13 @@ from app.core.config import settings
 from app.services.embedding_service import generate_embeddings, generate_embedding
 from app.services.chunking_service import chunk_text
 from google import genai
+from app.services.llm_fallback import execute_with_fallback
 
 genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
+chroma_client = chromadb.HttpClient(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
 
 knowledge_collection = chroma_client.get_or_create_collection(
-    name="enterprise_knowledge"
+    name="company_documents"
 )
 
 class RAGService:
@@ -92,8 +93,8 @@ class RAGService:
         
         prompt = f"System Instruction: {system_prompt}\n\nContext:\n{context_block}\n\nQuestion:\n{query}"
         
-        response = genai_client.models.generate_content(
-            model="gemma-4-31b-it",
+        response = execute_with_fallback(
+            client=genai_client,
             contents=prompt
         )
         return response.text

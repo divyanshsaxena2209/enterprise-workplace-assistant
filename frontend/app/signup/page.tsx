@@ -396,7 +396,7 @@ export default function SignupPage() {
                   onClick={handleBack}
                   disabled={loading}
                   suppressHydrationWarning
-                  className="flex-1 py-2.5 px-4 bg-secondary hover:bg-secondary/80 border border-border text-foreground rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                  className="flex-1 py-2.5 px-4 bg-transparent border border-white hover:bg-white/10 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   <ArrowLeft size={14} />
                   Back
@@ -407,7 +407,7 @@ export default function SignupPage() {
                 type="submit"
                 disabled={loading}
                 suppressHydrationWarning
-                className="flex-1 py-2.5 px-4 bg-foreground hover:bg-foreground/90 text-background rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                className="flex-1 py-2.5 px-4 bg-transparent border border-white hover:bg-white/10 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
               >
                 {loading ? (
                   <>
