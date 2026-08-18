@@ -1,0 +1,30 @@
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Cache directories
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+# Local databases and uploads
+chroma_db/
+uploads/
+
+# Environment variables
+.env
+.env.*
+*.local
+
+# Python compiled files
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs
+.vscode/
+.idea/
+
+# Git
+.git/
