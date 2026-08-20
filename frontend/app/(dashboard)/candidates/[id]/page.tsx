@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot, CheckCircle2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
 import { useParams } from "next/navigation";
