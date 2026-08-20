@@ -20,7 +20,7 @@ Rules:
 
 import logging
 from supabase import Client
-from gotrue.errors import AuthApiError
+from supabase_auth.errors import AuthApiError
 
 from app.core.config import settings
 from app.core.enums import UserRole
