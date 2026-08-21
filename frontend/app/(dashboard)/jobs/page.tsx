@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Plus, Briefcase, MapPin, Users, Sparkles, Loader2, AlertCircle, X, ChevronDown, Upload } from "lucide-react";
@@ -8,18 +7,14 @@ import { getJobs, createJob, publishJob } from "@/lib/api/jobs";
 import { uploadResume } from "@/lib/api/candidates";
 import { createApplication, getMyApplications } from "@/lib/api/applications";
 import { useUser } from "@/lib/context/UserContext";
-
 export default function JobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [myApplications, setMyApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-
   const { profile, accessToken } = useUser();
   const isManagement = profile?.role === "MANAGEMENT";
-
-  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -39,7 +34,6 @@ export default function JobsPage() {
     requirements: "Included in Description",
     salary_range: ""
   });
-
   const fetchJobs = async () => {
     setLoading(true);
     try {
@@ -59,14 +53,11 @@ export default function JobsPage() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchJobs();
   }, []);
-
   return (
     <div className="space-y-8 pb-10">
-      
       {}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
         <div>
@@ -90,14 +81,12 @@ export default function JobsPage() {
           </button>
         )}
       </div>
-
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm font-semibold relative z-10 text-center">
           <AlertCircle size={18} className="inline-block mr-2 -mt-1" />
           {error}
         </div>
       )}
-
       {}
       <div className="grid grid-cols-1 gap-4 relative z-10">
         {loading ? (
@@ -117,7 +106,6 @@ export default function JobsPage() {
               {job.status === "Published" && (
                 <div className="absolute top-0 left-0 w-1 h-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
               )}
-              
               <div className="flex items-center gap-5 pl-2">
                 <div className="w-12 h-12 rounded-2xl bg-black/50 flex items-center justify-center text-muted-foreground group-hover:text-white transition-colors border border-white/10 shadow-inner">
                   <Briefcase size={20} />
@@ -131,7 +119,6 @@ export default function JobsPage() {
                   </div>
                 </div>
               </div>
-              
               <div>
                 <span className={`px-4 py-1.5 text-[10px] uppercase tracking-widest font-bold rounded-lg border shadow-sm backdrop-blur-md ${
                   job.status === "Published" 
@@ -181,12 +168,10 @@ export default function JobsPage() {
           ))
         )}
       </div>
-
       {}
       {isModalOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-zinc-900 border border-white/20 rounded-2xl w-full max-w-3xl shadow-2xl relative flex flex-col max-h-[95vh] overflow-hidden">
-            
             {}
             <div className="p-6 pb-4 flex-shrink-0 border-b border-white/10 relative">
               <button 
@@ -197,7 +182,6 @@ export default function JobsPage() {
               </button>
               <h2 className="text-xl font-black tracking-tight text-white m-0 py-1">Create New Job</h2>
             </div>
-
             <form onSubmit={async (e) => {
               e.preventDefault();
               setSubmitLoading(true);
@@ -212,7 +196,6 @@ export default function JobsPage() {
                   requirements: "Included in Description",
                   salary_range: formData.salary_range || undefined
                 };
-                
                 await createJob(payload, accessToken);
                 setIsModalOpen(false);
                 setFormData({
@@ -228,22 +211,18 @@ export default function JobsPage() {
                 setSubmitLoading(false);
               }
             }} className="flex flex-col flex-1 min-h-0">
-              
               {}
               <div className="p-6 overflow-y-auto flex-1 space-y-5">
-                
                 {submitError && (
                   <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm font-semibold">
                     {submitError}
                   </div>
                 )}
-                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
                     <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Job Title *</label>
                     <input type="text" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-white/10 rounded-lg p-2.5 text-sm focus:border-white/30 outline-none text-white shadow-inner" placeholder="e.g. Senior Engineer" />
                   </div>
-                  
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Department *</label>
@@ -268,7 +247,6 @@ export default function JobsPage() {
                       </div>
                     )}
                   </div>
-
                   <div>
                     <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Job Type *</label>
                     <div className="relative">
@@ -281,7 +259,6 @@ export default function JobsPage() {
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none w-4 h-4" />
                     </div>
                   </div>
-                  
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Work Model *</label>
@@ -302,13 +279,11 @@ export default function JobsPage() {
                     )}
                   </div>
                 </div>
-                
                 <div className="flex flex-col space-y-1.5">
                   <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Job Description & Requirements *</label>
                   <textarea required value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-black border border-white/10 rounded-lg p-3 text-sm focus:border-white/30 outline-none text-white resize-y shadow-inner min-h-[120px]" placeholder="Enter full job description and requirements..."></textarea>
                 </div>
               </div>
-
               {}
               <div className="p-6 pt-4 flex justify-end gap-3 border-t border-white/10 flex-shrink-0 bg-zinc-900/50">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-lg text-sm font-bold text-muted-foreground hover:text-white transition-colors cursor-pointer">
@@ -324,7 +299,6 @@ export default function JobsPage() {
         </div>,
         document.body
       )}
-
       {}
       {applyModalOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -338,7 +312,6 @@ export default function JobsPage() {
               </button>
               <h2 className="text-xl font-black tracking-tight text-white m-0 py-1">Apply for Position</h2>
             </div>
-            
             <div className="p-6 space-y-6">
               {applySuccess ? (
                 <div className="text-center py-8">
@@ -361,7 +334,6 @@ export default function JobsPage() {
                       {submitError}
                     </div>
                   )}
-                  
                   <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center bg-black/30 hover:bg-black/50 transition-colors relative">
                     <input 
                       type="file" 
@@ -379,7 +351,6 @@ export default function JobsPage() {
                     </p>
                     <p className="text-xs text-muted-foreground">PDF or DOCX up to 10MB</p>
                   </div>
-
                   <button 
                     disabled={!resumeFile || applyLoading}
                     onClick={async () => {
@@ -414,7 +385,6 @@ export default function JobsPage() {
         </div>,
         document.body
       )}
-
     </div>
   );
 }

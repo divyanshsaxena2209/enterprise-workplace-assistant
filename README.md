@@ -24,7 +24,7 @@ AI-Powered Enterprise Workplace Assistant Platform monorepo. This platform serve
 ### 4. Organizational Intelligence (Knowledge Base) & AI Chatbot
 - **Company Documents:** Centralized storage for company policies, training materials, and documentation.
 - **Search & Retrieval:** Fast access to organizational knowledge.
-- **AI Chatbot (RAG):** Gemini-powered conversational agent that leverages Retrieval-Augmented Generation (RAG) using ChromaDB to accurately answer employee queries based on internal company documents.
+- **AI Chatbot (RAG):** Gemini-powered conversational agent that leverages Retrieval-Augmented Generation (RAG) using Qdrant Cloud to accurately answer employee queries based on internal company documents.
 - **Department-Level Filtering:** Contextualized document retrieval based on the user's department for more accurate and relevant chatbot responses.
 
 ### 5. Custom Dashboards
@@ -52,7 +52,7 @@ AI-Powered Enterprise Workplace Assistant Platform monorepo. This platform serve
 Copy the `.env.example` to `.env` in the respective directories:
 - `cp .env.example ./frontend/.env.local`
 - `cp .env.example ./backend/.env`
-Fill in the necessary credentials (Supabase, OpenAI).
+Fill in the necessary credentials (Supabase, Gemini API Key, Qdrant).
 
 ### 2. Services
 This project uses **Qdrant Cloud** for vector storage, so no local Docker containers are required. Ensure your Qdrant API key and URL are properly configured in your `.env` files.

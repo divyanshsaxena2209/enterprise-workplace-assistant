@@ -42,7 +42,7 @@ def rename_session(session_id: str, user_id: str, new_title: str):
 def get_session_messages(session_id: str, user_id: str):
     client = get_supabase_client()
     print(f"[DEBUG] get_session_messages called with session_id='{session_id}', user_id='{user_id}'")
-    # First verify ownership
+
     session = retry_execute(client.table("knowledge_chat_sessions").select("id").eq("id", session_id).eq("user_id", user_id))
     if not session.data:
         print(f"[DEBUG] get_session_messages FAILED ownership check for session_id='{session_id}'. Data returned: {session.data}")
@@ -66,8 +66,7 @@ def add_message(session_id: str, role: str, content: str, sources: list = None):
         "content": content,
         "sources": sources or []
     }))
-    
-    # Update session updated_at
+
     retry_execute(client.table("knowledge_chat_sessions").update({
         "updated_at": "now()"
     }).eq("id", session_id))

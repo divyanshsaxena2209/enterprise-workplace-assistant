@@ -1,21 +1,16 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { getMyApplications, respondInterview } from "@/lib/api/applications";
 import { FileText, Calendar, Clock, Link as LinkIcon, CheckCircle, XCircle, Clock4, Loader2 } from "lucide-react";
 import Link from "next/link";
-
 export default function MyApplicationsPage() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  
   const [selectedInterview, setSelectedInterview] = useState<any>(null);
   const [responseAction, setResponseAction] = useState<"Accepted" | "Rejected" | "Reschedule Requested" | null>(null);
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const fetchApplications = async () => {
     try {
       setLoading(true);
@@ -27,11 +22,9 @@ export default function MyApplicationsPage() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchApplications();
   }, []);
-
   const handleRespond = async () => {
     if (!selectedInterview || !responseAction) return;
     setIsSubmitting(true);
@@ -47,7 +40,6 @@ export default function MyApplicationsPage() {
       setIsSubmitting(false);
     }
   };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
@@ -55,7 +47,6 @@ export default function MyApplicationsPage() {
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="p-8 text-center text-red-500 bg-red-500/10 rounded-xl">
@@ -63,14 +54,12 @@ export default function MyApplicationsPage() {
       </div>
     );
   }
-
   return (
     <div className="space-y-8 pb-10 max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My Applications</h1>
         <p className="text-sm text-muted-foreground mt-1">Track your internal job applications and interview requests.</p>
       </div>
-
       {applications.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-10 text-center shadow-sm">
           <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
@@ -95,7 +84,6 @@ export default function MyApplicationsPage() {
                   {app.status}
                 </span>
               </div>
-
               {app.interviews && app.interviews.length > 0 && (
                 <div className="mt-6 pt-6">
                   <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-6">Interview Thread</h4>
@@ -123,7 +111,6 @@ export default function MyApplicationsPage() {
                               {interview.status}
                             </span>
                           </div>
-
                           <div className="bg-background/80 border border-border/50 rounded-lg p-3.5 mb-4 flex flex-col gap-2">
                             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-sm font-semibold text-foreground">
                               <div className="flex items-center gap-1.5">
@@ -144,21 +131,18 @@ export default function MyApplicationsPage() {
                               </div>
                             )}
                           </div>
-
                           {interview.management_notes && (
                             <div className="text-sm text-foreground mb-4 pl-3 border-l-2 border-muted">
                               <span className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Note from Management</span>
                               {interview.management_notes}
                             </div>
                           )}
-
                           {interview.candidate_notes && (
                             <div className="text-sm text-foreground mb-4 pl-3 border-l-2 border-foreground/30 bg-foreground/5 p-2 rounded-r-md">
                               <span className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Your Reply</span>
                               {interview.candidate_notes}
                             </div>
                           )}
-                          
                           {interview.status === 'Pending' && (
                             <div className="flex items-center gap-3 mt-5 pt-5 border-t border-border">
                               <button 
@@ -184,7 +168,6 @@ export default function MyApplicationsPage() {
                         </div>
                       </div>
                     ))}
-                    
                     {app.status === "Hired" && (
                       <div className="relative pl-6 pt-2">
                         <svg className="absolute -left-[7.5px] top-8 w-[14px] h-[14px] text-green-500" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
@@ -207,7 +190,6 @@ export default function MyApplicationsPage() {
           ))}
         </div>
       )}
-
       {}
       {selectedInterview && responseAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -219,7 +201,6 @@ export default function MyApplicationsPage() {
             <p className="text-sm text-muted-foreground mb-6">
               You are about to {responseAction.toLowerCase()} the interview scheduled for {new Date(selectedInterview.scheduled_at).toLocaleString()}.
             </p>
-
             <div className="space-y-4 mb-6">
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Optional Notes</label>
@@ -233,7 +214,6 @@ export default function MyApplicationsPage() {
                 />
               </div>
             </div>
-
             <div className="flex justify-end gap-3">
               <button 
                 type="button" 

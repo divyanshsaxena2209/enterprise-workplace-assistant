@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Loader2, FileText, ArrowLeft, Copy, Check, MessageSquare, Plus, Trash2, AlertCircle, Edit2, X } from "lucide-react";
 import Link from "next/link";
@@ -12,14 +11,12 @@ import {
   deleteChatSession,
   renameChatSession
 } from "@/lib/api/knowledge";
-
 interface Message {
   id: number | string;
   role: "assistant" | "user";
   content: string;
   sources?: Array<{ file: string; page: number }>;
 }
-
 export default function KnowledgeChat() {
   const { profile, loading } = useUser();
   const [sessions, setSessions] = useState<any[]>([]);
@@ -32,12 +29,10 @@ export default function KnowledgeChat() {
   const [editingTitle, setEditingTitle] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-
   const loadSessions = async () => {
     try {
       const data = await getChatSessions();
       setSessions(data || []);
-      
       const savedSession = sessionStorage.getItem("currentChatSessionId");
       if (savedSession && data?.some((s: any) => s.id === savedSession)) {
         selectSession(savedSession);
@@ -49,27 +44,22 @@ export default function KnowledgeChat() {
       startNewChat();
     }
   };
-
   useEffect(() => {
     if (!loading) {
       loadSessions();
     }
   }, [loading]);
-
   const handleCopy = (text: string, id: number | string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
   const startNewChat = () => {
     setCurrentSessionId(null);
     sessionStorage.removeItem("currentChatSessionId");
@@ -81,7 +71,6 @@ export default function KnowledgeChat() {
       }
     ]);
   };
-
   const selectSession = async (id: string) => {
     setCurrentSessionId(id);
     sessionStorage.setItem("currentChatSessionId", id);
@@ -108,7 +97,6 @@ export default function KnowledgeChat() {
       setIsLoading(false);
     }
   };
-
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
@@ -121,7 +109,6 @@ export default function KnowledgeChat() {
       console.error(e);
     }
   };
-
   const handleRenameSubmit = async (e: React.FormEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -137,19 +124,15 @@ export default function KnowledgeChat() {
       console.error(e);
     }
   };
-
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    
     const userQuery = input.trim();
     const newMsg: Message = { id: Date.now(), role: "user", content: userQuery };
     setMessages(prev => [...prev, newMsg]);
     setInput("");
     setIsLoading(true);
-    
     abortControllerRef.current = new AbortController();
-    
     let activeSessionId = currentSessionId;
     try {
       if (!activeSessionId) {
@@ -162,12 +145,9 @@ export default function KnowledgeChat() {
         sessionStorage.setItem("currentChatSessionId", activeSessionId as string);
         setSessions(prev => [newSession, ...prev]);
       }
-
       const savedSearches = parseInt(localStorage.getItem('knowledge_searches') || '0', 10);
       localStorage.setItem('knowledge_searches', (savedSearches + 1).toString());
-
       const response = await queryKnowledgeBase(userQuery, activeSessionId || undefined, abortControllerRef.current?.signal);
-      
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         role: "assistant",
@@ -182,17 +162,15 @@ export default function KnowledgeChat() {
           content: "Generation stopped."
         }]);
       }
-      // Silently handle other network errors as requested
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
   };
-
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       <div className="flex-1 flex gap-4 h-full">
-        {/* Sidebar */}
+        {}
         <div className="w-64 flex flex-col bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
           <div className="p-4 border-b border-border bg-secondary/30">
             <button 
@@ -219,7 +197,6 @@ export default function KnowledgeChat() {
               >
                 <div className="flex items-center gap-3 overflow-hidden flex-1">
                   <MessageSquare size={16} className={currentSessionId === session.id ? "text-blue-500 shrink-0" : "text-muted-foreground shrink-0"} />
-                  
                   {editingSessionId === session.id ? (
                     <form 
                       onSubmit={(e) => handleRenameSubmit(e, session.id)} 
@@ -239,7 +216,6 @@ export default function KnowledgeChat() {
                     <span className="text-sm truncate font-medium">{session.title}</span>
                   )}
                 </div>
-                
                 {editingSessionId !== session.id && (
                   <div className="opacity-0 group-hover:opacity-100 flex items-center transition-all shrink-0 ml-2">
                     <button 
@@ -271,10 +247,9 @@ export default function KnowledgeChat() {
             )}
           </div>
         </div>
-
-        {/* Chat Area */}
+        {}
         <div className="flex-1 bg-card border border-border rounded-2xl flex flex-col shadow-sm overflow-hidden h-full">
-          {/* Header */}
+          {}
           <div className="h-16 border-b border-border flex items-center px-6 gap-3 bg-secondary/30 justify-between shrink-0">
             <div className="flex items-center gap-3">
               <Link 
@@ -292,8 +267,7 @@ export default function KnowledgeChat() {
               </div>
             </div>
           </div>
-
-          {/* Messages */}
+          {}
           <div className="flex-1 overflow-y-auto chatbot-scrollbar p-6 space-y-6">
             {messages.map(msg => (
               <div key={msg.id} className={`flex gap-4 max-w-3xl group ${msg.role === "user" ? "ml-auto flex-row-reverse" : ""}`}>
@@ -312,7 +286,6 @@ export default function KnowledgeChat() {
                     : "bg-secondary/50 border border-border text-foreground rounded-tl-sm"
                   }`}>
                     <div className="whitespace-pre-wrap">{msg.content}</div>
-                    
                     {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border/50">
                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Referenced Records</span>
@@ -357,8 +330,7 @@ export default function KnowledgeChat() {
             )}
             <div ref={messagesEndRef} />
           </div>
-
-          {/* Input Area */}
+          {}
           <div className="p-4 border-t border-border bg-card shrink-0">
             <form onSubmit={handleSend} className="relative max-w-4xl mx-auto flex gap-2">
               <input 

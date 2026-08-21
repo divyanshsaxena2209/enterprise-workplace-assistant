@@ -1,16 +1,13 @@
 import React from "react";
 import { Lock } from "lucide-react";
-
 interface LockedFeatureProps {
   isLocked: boolean;
   children: React.ReactNode;
 }
-
 export default function LockedFeature({ isLocked, children }: LockedFeatureProps) {
   if (!isLocked) {
     return <>{children}</>;
   }
-
   return (
     <div className="relative">
       <div className="blur-sm pointer-events-none select-none opacity-40 transition-all duration-500">

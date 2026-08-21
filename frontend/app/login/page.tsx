@@ -1,39 +1,32 @@
 "use client";
-
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Mail, Lock, Shield, Loader2, Sparkles } from "lucide-react";
-
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
     try {
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-
       if (loginError) {
         throw new Error(loginError.message);
       }
-
       if (data?.user) {
         document.cookie = "guest_mode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         window.location.href = "/dashboard";
-        return; // Prevents setLoading(false) from running so the loading spinner stays until page unloads
+        return; 
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Invalid credentials. Please verify your email and password.";
@@ -41,12 +34,9 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-background text-foreground selection:bg-foreground selection:text-background px-4">
       <div className="max-w-md w-full p-8 bg-card rounded-2xl shadow-xl border border-border">
-        
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-3">
             <Sparkles className="w-5 h-5 text-foreground animate-pulse" />
@@ -55,14 +45,12 @@ export default function LoginPage() {
           <h1 className="text-2xl font-black tracking-tight text-foreground">Welcome Back</h1>
           <p className="text-xs text-muted-foreground mt-2">Sign in to your organizational portal</p>
         </div>
-
         {error && (
           <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive flex items-center gap-3">
             <Shield className="w-4 h-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
-
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Work Email Address</label>
@@ -79,7 +67,6 @@ export default function LoginPage() {
               />
             </div>
           </div>
-
           <div>
             <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Password</label>
             <div className="relative">
@@ -95,7 +82,6 @@ export default function LoginPage() {
               />
             </div>
           </div>
-
           <button 
             type="submit" 
             disabled={loading}
@@ -111,9 +97,7 @@ export default function LoginPage() {
               "Sign In"
             )}
           </button>
-
         </form>
-
         <div className="text-center mt-6">
           <p className="text-xs text-muted-foreground">
             Don&apos;t have an account?{" "}

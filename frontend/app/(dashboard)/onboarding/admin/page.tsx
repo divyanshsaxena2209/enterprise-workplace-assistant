@@ -1,15 +1,12 @@
 "use client";
-
 import React, { useState } from "react";
 import { Users, FileText, CheckCircle, AlertCircle, Clock, ChevronRight } from "lucide-react";
-
 export default function HRAdminDashboard() {
   const [employees] = useState([
     { id: 1, name: "Divya Patel", role: "Software Engineer", dept: "Engineering", progress: 25, status: "Onboarding" },
     { id: 2, name: "Michael Chen", role: "Product Manager", dept: "Product", progress: 80, status: "Onboarding" },
     { id: 3, name: "Sarah Smith", role: "Account Executive", dept: "Sales", progress: 100, status: "Active" },
   ]);
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -21,7 +18,6 @@ export default function HRAdminDashboard() {
           Create New Employee
         </button>
       </div>
-
       {}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="p-6 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
@@ -53,7 +49,6 @@ export default function HRAdminDashboard() {
           <p className="text-3xl font-bold text-green-600">24</p>
         </div>
       </div>
-
       <div className="flex flex-col lg:flex-row gap-6">
         {}
         <div className="lg:w-2/3 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
@@ -83,7 +78,6 @@ export default function HRAdminDashboard() {
             ))}
           </div>
         </div>
-
         {}
         <div className="lg:w-1/3 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 dark:border-gray-800">

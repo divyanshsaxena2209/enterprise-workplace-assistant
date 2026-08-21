@@ -1,21 +1,17 @@
 "use client";
-
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, User, Settings, LogOut, ChevronDown, Loader2, FileText, Home } from "lucide-react";
+import { Bell, User, Settings, LogOut, ChevronDown, Loader2, FileText, Home, Sparkles } from "lucide-react";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
-
 export default function TopNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { profile, loading } = useUser();
   const supabase = createClient();
-  
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -25,7 +21,6 @@ export default function TopNavbar() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
   const handleLogout = async () => {
     try {
       await Promise.race([
@@ -35,7 +30,6 @@ export default function TopNavbar() {
     } catch (error) {
       console.error("Error signing out:", error);
     } finally {
-      // Forcefully clear all Supabase auth cookies locally
       const cookies = document.cookie.split(";");
       for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -49,22 +43,26 @@ export default function TopNavbar() {
       window.location.href = "/";
     }
   };
-
   const isManagement = profile?.role === "MANAGEMENT" || profile?.role === "ADMIN" || profile?.role === "HR";
   const hasAnalyticsAccess = isManagement || !!profile?.employee_id;
-
   const allTabs = [
     { name: "Knowledge Base", href: "/knowledge", active: pathname.startsWith("/knowledge") },
     { name: "Jobs & Hiring", href: "/jobs", active: pathname.startsWith("/jobs") || pathname.startsWith("/candidates") },
     { name: "Onboarding", href: "/onboarding", active: pathname.startsWith("/onboarding") }
   ];
-
   const tabs = allTabs.filter(t => !(t as any).hidden);
-
   return (
     <header className="h-20 glass-panel border-b border-white/5 flex items-center justify-between px-8 sticky top-0 z-30 select-none">
-      
-      <nav className="hidden lg:flex items-center gap-8 h-full">
+      <div className="hidden lg:flex items-center h-full">
+        <div className="flex items-center gap-2 mr-8">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center border border-white/20">
+            <Sparkles className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-sm font-black tracking-widest uppercase text-white hidden xl:block">
+            Workplace Assistant
+          </span>
+        </div>
+        <nav className="flex items-center gap-8 h-full">
         {tabs.map((tab) => (
           <Link
             key={tab.name}
@@ -78,21 +76,18 @@ export default function TopNavbar() {
             {tab.name}
           </Link>
         ))}
-      </nav>
-
+        </nav>
+      </div>
       <div className="lg:hidden flex items-center gap-2">
         <span className="text-xs font-bold uppercase tracking-wider text-white">
           {tabs.find(t => t.active)?.name || "Workforce OS"}
         </span>
       </div>
-
       <div className="flex items-center gap-5">
-        
         <Link href="/dashboard" className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-white/10 hover:text-white transition-colors relative border border-transparent hover:border-white/10">
           <Home size={18} />
         </Link>
         <div className="h-6 w-px bg-white/10"></div>
-
         <div className="relative" ref={dropdownRef}>
           {loading ? (
             <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
@@ -123,7 +118,6 @@ export default function TopNavbar() {
               Sign In
             </Link>
           )}
-
           {dropdownOpen && profile && (
             <div className="absolute right-0 mt-3 w-64 glass-panel-heavy rounded-2xl shadow-2xl py-2 z-50 animate-fade-in border-white/10">
               <div className="px-5 py-4 border-b border-white/5 bg-white/5">
@@ -136,7 +130,6 @@ export default function TopNavbar() {
                   <p className="text-[10px] text-white/70 uppercase font-bold tracking-widest mt-2 bg-white/10 inline-block px-2 py-1 rounded-md">{profile.department}</p>
                 )}
               </div>
-
               <div className="p-2 space-y-1 mt-1">
                 <Link
                   href="/profile"
@@ -156,9 +149,7 @@ export default function TopNavbar() {
                     My Applications
                   </Link>
                 )}
-
                 <div className="h-px bg-white/5 my-2 mx-2"></div>
-                
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all text-left"
@@ -170,7 +161,6 @@ export default function TopNavbar() {
             </div>
           )}
         </div>
-
       </div>
     </header>
   );

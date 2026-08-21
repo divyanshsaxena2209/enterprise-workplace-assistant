@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
@@ -7,7 +6,6 @@ import { CheckCircle, Clock, Search, ChevronRight, GripVertical, AlertTriangle, 
 import LockedFeature from "@/components/layout/LockedFeature";
 import EmployeeOnboardingEditor from "./EmployeeOnboardingEditor";
 import OnboardingProgressMeter from "./OnboardingProgressMeter";
-
 interface Employee {
   id: string;
   full_name: string;
@@ -17,9 +15,7 @@ interface Employee {
   employee_id?: string;
   progress: any[];
 }
-
 import { useSearchParams } from "next/navigation";
-
 export default function ManagementOnboardingDashboard() {
   const { profile, loading: profileLoading } = useUser();
   const searchParams = useSearchParams();
@@ -27,7 +23,6 @@ export default function ManagementOnboardingDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
-
   const fetchEmployees = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -40,12 +35,10 @@ export default function ManagementOnboardingDashboard() {
             onboarding_steps ( id, step_name, description, step_order )
           )
         `);
-
       if (profError) {
         console.error("Error fetching employees:", profError.message || profError);
         return;
       }
-
       if (profData) {
         const activeEmployees = profData.filter((emp: any) => 
           emp.employee_onboarding_progress && emp.employee_onboarding_progress.length > 0
@@ -57,7 +50,6 @@ export default function ManagementOnboardingDashboard() {
             appMap.set(app.id, app.jobs);
           });
         }
-
         const mapped: any[] = [];
         activeEmployees.forEach((emp: any) => {
           const appIds = new Set<string>();
@@ -65,7 +57,6 @@ export default function ManagementOnboardingDashboard() {
             const match = p.notes?.match(/APP_ID:([a-f0-9-]+)/);
             if (match) appIds.add(match[1]);
           });
-
           if (appIds.size === 0) {
             mapped.push({
               id: emp.id,
@@ -92,9 +83,7 @@ export default function ManagementOnboardingDashboard() {
             });
           }
         });
-        
         setEmployees(mapped);
-        
         const targetId = searchParams.get("employee_id");
         const targetEmail = searchParams.get("employee_email");
         if (targetEmail || targetId) {
@@ -107,7 +96,6 @@ export default function ManagementOnboardingDashboard() {
             return;
           }
         }
-        
         setSelectedEmployee(prev => {
           if (!prev) return prev;
           return mapped.find((e: any) => e.id === prev.id) || prev;
@@ -119,39 +107,31 @@ export default function ManagementOnboardingDashboard() {
       setLoading(false);
     }
   }, [supabase]);
-
   useEffect(() => {
     fetchEmployees();
   }, [fetchEmployees]);
-
   const totalEmployees = employees.length;
   let totalCompleted = 0;
   let totalBlocked = 0;
   let totalPercentageSum = 0;
-
   employees.forEach(emp => {
     const comp = emp.progress.filter(p => p.status === "COMPLETED").length;
     const blocked = emp.progress.filter(p => p.status === "BLOCKED").length;
     const total = emp.progress.length;
     const percent = total > 0 ? (comp / total) * 100 : 0;
-    
     totalCompleted += (comp === total && total > 0) ? 1 : 0;
     totalBlocked += (blocked > 0) ? 1 : 0;
     totalPercentageSum += percent;
   });
-
   const avgCompletion = totalEmployees > 0 ? Math.round(totalPercentageSum / totalEmployees) : 0;
-
   if (profileLoading || (loading && employees.length === 0)) {
     return (
       <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
     );
   }
-
   return (
     <LockedFeature isLocked={profile?.role !== "MANAGEMENT" && profile?.role !== "HR" && profile?.role !== "ADMIN"}>
       <div className="space-y-8 pb-10">
-        
         {}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-card border border-border p-5 rounded-2xl shadow-sm hover:border-foreground/30 transition-colors">
@@ -171,7 +151,6 @@ export default function ManagementOnboardingDashboard() {
             <p className="text-3xl font-black mt-2 text-foreground">{avgCompletion}%</p>
           </div>
         </div>
-
         {selectedEmployee ? (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <button 
@@ -200,7 +179,6 @@ export default function ManagementOnboardingDashboard() {
                 />
               </div>
             </div>
-
             {employees.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-12 bg-card border border-border rounded-3xl border-dashed">
                 <CheckCircle className="w-12 h-12 text-muted-foreground/30 mb-4" />
@@ -213,7 +191,6 @@ export default function ManagementOnboardingDashboard() {
                   const comp = emp.progress.filter(p => p.status === "COMPLETED").length;
                   const total = emp.progress.length;
                   const percent = total > 0 ? Math.round((comp / total) * 100) : 0;
-                  
                   return (
                     <button 
                       key={emp.id}
@@ -223,7 +200,6 @@ export default function ManagementOnboardingDashboard() {
                       <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity translate-x-2 group-hover:translate-x-0">
                         <ArrowRight className="w-5 h-5 text-foreground" />
                       </div>
-                      
                       <div className="flex items-center gap-4 mb-6">
                         <div className="w-14 h-14 bg-secondary rounded-2xl flex items-center justify-center border border-border/50 text-xl font-black text-foreground">
                           {emp.full_name.charAt(0).toUpperCase()}
@@ -233,7 +209,6 @@ export default function ManagementOnboardingDashboard() {
                           <p className="text-[11px] font-bold text-muted-foreground mt-1 uppercase tracking-widest truncate max-w-[180px]">{emp.job_title} • {emp.department}</p>
                         </div>
                       </div>
-
                       <div className="mt-auto">
                         <div className="flex justify-between items-end mb-2">
                           <span className="text-xs font-bold text-foreground">Onboarding Progress</span>

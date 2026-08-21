@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -14,14 +13,11 @@ import {
   Globe,
   ChevronRight
 } from "lucide-react";
-
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-
   useEffect(() => {
     setMounted(true);
   }, []);
-
   const modules = [
     {
       title: "Recruiting & Hiring",
@@ -39,9 +35,7 @@ export default function Home() {
       icon: BookOpen,
     }
   ];
-
   if (!mounted) return null; 
-
   return (
     <div className="bg-background text-foreground min-h-screen font-sans overflow-x-hidden">
       {}
@@ -49,10 +43,16 @@ export default function Home() {
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/10 blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/10 blur-[120px]" />
       </div>
-
-      <header className="h-20 max-w-7xl mx-auto px-6 flex items-center justify-end z-50 relative">
+      <header className="h-20 max-w-7xl mx-auto px-6 flex items-center justify-between z-50 relative">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center border border-white/20">
+            <Sparkles className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-sm font-black tracking-widest uppercase text-white hidden sm:block">
+            Workplace Assistant
+          </span>
+        </div>
         <div className="flex items-center gap-4">
-
           <Link
             href="/login"
             className="px-4 py-2 border border-white rounded-lg hover:bg-white/10 text-xs font-bold uppercase tracking-widest text-white transition-all active:scale-95 cursor-pointer"
@@ -68,12 +68,8 @@ export default function Home() {
           </Link>
         </div>
       </header>
-
       {}
       <section className="relative max-w-7xl mx-auto px-6 pt-32 pb-24 md:pt-48 md:pb-32 text-center flex flex-col items-center">
-        
-
-
         <motion.h1 
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -82,7 +78,6 @@ export default function Home() {
         >
           Intelligent management <br /> for the modern workforce.
         </motion.h1>
-
         <motion.p 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -91,7 +86,6 @@ export default function Home() {
         >
           Unify your hiring, automate onboarding, and centralize company knowledge in one secure place.
         </motion.p>
-
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -101,7 +95,6 @@ export default function Home() {
           {}
         </motion.div>
       </section>
-
       {}
       <section className="relative max-w-7xl mx-auto px-6 py-24 border-t border-white/5">
         <div className="mb-16">
@@ -112,7 +105,6 @@ export default function Home() {
             Everything you need to run your team smoothly.
           </p>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {modules.map((m, idx) => {
             const Icon = m.icon;
@@ -126,7 +118,6 @@ export default function Home() {
                 className="group relative bg-secondary/30 backdrop-blur-sm border border-white/10 rounded-3xl p-8 hover:border-white/30 transition-all duration-500 overflow-hidden"
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                
                 <div className="relative z-10">
                   <div className="h-12 w-12 rounded-2xl border border-white/10 flex items-center justify-center bg-background/50 text-foreground mb-6 group-hover:scale-110 transition-transform duration-500">
                     <Icon className="w-5 h-5" />
@@ -139,7 +130,6 @@ export default function Home() {
           })}
         </div>
       </section>
-
       {}
       <section id="architecture" className="max-w-7xl mx-auto px-6 py-24">
         <motion.div 
@@ -151,7 +141,6 @@ export default function Home() {
         >
           {}
           <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-
           <div className="flex-1 space-y-6 relative z-10">
             <div className="inline-flex items-center gap-2 bg-foreground text-background px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase">
               <ShieldCheck className="w-3.5 h-3.5" />
@@ -162,7 +151,6 @@ export default function Home() {
               Built with security in mind to keep your company's data safe, organized, and private.
             </p>
           </div>
-
           <div className="grid grid-cols-2 gap-4 w-full lg:w-auto relative z-10">
             <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-center flex flex-col items-center justify-center shadow-2xl hover:-translate-y-1 transition-transform duration-300">
               <Zap className="w-6 h-6 text-foreground mb-4" />
@@ -179,7 +167,6 @@ export default function Home() {
           </div>
         </motion.div>
       </section>
-
       {}
       <footer className="max-w-7xl mx-auto px-6 py-10 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2 text-muted-foreground">

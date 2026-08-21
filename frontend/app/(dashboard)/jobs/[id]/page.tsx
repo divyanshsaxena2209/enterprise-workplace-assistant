@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -9,17 +8,14 @@ import { uploadResume } from "@/lib/api/candidates";
 import { getApplications, createApplication, getMyApplications, getApplicationDetails, respondInterview } from "@/lib/api/applications";
 import { getJob } from "@/lib/api/jobs";
 import { useUser } from "@/lib/context/UserContext";
-
 export default function JobDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [job, setJob] = useState<any>(null);
   const [jobLoading, setJobLoading] = useState(true);
   const [jobError, setJobError] = useState<string | null>(null);
-
   const { profile } = useUser();
   const isManagement = profile?.role === "MANAGEMENT";
-
   const [activeTab, setActiveTab] = useState("candidates");
   const [myApplications, setMyApplications] = useState<any[]>([]);
   const [myApplicationDetails, setMyApplicationDetails] = useState<any>(null);
@@ -30,7 +26,6 @@ export default function JobDetailPage() {
   const [applySuccess, setApplySuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
-
   useEffect(() => {
     const fetchJobDetails = async () => {
       try {
@@ -57,7 +52,6 @@ export default function JobDetailPage() {
     };
     if (id) fetchJobDetails();
   }, [id]);
-
   if (jobLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-muted-foreground space-y-4">
@@ -66,7 +60,6 @@ export default function JobDetailPage() {
       </div>
     );
   }
-
   if (jobError || !job) {
     return (
       <div className="p-8 text-center text-red-500 bg-red-500/10 rounded-xl border border-red-500/20 max-w-xl mx-auto mt-10">
@@ -76,14 +69,12 @@ export default function JobDetailPage() {
       </div>
     );
   }
-
   return (
     <div className="space-y-8 pb-10">
       <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground font-medium transition-colors">
         <ArrowLeft size={16} />
         Back to Requisitions
       </Link>
-
       {}
       <div className="p-8 glass-panel-heavy rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-bl-full -z-10 blur-3xl pointer-events-none" />
@@ -111,13 +102,11 @@ export default function JobDetailPage() {
             </span>
           </div>
         </div>
-        
         <div className="mt-8 pt-6 border-t border-white/10">
           <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Requisition Description</h4>
           <p className="text-sm text-white/80 leading-relaxed max-w-4xl whitespace-pre-line">{job.description}</p>
         </div>
       </div>
-
       {}
       {isManagement ? (
         <>
@@ -129,7 +118,6 @@ export default function JobDetailPage() {
               </h2>
               <p className="text-xs text-muted-foreground mt-1 uppercase tracking-widest font-bold">Manage applicants for this specific requisition.</p>
             </div>
-            
             <div className="flex p-1.5 glass-panel rounded-2xl shadow-xl">
               <button
                 onClick={() => setActiveTab("candidates")}
@@ -167,7 +155,6 @@ export default function JobDetailPage() {
                   You have applied
                 </div>
               )}
-              
               {myApplicationDetails?.interviews && myApplicationDetails.interviews.length > 0 && (
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-left">
                   <h3 className="font-black text-lg text-white mb-4 flex items-center gap-2">
@@ -280,7 +267,6 @@ export default function JobDetailPage() {
           )}
         </div>
       )}
-
       {}
       {applyModalOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -294,7 +280,6 @@ export default function JobDetailPage() {
               </button>
               <h2 className="text-xl font-black tracking-tight text-white m-0 py-1">Apply for Position</h2>
             </div>
-            
             <div className="p-6 space-y-6">
               {applySuccess ? (
                 <div className="text-center py-8">
@@ -322,7 +307,6 @@ export default function JobDetailPage() {
                       {submitError}
                     </div>
                   )}
-                  
                   <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center bg-black/30 hover:bg-black/50 transition-colors relative">
                     <input 
                       type="file" 
@@ -340,7 +324,6 @@ export default function JobDetailPage() {
                     </p>
                     <p className="text-xs text-muted-foreground">PDF or DOCX up to 10MB</p>
                   </div>
-
                   <button 
                     disabled={!resumeFile || applyLoading}
                     onClick={async () => {
@@ -375,32 +358,26 @@ export default function JobDetailPage() {
         </div>,
         document.body
       )}
-
     </div>
   );
 }
-
 function ResumeUploadFlow({ jobId, onComplete }: { jobId: string, onComplete: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
       setError(null);
     }
   };
-
   const handleUpload = async () => {
     if (!file) return;
-    
     setIsUploading(true);
     setError(null);
     try {
       const uploadRes = await uploadResume(file);
-      
       if (uploadRes.candidate_id && uploadRes.resume_id) {
         await createApplication({
           job_id: jobId,
@@ -408,7 +385,6 @@ function ResumeUploadFlow({ jobId, onComplete }: { jobId: string, onComplete: ()
           resume_id: uploadRes.resume_id
         });
       }
-      
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       onComplete();
@@ -418,25 +394,21 @@ function ResumeUploadFlow({ jobId, onComplete }: { jobId: string, onComplete: ()
       setIsUploading(false);
     }
   };
-
   return (
     <div className="glass-panel-heavy rounded-3xl p-12 flex flex-col items-center justify-center text-center min-h-[400px] border-dashed border-2 border-white/20 shadow-2xl relative overflow-hidden group">
       <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-white mb-6 border border-white/10 shadow-[0_0_30px_rgba(255,255,255,0.05)] relative z-10">
         {isUploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Upload className="w-6 h-6" />}
       </div>
-      
       <h3 className="text-xl font-black tracking-tight mb-2 text-white relative z-10">Upload Candidate Resume</h3>
       <p className="text-sm text-muted-foreground mb-8 max-w-md leading-relaxed relative z-10">
         Directly ingest a candidate into this specific job requisition. PDF or DOCX format only.
       </p>
-
       {error && (
         <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-sm font-semibold max-w-md relative z-10">
           <AlertCircle size={18} />
           {error}
         </div>
       )}
-
       {file ? (
         <div className="flex flex-col items-center gap-4 relative z-10">
           <div className="flex items-center gap-3 p-4 bg-white/10 rounded-xl border border-white/20">
@@ -486,12 +458,10 @@ function ResumeUploadFlow({ jobId, onComplete }: { jobId: string, onComplete: ()
     </div>
   );
 }
-
 function CandidateDashboard({ jobId }: { jobId: string }) {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
@@ -505,7 +475,6 @@ function CandidateDashboard({ jobId }: { jobId: string }) {
     };
     fetchCandidates();
   }, [jobId]);
-
   return (
     <div className="space-y-4">
       {error && (
@@ -513,7 +482,6 @@ function CandidateDashboard({ jobId }: { jobId: string }) {
           {error}
         </div>
       )}
-
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground space-y-4">
           <Loader2 className="w-8 h-8 animate-spin" />
@@ -531,7 +499,6 @@ function CandidateDashboard({ jobId }: { jobId: string }) {
             const absScore = c.score?.match_percentage || 0;
             const relScore = c.score?.relative_score ?? absScore;
             const isHighMatch = relScore >= 85;
-            
             return (
               <Link key={c.id} href={`/candidates/${c.id}`} className="block h-full">
                 <div className="p-5 glass-panel rounded-2xl hover:border-white/20 hover:bg-white/5 cursor-pointer transition-all duration-300 flex flex-col h-full justify-between group hover-lift relative overflow-hidden">
@@ -552,7 +519,6 @@ function CandidateDashboard({ jobId }: { jobId: string }) {
                       {c.status || "Registered"}
                     </span>
                   </div>
-                  
                   <div className="flex items-end justify-between border-t border-white/5 pt-4 mt-auto">
                     <div className="flex-1 mr-4">
                       <div className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold mb-1">Match Score</div>

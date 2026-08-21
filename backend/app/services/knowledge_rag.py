@@ -78,8 +78,7 @@ def process_and_store_document(file_path: str):
         separators=["\n\n", "\n", " ", ""]
     )
     chunks = text_splitter.split_documents(documents)
-    
-    # Store directly into Supabase
+
     try:
         vector_store = get_vector_store()
         vector_store.add_documents(chunks)
@@ -110,13 +109,11 @@ def delete_document(filename: str):
             api_key=settings.QDRANT_API_KEY,
             timeout=60.0
         )
-        
-        # In Qdrant we can delete by metadata filter directly
-        # The metadata is stored in payload
-        # Wait, if we use substring match, Qdrant MatchText matches words, but exact match is MatchValue.
-        # Let's fetch all points and filter locally to be safe, since Qdrant payload search might not support raw substring exactly the way we want.
-        
-        # Alternatively, scroll through all points and delete
+
+
+
+
+
         res, _ = client.scroll(
             collection_name="knowledge_embeddings",
             limit=10000,
@@ -127,7 +124,7 @@ def delete_document(filename: str):
         ids_to_delete = []
         for point in res:
             source = point.payload.get("metadata", {}).get("source", "")
-            # Depending on how langchain_qdrant stores metadata, it might be flat in payload
+
             if not source:
                 source = point.payload.get("source", "")
                 
@@ -244,8 +241,7 @@ Retrieved Context:
         for doc in results:
             file_path = doc.metadata.get("source")
             filename = os.path.basename(file_path) if file_path else "Unknown Document"
-            
-            # Clean up the 'knowledge_UUID_' prefix added during upload
+
             filename = re.sub(r'^knowledge_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}_', '', filename)
             
             page = doc.metadata.get("page", 0) + 1

@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
@@ -7,14 +6,12 @@ import { CheckCircle2, Clock, Loader2, AlertTriangle, PlayCircle, HelpCircle, Ci
 import LockedFeature from "@/components/layout/LockedFeature";
 import { getMyApplications } from "@/lib/api/applications";
 import { Briefcase, ArrowLeft } from "lucide-react";
-
 interface Step {
   id: string;
   step_name: string;
   description: string;
   step_order: number;
 }
-
 interface Progress {
   id: string;
   step_id: string;
@@ -23,7 +20,6 @@ interface Progress {
   completion_date: string | null;
   step: Step;
 }
-
 export default function EmployeeOnboardingDashboard() {
   const { profile, isHired, loading: profileLoading } = useUser();
   const supabase = createClient();
@@ -31,26 +27,29 @@ export default function EmployeeOnboardingDashboard() {
   const [hiredJobs, setHiredJobs] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-
+  const [jobsLoading, setJobsLoading] = useState(true);
   useEffect(() => {
     const fetchJobs = async () => {
+      setJobsLoading(true);
       try {
         const res = await getMyApplications(1, 100);
         const hired = (res.items || []).filter((app: any) => app.status === "Hired" || app.status === "HIRED");
         setHiredJobs(hired);
       } catch (e) {
         console.error("Failed to fetch hired jobs:", e);
+      } finally {
+        setJobsLoading(false);
       }
     };
     if (profile && isHired) {
       fetchJobs();
+    } else if (profile && !isHired) {
+      setJobsLoading(false);
     }
   }, [profile, isHired]);
-
   const fetchProgress = React.useCallback(async () => {
     if (!profile) return;
     setLoading(true);
-
     try {
       const { data, error } = await supabase
         .from("employee_onboarding_progress")
@@ -59,7 +58,6 @@ export default function EmployeeOnboardingDashboard() {
           onboarding_steps ( id, step_name, description, step_order )
         `)
         .eq("employee_id", profile.id);
-
       if (error) {
         console.error("Error fetching onboarding progress:", error);
       } else if (data) {
@@ -71,11 +69,9 @@ export default function EmployeeOnboardingDashboard() {
           completion_date: d.completion_date,
           step: d.onboarding_steps,
         })).sort((a: any, b: any) => (a.step?.step_order || 0) - (b.step?.step_order || 0));
-
         if (selectedJob) {
           mapped = mapped.filter(m => m.notes && m.notes.includes(`APP_ID:${selectedJob.id}`));
         }
-
         setProgressData(mapped);
       }
     } catch (err) {
@@ -84,27 +80,22 @@ export default function EmployeeOnboardingDashboard() {
       setLoading(false);
     }
   }, [profile, supabase, selectedJob]);
-
   useEffect(() => {
     if (!profileLoading && profile) {
       fetchProgress();
     }
   }, [profileLoading, profile, fetchProgress]);
-
   useEffect(() => {
     if (!profile) return;
-
     const channel = supabase.channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_onboarding_progress', filter: `employee_id=eq.${profile.id}` }, () => fetchProgress())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'onboarding_steps' }, () => fetchProgress())
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
   }, [profile, supabase, fetchProgress]);
-
-  if (profileLoading || loading) {
+  if (profileLoading || loading || jobsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -112,20 +103,14 @@ export default function EmployeeOnboardingDashboard() {
       </div>
     );
   }
-
   const completedCount = progressData.filter(p => p.status === "COMPLETED").length;
   const totalCount = progressData.length;
   const remainingCount = totalCount - completedCount;
   const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-  
-  
   const activeStepIndex = progressData.findIndex(p => p.status !== "COMPLETED");
   const activeStep = activeStepIndex !== -1 ? progressData[activeStepIndex] : null;
-
-  
   const completedSteps = progressData.filter(p => p.status === "COMPLETED");
   const upcomingSteps = progressData.filter(p => p.status !== "COMPLETED");
-
   const getStatusIcon = (status: string, isActive: boolean = false) => {
     switch (status) {
       case 'COMPLETED': return <CheckCircle2 className="w-6 h-6 text-green-500 bg-green-500/10 rounded-full p-0.5" />;
@@ -134,7 +119,6 @@ export default function EmployeeOnboardingDashboard() {
       default: return <Circle className={`w-6 h-6 ${isActive ? 'text-foreground' : 'text-muted-foreground/30'} transition-colors`} />;
     }
   };
-
   return (
     <LockedFeature isLocked={!isHired}>
       {!selectedJob ? (
@@ -143,7 +127,6 @@ export default function EmployeeOnboardingDashboard() {
             <h1 className="text-3xl font-black tracking-tight text-white mb-2">Workforce Onboarding</h1>
             <p className="text-sm text-muted-foreground">Select a position to view its onboarding roadmap.</p>
           </div>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {hiredJobs.length === 0 ? (
               <div className="col-span-full p-8 text-center glass-panel rounded-2xl border-dashed">
@@ -171,7 +154,6 @@ export default function EmployeeOnboardingDashboard() {
         </div>
       ) : (
         <div className="max-w-7xl mx-auto space-y-10 pb-20 animate-in fade-in duration-700">
-          
           <button 
             onClick={() => setSelectedJob(null)}
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-white transition-colors"
@@ -179,7 +161,6 @@ export default function EmployeeOnboardingDashboard() {
             <ArrowLeft size={16} />
             Back to Positions
           </button>
-
           {}
         <div className="relative overflow-hidden rounded-3xl bg-card border border-border shadow-2xl p-10 flex flex-col md:flex-row items-center gap-12">
           {}
@@ -202,13 +183,11 @@ export default function EmployeeOnboardingDashboard() {
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Completed</span>
             </div>
           </div>
-          
           <div className="flex-1 space-y-6">
             <div>
               <h1 className="text-3xl font-black tracking-tight mb-2">Welcome aboard, {profile?.full_name?.split(' ')[0] || 'Team'}!</h1>
               <p className="text-muted-foreground text-sm leading-relaxed max-w-2xl">This is your personalized onboarding roadmap. It outlines everything you need to know and do to get fully integrated into the team. Your progress is tracked in real-time.</p>
             </div>
-            
             <div className="flex flex-wrap gap-4">
               <div className="bg-background border border-border rounded-xl px-5 py-3 shadow-sm flex items-center gap-3">
                 <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -227,9 +206,7 @@ export default function EmployeeOnboardingDashboard() {
             </div>
           </div>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          
           {}
           <div className="lg:col-span-8 space-y-8">
             {activeStep && (
@@ -254,7 +231,6 @@ export default function EmployeeOnboardingDashboard() {
                 </div>
               </div>
             )}
-
             <div className="space-y-6">
               <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
                 Complete Roadmap <span className="text-xs font-bold px-2 py-0.5 bg-secondary text-muted-foreground rounded-full">{progressData.length}</span>
@@ -289,7 +265,6 @@ export default function EmployeeOnboardingDashboard() {
               </div>
             </div>
           </div>
-          
           {}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-card border border-border p-6 rounded-3xl shadow-sm sticky top-8">
@@ -297,7 +272,6 @@ export default function EmployeeOnboardingDashboard() {
                 <HelpCircle className="w-4 h-4 text-muted-foreground" /> Need Help?
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed mb-6">Your onboarding is automatically tracked and managed by your HR coordinator and direct manager. You do not need to manually check off items.</p>
-              
               <div className="space-y-4">
                 <div className="p-4 bg-background border border-border rounded-2xl flex gap-3">
                   <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center font-black text-foreground shrink-0">HR</div>
@@ -316,7 +290,6 @@ export default function EmployeeOnboardingDashboard() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
       )}

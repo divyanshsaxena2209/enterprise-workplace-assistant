@@ -1,19 +1,15 @@
 "use client";
-
 import React from "react";
-
 interface OnboardingProgressMeterProps {
   completedTasks: number;
   totalTasks: number;
 }
-
 export default function OnboardingProgressMeter({
   completedTasks,
   totalTasks,
 }: OnboardingProgressMeterProps) {
   const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const remainingTasks = totalTasks - completedTasks;
-
   return (
     <div className="flex items-center gap-6">
       <div className="relative w-24 h-24 rounded-full border-[3px] border-border/50 flex items-center justify-center bg-card shadow-inner">
@@ -37,7 +33,6 @@ export default function OnboardingProgressMeter({
         </svg>
         <span className="text-xl font-bold tracking-tight text-foreground z-10">{percentage}%</span>
       </div>
-      
       <div className="space-y-1">
         <h3 className="text-sm font-bold tracking-tight text-foreground">Completion Status</h3>
         <div className="flex gap-4 mt-2">

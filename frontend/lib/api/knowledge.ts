@@ -1,15 +1,11 @@
 import { fetchWithAuth } from "./candidates";
 import { createClient } from "@/lib/supabase/client";
-
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 const API_URL = BASE_URL?.includes("/api/v1") ? BASE_URL : `${BASE_URL?.replace(/\/$/, "")}/api/v1`;
-
 export async function uploadKnowledgeDocument(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-
   const controller = new AbortController();
-  
   try {
     return await fetchWithAuth("/knowledge/upload", {
       method: "POST",
@@ -24,7 +20,6 @@ export async function uploadKnowledgeDocument(file: File) {
     throw error;
   }
 }
-
 export async function queryKnowledgeBase(question: string, session_id?: string, signal?: AbortSignal) {
   return fetchWithAuth("/knowledge/query", {
     method: "POST",
@@ -36,7 +31,6 @@ export async function queryKnowledgeBase(question: string, session_id?: string, 
     signal,
   });
 }
-
 export async function deleteKnowledgeDocument(filename: string, file_url?: string) {
   return fetchWithAuth("/knowledge/document", {
     method: "DELETE",
@@ -46,13 +40,11 @@ export async function deleteKnowledgeDocument(filename: string, file_url?: strin
     body: JSON.stringify({ filename, file_url }),
   });
 }
-
 export async function getChatSessions() {
   return fetchWithAuth("/knowledge/sessions", {
     method: "GET",
   });
 }
-
 export async function createChatSession(title: string, signal?: AbortSignal) {
   return fetchWithAuth("/knowledge/sessions", {
     method: "POST",
@@ -61,21 +53,18 @@ export async function createChatSession(title: string, signal?: AbortSignal) {
     signal,
   });
 }
-
 export async function getChatSessionMessages(sessionId: string) {
   if (!sessionId || sessionId === "undefined") return [];
   return fetchWithAuth(`/knowledge/sessions/${sessionId}/messages`, {
     method: "GET",
   });
 }
-
 export async function deleteChatSession(sessionId: string) {
   if (!sessionId || sessionId === "undefined") return { success: false };
   return fetchWithAuth(`/knowledge/sessions/${sessionId}`, {
     method: "DELETE",
   });
 }
-
 export async function renameChatSession(sessionId: string, newTitle: string) {
   return fetchWithAuth(`/knowledge/sessions/${sessionId}`, {
     method: "PUT",

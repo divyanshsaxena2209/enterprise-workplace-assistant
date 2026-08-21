@@ -35,7 +35,7 @@ def execute_with_fallback(client: genai.Client, contents: str, models: list[str]
     
     for i, model in enumerate(models):
         try:
-            # We add a debug log to trace which model is being attempted
+
             logger.debug(f"Attempting generate_content with model: {model} (Tier {i+1}/{len(models)})")
             
             response = client.models.generate_content(
@@ -50,7 +50,7 @@ def execute_with_fallback(client: genai.Client, contents: str, models: list[str]
             return response
             
         except errors.APIError as e:
-            # Check for 429 Resource Exhausted, 403 Quota Exceeded, 503 Service Unavailable, or 404 Not Found
+
             if e.code in (429, 403, 503, 404):
                 logger.warning(
                     f"Model {model} failed with API error {e.code} (Rate Limit/Quota/Unavailable). "
@@ -59,11 +59,11 @@ def execute_with_fallback(client: genai.Client, contents: str, models: list[str]
                 last_exception = e
                 continue
             else:
-                # If it's a different API error (e.g., 400 Bad Request), re-raise immediately
+
                 logger.error(f"Model {model} failed with non-recoverable APIError {e.code}: {e.message}")
                 raise
         except Exception as e:
-            # Catching generic exceptions (e.g., network timeouts) to potentially fallback or log
+
             logger.warning(
                 f"Model {model} encountered an unexpected error: {str(e)}. Attempting next fallback..."
             )

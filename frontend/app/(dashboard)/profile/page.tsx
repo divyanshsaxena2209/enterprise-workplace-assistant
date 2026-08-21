@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
@@ -7,14 +6,12 @@ import {
   User, Mail, Briefcase, Phone, MapPin, 
   FileText, Shield, Loader2, Edit3, Check
 } from "lucide-react";
-
 export default function ProfilePage() {
   const { profile, loading, refreshProfile } = useUser();
   const supabase = createClient();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [formData, setFormData] = useState({
     full_name: "",
     department: "",
@@ -24,7 +21,6 @@ export default function ProfilePage() {
     bio: "",
     avatar_url: "",
   });
-
   useEffect(() => {
     if (profile) {
       setFormData({
@@ -38,7 +34,6 @@ export default function ProfilePage() {
       });
     }
   }, [profile]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -46,7 +41,6 @@ export default function ProfilePage() {
       </div>
     );
   }
-
   if (!profile) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
@@ -55,12 +49,10 @@ export default function ProfilePage() {
       </div>
     );
   }
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -77,9 +69,7 @@ export default function ProfilePage() {
           avatar_url: formData.avatar_url,
         })
         .eq("id", profile.id);
-
       if (updateError) throw updateError;
-      
       await refreshProfile();
       setIsEditing(false);
     } catch (err) {
@@ -88,7 +78,6 @@ export default function ProfilePage() {
       setSaving(false);
     }
   };
-
   return (
     <div className="max-w-4xl mx-auto py-8 px-6">
       <div className="mb-8 flex items-center justify-between">
@@ -109,16 +98,13 @@ export default function ProfilePage() {
           {isEditing ? "Save Changes" : "Edit Profile"}
         </button>
       </div>
-
       {error && (
         <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive flex items-center gap-3">
           <Shield className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        
         {}
         <div className="col-span-1 space-y-6">
           <div className="bg-card border border-border rounded-2xl p-6 text-center shadow-sm">
@@ -129,7 +115,6 @@ export default function ProfilePage() {
                 className="w-full h-full rounded-full object-cover border-4 border-background shadow-md"
               />
             </div>
-            
             {isEditing && (
               <div className="mb-4">
                 <input
@@ -142,17 +127,14 @@ export default function ProfilePage() {
                 />
               </div>
             )}
-
             <h2 className="font-bold text-lg">{profile.full_name}</h2>
             <div className="inline-flex items-center gap-1 mt-1 text-xs font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground border border-border/50">
               <Shield className="w-3 h-3" />
               {profile.role}
             </div>
           </div>
-
           <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4 border-b border-border pb-2">Read-Only Details</h3>
-            
             <div className="flex items-start gap-3 text-sm">
               <Mail className="w-4 h-4 text-muted-foreground mt-0.5" />
               <div>
@@ -160,7 +142,6 @@ export default function ProfilePage() {
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Primary Email</p>
               </div>
             </div>
-            
             <div className="flex items-start gap-3 text-sm">
               <FileText className="w-4 h-4 text-muted-foreground mt-0.5" />
               <div>
@@ -168,7 +149,6 @@ export default function ProfilePage() {
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Employee ID</p>
               </div>
             </div>
-
             <div className="flex items-start gap-3 text-sm">
               <User className="w-4 h-4 text-muted-foreground mt-0.5" />
               <div>
@@ -178,12 +158,10 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-
         {}
         <div className="col-span-1 md:col-span-2 space-y-6">
           <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-2">Organizational Details</h3>
-            
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Full Name</label>
@@ -199,7 +177,6 @@ export default function ProfilePage() {
                   <p className="text-sm font-medium">{profile.full_name}</p>
                 )}
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Department</label>
                 {isEditing ? (
@@ -217,7 +194,6 @@ export default function ProfilePage() {
                   </div>
                 )}
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Job Title</label>
                 {isEditing ? (
@@ -232,7 +208,6 @@ export default function ProfilePage() {
                   <p className="text-sm font-medium">{profile.job_title || "Not specified"}</p>
                 )}
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Location</label>
                 {isEditing ? (
@@ -250,7 +225,6 @@ export default function ProfilePage() {
                   </div>
                 )}
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Phone</label>
                 {isEditing ? (
@@ -270,10 +244,8 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
-
           <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-2">Biography</h3>
-            
             {isEditing ? (
               <textarea
                 name="bio"

@@ -1,14 +1,11 @@
 "use client";
-
 import React from "react";
 import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot, CheckCircle2, AlertCircle } from "lucide-react";
 import Link from "next/link";
-
 import { useParams } from "next/navigation";
 import { getApplicationDetails, rejectApplication, acceptApplication } from "@/lib/api/applications";
 import { Loader2 } from "lucide-react";
 import InterviewSchedulerModal from "@/components/candidates/InterviewSchedulerModal";
-
 export default function CandidateDetailPage() {
   const { id } = useParams();
   const [appData, setAppData] = React.useState<any>(null);
@@ -17,7 +14,6 @@ export default function CandidateDetailPage() {
   const [rejecting, setRejecting] = React.useState(false);
   const [accepting, setAccepting] = React.useState(false);
   const [isInterviewModalOpen, setIsInterviewModalOpen] = React.useState(false);
-
   const fetchDetails = async () => {
     try {
       const data = await getApplicationDetails(id as string);
@@ -30,26 +26,21 @@ export default function CandidateDetailPage() {
       if (loading) setLoading(false);
     }
   };
-
   React.useEffect(() => {
     let timeoutId: any;
-    
     const initFetch = async () => {
       const data = await fetchDetails();
       if (data) {
-        
         if (!data.score || data.score.recommendation === "PENDING" || !data.score.ai_summary) {
           timeoutId = setTimeout(initFetch, 3000);
         }
       }
     };
     if (id) initFetch();
-
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [id, loading]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -57,7 +48,6 @@ export default function CandidateDetailPage() {
       </div>
     );
   }
-
   if (error || !appData) {
     return (
       <div className="p-8 text-center text-red-500 bg-red-500/10 rounded-xl">
@@ -65,7 +55,6 @@ export default function CandidateDetailPage() {
       </div>
     );
   }
-
   const handleReject = async () => {
     setRejecting(true);
     try {
@@ -77,7 +66,6 @@ export default function CandidateDetailPage() {
       setRejecting(false);
     }
   };
-
   const handleAccept = async () => {
     setAccepting(true);
     try {
@@ -89,11 +77,9 @@ export default function CandidateDetailPage() {
       setAccepting(false);
     }
   };
-
   const handleInterviewSuccess = async () => {
     await fetchDetails();
   };
-
   const { application, candidate, job, score, resume } = appData;
   const match = score?.relative_score ?? score?.match_percentage ?? 0;
   const aiSummary = score?.ai_summary || "Evaluation pending...";
@@ -101,14 +87,12 @@ export default function CandidateDetailPage() {
   const weaknesses = score?.weaknesses || [];
   const recommendation = score?.recommendation || "Pending";
   const interviews = appData.interviews || [];
-
   return (
     <div className="space-y-8 pb-10">
       <Link href={job?.id ? `/jobs/${job.id}` : "/jobs"} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground font-medium transition-colors">
         <ArrowLeft size={16} />
         Back to Requisition
       </Link>
-
       <div className="flex flex-col lg:flex-row gap-6">
         {}
         <div className="lg:w-1/2 space-y-6">
@@ -122,7 +106,6 @@ export default function CandidateDetailPage() {
                 </div>
               </div>
             )}
-            
             {application?.status?.toUpperCase() === "HIRED" && (
               <div className="absolute top-4 -left-6 flex items-center justify-center -rotate-12 opacity-90 pointer-events-none z-20">
                 <div className="w-28 h-28 rounded-full border-4 border-double border-green-500 absolute bg-background/40 backdrop-blur-[2px]"></div>
@@ -146,7 +129,6 @@ export default function CandidateDetailPage() {
               </span>
             </div>
           </div>
-
           <div className="bg-card border border-border rounded-xl p-6 flex-1 min-h-[500px] flex flex-col shadow-sm relative">
             <h3 className="font-semibold text-sm uppercase tracking-wide text-foreground mb-4 flex items-center gap-2">
               <FileText size={16} className="text-muted-foreground" /> Original Resume
@@ -168,7 +150,6 @@ export default function CandidateDetailPage() {
             </div>
           </div>
         </div>
-
         {}
         <div className="lg:w-1/2 space-y-6">
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm relative overflow-hidden">
@@ -192,13 +173,11 @@ export default function CandidateDetailPage() {
                 <span className="text-2xl font-bold tracking-tight text-foreground">{match}%</span>
               </div>
             </div>
-            
             <div className="bg-secondary/50 border border-border rounded-lg p-4 mb-6">
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {aiSummary}
               </p>
             </div>
-            
             <div className="space-y-6 mt-6">
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground mb-3 flex items-center gap-2">
@@ -216,7 +195,6 @@ export default function CandidateDetailPage() {
                   )}
                 </ul>
               </div>
-              
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground mb-3 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-muted-foreground"></span>
@@ -234,7 +212,6 @@ export default function CandidateDetailPage() {
                 </ul>
               </div>
             </div>
-            
             <div className="mt-8 pt-6 border-t border-border">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Recommendation</span>
@@ -244,8 +221,6 @@ export default function CandidateDetailPage() {
               </div>
             </div>
           </div>
-          
-
           {interviews.length > 0 && (
             <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
               <h3 className="font-semibold text-sm uppercase tracking-wide text-foreground mb-4">Interviews</h3>
@@ -282,13 +257,11 @@ export default function CandidateDetailPage() {
               </div>
             </div>
           )}
-          
           {application?.status?.toUpperCase() === "HIRED" ? (
             <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-6 shadow-sm flex flex-col items-center justify-center gap-3 relative">
               <CheckCircle2 size={48} className="text-green-500" />
               <h3 className="font-black text-xl uppercase tracking-widest text-green-500">Candidate Hired</h3>
               <p className="text-sm text-green-500/80 font-medium">This candidate's workforce onboarding has been initiated.</p>
-              
               <button 
                 onClick={handleAccept}
                 disabled={accepting}
@@ -306,7 +279,6 @@ export default function CandidateDetailPage() {
           ) : (
             <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
               <h3 className="font-semibold text-sm uppercase tracking-wide text-foreground mb-4">Recruiter Actions</h3>
-              
               {interviews.length > 0 ? (
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button 
@@ -348,7 +320,6 @@ export default function CandidateDetailPage() {
           )}
         </div>
       </div>
-
       <InterviewSchedulerModal
         isOpen={isInterviewModalOpen}
         onClose={() => setIsInterviewModalOpen(false)}

@@ -1,11 +1,9 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { Briefcase, Users, FileText, Settings, BookOpen, UserPlus, Loader2, ArrowRight } from "lucide-react";
-
 export default function ManagementDashboard() {
   const { profile, loading: profileLoading } = useUser();
   const supabase = createClient();
@@ -16,7 +14,6 @@ export default function ManagementDashboard() {
     employeesCount: 0
   });
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     async function fetchStats() {
       if (!profile) return;
@@ -28,7 +25,6 @@ export default function ManagementDashboard() {
           supabase.from("applications").select("id", { count: "exact", head: true }),
           supabase.from("profiles").select("id", { count: "exact", head: true }).in("role", ["EMPLOYEE", "MANAGEMENT", "HR", "ADMIN"])
         ]);
-
         setStats({
           jobsCount: jobsRes.count || 0,
           candidatesCount: candidatesRes.count || 0,
@@ -41,12 +37,10 @@ export default function ManagementDashboard() {
         setLoading(false);
       }
     }
-
     if (!profileLoading && profile) {
       fetchStats();
     }
   }, [profileLoading, profile, supabase]);
-
   if (profileLoading || loading) {
     return (
       <div className="flex justify-center p-20">
@@ -54,16 +48,13 @@ export default function ManagementDashboard() {
       </div>
     );
   }
-
   const quickLinks = [
     { title: "Manage Jobs", icon: <Briefcase className="w-5 h-5" />, href: "/jobs", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
     { title: "Knowledge Base", icon: <BookOpen className="w-5 h-5" />, href: "/knowledge", color: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
     { title: "Onboarding Setup", icon: <UserPlus className="w-5 h-5" />, href: "/onboarding", color: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
   ];
-
   return (
     <div className="space-y-8 animate-fade-in pb-10">
-      
       {}
       <div className="bg-foreground text-background rounded-3xl p-8 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="absolute top-[-50%] right-[-10%] w-[50%] h-[200%] bg-white/5 rounded-full blur-3xl pointer-events-none mix-blend-screen" />
@@ -74,7 +65,6 @@ export default function ManagementDashboard() {
           </p>
         </div>
       </div>
-
       {}
       <div>
         <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Overview</h2>
@@ -85,7 +75,6 @@ export default function ManagementDashboard() {
           <StatCard title="Active Employees" value={stats.employeesCount.toString()} icon={<UserPlus size={16} />} />
         </div>
       </div>
-
       {}
       <div>
         <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Shortcuts</h2>
@@ -107,11 +96,9 @@ export default function ManagementDashboard() {
           ))}
         </div>
       </div>
-
     </div>
   );
 }
-
 function StatCard({ title, value, icon }: { title: string, value: string, icon: React.ReactNode }) {
   return (
     <div className="p-6 bg-card border border-border rounded-2xl shadow-sm flex items-center justify-between group hover:border-foreground/20 transition-colors">

@@ -19,9 +19,9 @@ class AIService:
     def generate_completion(self, system_prompt: str, user_prompt: str, model: str = "gemini-3.6-flash"):
         """Wrapper for basic Chat Completions using Gemini."""
         prompt = f"System: {system_prompt}\n\nUser: {user_prompt}"
-        # Start the fallback chain with the preferred model, overriding the default list if needed,
-        # but here we'll let the fallback handle it and just pass models=[model] + default_models 
-        # or simply rely on the default. Let's rely on the default fallback list.
+
+
+
         response = execute_with_fallback(
             client=self.genai_client,
             contents=prompt

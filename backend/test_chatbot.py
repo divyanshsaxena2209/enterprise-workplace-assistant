@@ -6,8 +6,7 @@ async def test_chatbot():
     print("Testing chatbot...")
     question = "What is the policy on taking time off according to the Basecamp employee handbook?"
     print(f"Question: {question}")
-    
-    # Run the retrieval and answer generation
+
     result = await asyncio.to_thread(retrieve_and_answer, question, k=5, chat_history=[])
     
     print("\nAnswer:")

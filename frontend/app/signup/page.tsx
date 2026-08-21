@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -8,17 +7,13 @@ import {
   User, Mail, Lock, Briefcase, Phone, MapPin, 
   FileText, Shield, ArrowRight, ArrowLeft, Loader2, Sparkles, CheckCircle
 } from "lucide-react";
-
 export default function SignupPage() {
   const router = useRouter();
   const supabase = createClient();
-  
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signupSuccess, setSignupSuccess] = useState(false);
-
-  
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -33,12 +28,10 @@ export default function SignupPage() {
     bio: "",
     avatarUrl: "",
   });
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
-
   const validateStep = () => {
     setError(null);
     if (step === 1) {
@@ -55,7 +48,6 @@ export default function SignupPage() {
     }
     return null;
   };
-
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
     const validationError = validateStep();
@@ -65,12 +57,10 @@ export default function SignupPage() {
     }
     setStep((prev) => prev + 1);
   };
-
   const handleBack = () => {
     setError(null);
     setStep((prev) => prev - 1);
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const validationError = validateStep();
@@ -78,10 +68,8 @@ export default function SignupPage() {
       setError(validationError);
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
       const { data, error: signupError } = await supabase.auth.signUp({
         email: formData.email,
@@ -101,11 +89,9 @@ export default function SignupPage() {
           },
         },
       });
-
       if (signupError) {
         throw new Error(signupError.message);
       }
-
       if (data?.user) {
         document.cookie = "guest_mode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         setSignupSuccess(true);
@@ -120,11 +106,9 @@ export default function SignupPage() {
       setLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-background text-foreground selection:bg-foreground selection:text-background py-10 px-4">
       <div className="max-w-lg w-full bg-card rounded-2xl shadow-xl border border-border overflow-hidden transition-all duration-300">
-        
         {}
         <div className="bg-secondary/40 border-b border-border p-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -135,7 +119,6 @@ export default function SignupPage() {
             Step {step} of 3
           </span>
         </div>
-
         {}
         <div className="w-full bg-secondary h-1">
           <div 
@@ -143,7 +126,6 @@ export default function SignupPage() {
             style={{ width: `${(step / 3) * 100}%` }}
           />
         </div>
-
         <div className="p-8">
           <div className="mb-6">
             <h2 className="text-2xl font-black tracking-tight text-foreground">
@@ -157,14 +139,12 @@ export default function SignupPage() {
               {step === 3 && "Add contact information to complete your onboarding."}
             </p>
           </div>
-
           {error && !signupSuccess && (
             <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-xs font-medium text-destructive flex items-center gap-3">
               <Shield className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
-
           {signupSuccess ? (
             <div className="text-center py-10 space-y-4">
               <div className="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
@@ -175,7 +155,6 @@ export default function SignupPage() {
             </div>
           ) : (
             <form onSubmit={step === 3 ? handleSubmit : handleNext} className="space-y-5">
-            
             {}
             {step === 1 && (
               <div className="space-y-4">
@@ -195,7 +174,6 @@ export default function SignupPage() {
                     />
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Work Email Address</label>
                   <div className="relative">
@@ -212,7 +190,6 @@ export default function SignupPage() {
                     />
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Password</label>
@@ -230,7 +207,6 @@ export default function SignupPage() {
                       />
                     </div>
                   </div>
-
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Confirm Password</label>
                     <div className="relative">
@@ -250,7 +226,6 @@ export default function SignupPage() {
                 </div>
               </div>
             )}
-
             {}
             {step === 2 && (
               <div className="space-y-4">
@@ -269,7 +244,6 @@ export default function SignupPage() {
                     </select>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Department</label>
@@ -286,7 +260,6 @@ export default function SignupPage() {
                       />
                     </div>
                   </div>
-
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Job Title</label>
                     <div className="relative">
@@ -303,7 +276,6 @@ export default function SignupPage() {
                     </div>
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
                     Employee ID {formData.role === "Management" ? "(Mandatory)" : "(Optional)"}
@@ -323,7 +295,6 @@ export default function SignupPage() {
                 </div>
               </div>
             )}
-
             {}
             {step === 3 && (
               <div className="space-y-4">
@@ -342,7 +313,6 @@ export default function SignupPage() {
                       />
                     </div>
                   </div>
-
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Location</label>
                     <div className="relative">
@@ -358,7 +328,6 @@ export default function SignupPage() {
                     </div>
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Profile Image URL (Optional)</label>
                   <div className="relative">
@@ -373,7 +342,6 @@ export default function SignupPage() {
                     />
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Short Bio (Optional)</label>
                   <textarea 
@@ -387,7 +355,6 @@ export default function SignupPage() {
                 </div>
               </div>
             )}
-
             {}
             <div className="flex gap-4 pt-4">
               {step > 1 && (
@@ -402,7 +369,6 @@ export default function SignupPage() {
                   Back
                 </button>
               )}
-              
               <button
                 type="submit"
                 disabled={loading}
@@ -424,7 +390,6 @@ export default function SignupPage() {
             </div>
           </form>
         )}
-
           {!signupSuccess && (
             <div className="text-center mt-6">
               <p className="text-xs text-muted-foreground">

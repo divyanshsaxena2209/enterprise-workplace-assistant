@@ -1,9 +1,7 @@
 "use client";
-
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { checkIsHired } from "@/lib/api/applications";
-
 interface UserProfile {
   id: string;
   email: string;
@@ -18,7 +16,6 @@ interface UserProfile {
   avatar_url: string;
   created_at: string;
 }
-
 interface UserContextType {
   profile: UserProfile | null;
   loading: boolean;
@@ -26,7 +23,6 @@ interface UserContextType {
   accessToken: string | null;
   refreshProfile: () => Promise<void>;
 }
-
 const guestProfile: UserProfile = {
   id: "guest-id",
   email: "guest@company.com",
@@ -41,36 +37,21 @@ const guestProfile: UserProfile = {
   avatar_url: "",
   created_at: new Date().toISOString(),
 };
-
-let globalAuthSessionPromise: Promise<any> | null = null;
-
 const UserContext = createContext<UserContextType | undefined>(undefined);
-
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isHired, setIsHired] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-
   const fetchProfile = React.useCallback(async (sessionArg?: any) => {
     try {
       let session = sessionArg;
       if (!session) {
-        if (!globalAuthSessionPromise) {
-          globalAuthSessionPromise = supabase.auth.getSession();
-        }
-        
-        const timeoutPromise = new Promise<{data: any, error: any}>((_, reject) => 
-          setTimeout(() => reject(new Error("Supabase getSession timed out in UserContext")), 30000)
-        );
-        
-        const result = await Promise.race([globalAuthSessionPromise, timeoutPromise]);
-        session = result.data?.session;
+        const { data } = await supabase.auth.getSession();
+        session = data?.session;
       }
-      
       const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');
-
       if (!session?.user) {
         if (isGuestMode) {
           setProfile(guestProfile);
@@ -82,15 +63,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return;
       }
-      
       setAccessToken(session.access_token || null);
-
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", session.user.id)
         .single();
-
       if (error) {
         console.error("Error fetching user profile:", error);
         setProfile(null);
@@ -101,7 +79,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           const hiredStatus = await checkIsHired();
           setIsHired(hiredStatus);
         } else if (data.role === "MANAGEMENT" || data.employee_id) {
-          
           setIsHired(true); 
         }
       }
@@ -112,11 +89,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   }, [supabase]);
-
   useEffect(() => {
     fetchProfile();
-
-    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         await fetchProfile(session);
@@ -132,19 +106,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       }
     });
-
     return () => {
       subscription.unsubscribe();
     };
   }, [fetchProfile, supabase]);
-
   return (
     <UserContext.Provider value={{ profile, loading, isHired, accessToken, refreshProfile: fetchProfile }}>
       {children}
     </UserContext.Provider>
   );
 }
-
 export function useUser() {
   const context = useContext(UserContext);
   if (context === undefined) {
