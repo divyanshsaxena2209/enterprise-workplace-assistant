@@ -37,7 +37,7 @@ export default function InterviewSchedulerModal({
       const dateVal = formData.get("date") as string;
       const timeVal = formData.get("time") as string;
       let meetingLinkVal = formData.get("meetingLink") as string;
-      if (meetingLinkVal && !/^https?:\/\
+      if (meetingLinkVal && !meetingLinkVal.startsWith("http://") && !meetingLinkVal.startsWith("https://")) {
         meetingLinkVal = `https://${meetingLinkVal}`;
       }
       const notesVal = formData.get("notes") as string;
