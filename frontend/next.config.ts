@@ -4,8 +4,4 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
 };
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 export default nextConfig;
