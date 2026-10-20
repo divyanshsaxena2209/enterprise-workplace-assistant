@@ -47,7 +47,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const fetchProfile = React.useCallback(async (sessionArg?: any) => {
     try {
       let session = sessionArg;
-      if (!session) {
+      if (sessionArg === undefined) {
         const { data } = await supabase.auth.getSession();
         session = data?.session;
       }
@@ -79,7 +79,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           const hiredStatus = await checkIsHired();
           setIsHired(hiredStatus);
         } else if (data.role === "MANAGEMENT" || data.employee_id) {
-          setIsHired(true); 
+          setIsHired(true);
         }
       }
     } catch (err) {
@@ -89,27 +89,48 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   }, [supabase]);
+
   useEffect(() => {
-    fetchProfile();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        await fetchProfile(session);
-      } else if (event === "SIGNED_OUT") {
-        const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');
-        if (isGuestMode) {
-          setProfile(guestProfile);
-          setAccessToken("guest");
-        } else {
-          setProfile(null);
-          setAccessToken(null);
+    let mounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    const initializeAuth = async () => {
+      // Finish restoring the persisted session and initial profile before
+      // subscribing. Registering this listener in the same tick as getSession()
+      // can deadlock Supabase auth's Web Lock when a session needs refreshing.
+      await fetchProfile();
+      if (!mounted) return;
+
+      const { data } = supabase.auth.onAuthStateChange((event: any, session: any) => {
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          // Keep the auth callback synchronous; do profile/network work after
+          // Supabase has completed its internal auth lock operation.
+          setTimeout(() => {
+            if (mounted) void fetchProfile(session);
+          }, 0);
+        } else if (event === "SIGNED_OUT") {
+          const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');
+          if (isGuestMode) {
+            setProfile(guestProfile);
+            setAccessToken("guest");
+          } else {
+            setProfile(null);
+            setAccessToken(null);
+          }
+          setLoading(false);
         }
-        setLoading(false);
-      }
-    });
+      });
+      subscription = data.subscription;
+    };
+
+    void initializeAuth();
+
     return () => {
-      subscription.unsubscribe();
+      mounted = false;
+      subscription?.unsubscribe();
     };
   }, [fetchProfile, supabase]);
+
   return (
     <UserContext.Provider value={{ profile, loading, isHired, accessToken, refreshProfile: fetchProfile }}>
       {children}
