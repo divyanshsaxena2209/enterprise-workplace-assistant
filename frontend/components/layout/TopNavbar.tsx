@@ -11,7 +11,23 @@ export default function TopNavbar() {
   const { profile, loading } = useUser();
   const supabase = createClient();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [avatarState, setAvatarState] = useState<"primary" | "fallback" | "initials">("primary");
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setAvatarState("primary");
+  }, [profile?.avatar_url, profile?.full_name]);
+
+  const fallbackAvatarUrl = profile
+    ? `https://api.dicebear.com/10.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name || profile.email || "user")}`
+    : "";
+  const avatarSrc = !profile
+    ? null
+    : avatarState === "initials"
+      ? null
+      : avatarState === "fallback"
+        ? fallbackAvatarUrl
+        : (profile.avatar_url || fallbackAvatarUrl);
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -98,11 +114,34 @@ export default function TopNavbar() {
               onClick={() => setDropdownOpen(!dropdownOpen)}
               className="flex items-center gap-3 text-left focus:outline-none group px-2 py-1 rounded-full hover:bg-white/5 transition-colors border border-transparent hover:border-white/10"
             >
-              <img
-                src={profile.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name)}`}
-                alt={profile.full_name}
-                className="w-10 h-10 rounded-full border border-white/20 object-cover bg-black/50 shadow-sm"
-              />
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt={profile.full_name}
+                  onError={() => {
+                    if (avatarState === "primary" && profile.avatar_url && profile.avatar_url !== fallbackAvatarUrl) {
+                      setAvatarState("fallback");
+                    } else {
+                      setAvatarState("initials");
+                    }
+                  }}
+                  className="w-10 h-10 rounded-full border border-white/20 object-cover bg-black/50 shadow-sm"
+                />
+              ) : (
+                <div
+                  role="img"
+                  aria-label={`${profile.full_name} profile avatar`}
+                  className="w-10 h-10 rounded-full border border-white/20 bg-gradient-to-br from-zinc-600 to-zinc-900 text-white shadow-sm flex items-center justify-center text-xs font-bold"
+                >
+                  {(profile.full_name || profile.email || "U")
+                    .trim()
+                    .split(/\\s+/)
+                    .slice(0, 2)
+                    .map((part) => part[0] || "")
+                    .join("")
+                    .toUpperCase()}
+                </div>
+              )}
               <div className="hidden sm:block">
                 <p className="text-xs font-bold text-white leading-none">{profile.full_name}</p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">{profile.role}</p>
