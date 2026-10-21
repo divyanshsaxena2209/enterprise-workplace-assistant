@@ -58,7 +58,7 @@ def decode_cognito_access_token(token: str) -> dict[str, Any]:
         raise AuthenticationError("Invalid Cognito access token.") from exc
 
 
-def decode_cognito_id_token(token: str) -> dict[str, Any]:
+def decode_cognito_id_token(token: str, expected_nonce: str) -> dict[str, Any]:
     """Verify a Cognito ID token for explicit account linking; not an API bearer token."""
     if not settings.COGNITO_ENABLED:
         raise AuthenticationError("Cognito authentication is not enabled.")
@@ -82,11 +82,13 @@ def decode_cognito_id_token(token: str) -> dict[str, Any]:
                 "verify_exp": True,
                 "verify_iss": True,
                 "verify_aud": True,
-                "require": ["exp", "iss", "sub", "aud", "token_use", "email", "email_verified"],
+                "require": ["exp", "iss", "sub", "aud", "token_use", "email", "email_verified", "nonce"],
             },
         )
         if claims.get("token_use") != "id":
             raise AuthenticationError("A Cognito ID token is required for account linking.")
+        if not expected_nonce or claims.get("nonce") != expected_nonce:
+            raise AuthenticationError("Cognito ID token nonce does not match the sign-in request.")
         if claims.get("email_verified") is not True:
             raise AuthenticationError("Verify the Cognito email address before linking accounts.")
         if not isinstance(claims.get("email"), str) or not claims["email"].strip():
