@@ -56,3 +56,43 @@ def decode_cognito_access_token(token: str) -> dict[str, Any]:
         raise
     except (InvalidTokenError, PyJWKClientError, ValueError, TypeError) as exc:
         raise AuthenticationError("Invalid Cognito access token.") from exc
+
+
+def decode_cognito_id_token(token: str) -> dict[str, Any]:
+    """Verify a Cognito ID token for explicit account linking; not an API bearer token."""
+    if not settings.COGNITO_ENABLED:
+        raise AuthenticationError("Cognito authentication is not enabled.")
+    if not settings.COGNITO_APP_CLIENT_ID:
+        raise AuthenticationError("Cognito app client is not configured.")
+
+    issuer = (
+        f"https://cognito-idp.{settings.COGNITO_REGION}.amazonaws.com/"
+        f"{settings.COGNITO_USER_POOL_ID}"
+    )
+    try:
+        signing_key = _jwks_client().get_signing_key_from_jwt(token).key
+        claims = jwt.decode(
+            token,
+            signing_key,
+            algorithms=["RS256"],
+            issuer=issuer,
+            audience=settings.COGNITO_APP_CLIENT_ID,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_iss": True,
+                "verify_aud": True,
+                "require": ["exp", "iss", "sub", "aud", "token_use", "email", "email_verified"],
+            },
+        )
+        if claims.get("token_use") != "id":
+            raise AuthenticationError("A Cognito ID token is required for account linking.")
+        if claims.get("email_verified") is not True:
+            raise AuthenticationError("Verify the Cognito email address before linking accounts.")
+        if not isinstance(claims.get("email"), str) or not claims["email"].strip():
+            raise AuthenticationError("Cognito ID token does not contain a verified email.")
+        return claims
+    except AuthenticationError:
+        raise
+    except (InvalidTokenError, PyJWKClientError, ValueError, TypeError) as exc:
+        raise AuthenticationError("Invalid Cognito ID token.") from exc
