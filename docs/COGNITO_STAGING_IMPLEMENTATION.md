@@ -65,3 +65,65 @@ The branch workflow `.github/workflows/build-cognito-staging-ecr.yml` builds the
 It does not push `latest`, update the production Lambda function, or change its environment. Use this exact staging-tagged image only when creating a separate staging Lambda function. If the build fails during OIDC role assumption, the IAM role trust policy must be reviewed to allow this repository branch in addition to the existing permitted branch; do not broaden permissions beyond this repository/branch need.
 
 The staging Lambda should use separate staging configuration and a staging database/project. Do not point a Cognito-preview signup flow at Production Lambda, because the new-user linking endpoint provisions profile records.
+
+
+## Required IAM role to build the staging image
+
+The staging image workflow intentionally does not use the existing `GitHubActions-EWA-Deploy` role, because that role is used by the production build path and does not trust this staging ref. Create a separate role with only ECR push permissions before rerunning the staging image workflow.
+
+### Trust policy
+
+Create an IAM role named `GitHubActions-EWA-Cognito-Staging-ECR` with **Web identity** as the trusted entity. Select the existing OIDC provider `token.actions.githubusercontent.com` and audience `sts.amazonaws.com`, then ensure its trust relationship uses this exact repository/branch subject (keep the audience condition too):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::745531385877:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:divyanshsaxena2209/enterprise-workplace-assistant:ref:refs/heads/cognito-staging-integration"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Inline ECR policy
+
+Attach this inline policy to that role. It can push only to the existing backend ECR repository; it cannot update Lambda or change production infrastructure.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRLogin",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushOnlyToBackendRepository",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:ap-south-1:745531385877:repository/enterprise-workplace-assistant-backend"
+    }
+  ]
+}
+```
+
+After creating the role, open the [staging ECR workflow](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml), select branch `cognito-staging-integration`, and choose **Run workflow**. Expected output image tag is `cognito-staging-<commit-sha>`. This workflow never pushes `latest` and never updates a Lambda function.
