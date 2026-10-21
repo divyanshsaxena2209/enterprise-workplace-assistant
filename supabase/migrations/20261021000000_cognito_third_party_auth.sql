@@ -68,7 +68,7 @@ begin
             ', '
         )
         into roles_sql
-        from unnest(policy_row.roles) as role_name;
+        from unnest(policy_row.roles) as role_entries(role_name);
 
         policy_sql := format(
             'create policy %I on %I.%I as %s for %s to %s',
