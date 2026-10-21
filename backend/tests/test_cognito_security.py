@@ -130,3 +130,60 @@ def test_rejects_missing_subject(signing_keys):
     )
     with pytest.raises(AuthenticationError, match="Invalid Cognito access token"):
         cognito_security.decode_cognito_access_token(token)
+
+
+def make_id_token(private_key, **overrides):
+    now = datetime.now(timezone.utc)
+    claims = {
+        "iss": ISSUER,
+        "sub": "cognito-user-sub",
+        "aud": CLIENT_ID,
+        "token_use": "id",
+        "email": "employee@example.com",
+        "email_verified": True,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=5)).timestamp()),
+    }
+    claims.update(overrides)
+    return jwt.encode(claims, private_key, algorithm="RS256", headers={"kid": "unit-test-key"})
+
+
+def test_accepts_valid_verified_id_token_for_account_linking(signing_keys):
+    private_key, _ = signing_keys
+    claims = cognito_security.decode_cognito_id_token(make_id_token(private_key))
+    assert claims["sub"] == "cognito-user-sub"
+    assert claims["email"] == "employee@example.com"
+    assert claims["email_verified"] is True
+
+
+def test_rejects_unverified_email_for_account_linking(signing_keys):
+    private_key, _ = signing_keys
+    with pytest.raises(AuthenticationError, match="Verify the Cognito email"):
+        cognito_security.decode_cognito_id_token(
+            make_id_token(private_key, email_verified=False)
+        )
+
+
+def test_rejects_id_token_for_another_app_client(signing_keys):
+    private_key, _ = signing_keys
+    with pytest.raises(AuthenticationError, match="Invalid Cognito ID token"):
+        cognito_security.decode_cognito_id_token(
+            make_id_token(private_key, aud="another-client")
+        )
+
+
+def test_rejects_access_token_for_account_linking(signing_keys):
+    private_key, _ = signing_keys
+    with pytest.raises(AuthenticationError, match="A Cognito ID token is required"):
+        cognito_security.decode_cognito_id_token(
+            make_id_token(private_key, token_use="access")
+        )
+
+
+def test_rejects_expired_id_token(signing_keys):
+    private_key, _ = signing_keys
+    past = datetime.now(timezone.utc) - timedelta(minutes=5)
+    with pytest.raises(AuthenticationError, match="Invalid Cognito ID token"):
+        cognito_security.decode_cognito_id_token(
+            make_id_token(private_key, exp=int(past.timestamp()))
+        )
