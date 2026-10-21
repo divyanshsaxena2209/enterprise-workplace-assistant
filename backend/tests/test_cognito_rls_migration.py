@@ -17,6 +17,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute("drop schema if exists public cascade")
         conn.execute("create schema public")
+        conn.execute("grant usage on schema public to anon, authenticated, service_role")
         conn.execute("drop schema if exists auth cascade")
         conn.execute("create schema auth")
         conn.execute("create role anon nologin")
