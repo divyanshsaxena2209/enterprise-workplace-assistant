@@ -28,7 +28,7 @@ jobs:
 
       - name: Run storage unit tests
         run: |
-          python -m pip install --disable-pip-version-check pydantic-settings pytest
+          python -m pip install --disable-pip-version-check fastapi pydantic-settings pytest
           PYTHONPATH=backend pytest -q backend/tests/test_object_storage.py
 
       - name: Configure AWS credentials through OIDC
