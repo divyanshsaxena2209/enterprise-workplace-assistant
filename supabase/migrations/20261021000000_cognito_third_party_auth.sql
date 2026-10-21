@@ -49,7 +49,7 @@ begin
     for policy_row in
         select *
         from pg_policies
-        where schemaname = 'public'
+        where schemaname in ('public', 'storage')
           and (
               position('auth.uid()' in coalesce(qual, '')) > 0
               or position('auth.uid()' in coalesce(with_check, '')) > 0
