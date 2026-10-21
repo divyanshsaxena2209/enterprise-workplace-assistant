@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { clearCognitoAccessTokenCache, getCognitoAccessToken } from "@/lib/auth/cognito";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
 const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
@@ -18,31 +19,31 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit & { t
     headers["Authorization"] = "Bearer guest";
   } else {
     if (typeof window !== "undefined") {
-      if (!cachedAccessToken) {
-        if (!tokenRefreshPromise) {
-          tokenRefreshPromise = (async () => {
-            const supabase = createClient();
-            try {
+      if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+        headers["Authorization"] = `Bearer ${await getCognitoAccessToken()}`;
+      } else {
+        if (!cachedAccessToken) {
+          if (!tokenRefreshPromise) {
+            tokenRefreshPromise = (async () => {
+              const supabase = createClient();
               const { data, error } = await supabase.auth.getSession();
               if (error || !data?.session?.access_token) {
                 throw new Error(error?.message || "User is not authenticated");
               }
               return data.session.access_token;
-            } catch (err) {
-              throw err;
-            }
-          })();
+            })();
+          }
+          try {
+            cachedAccessToken = await tokenRefreshPromise;
+          } catch (err) {
+            tokenRefreshPromise = null;
+            throw err;
+          } finally {
+            tokenRefreshPromise = null;
+          }
         }
-        try {
-          cachedAccessToken = await tokenRefreshPromise;
-        } catch (err) {
-          tokenRefreshPromise = null;
-          throw err;
-        } finally {
-          tokenRefreshPromise = null;
-        }
+        headers["Authorization"] = `Bearer ${cachedAccessToken}`;
       }
-      headers["Authorization"] = `Bearer ${cachedAccessToken}`;
     }
   }
   const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type');
@@ -91,6 +92,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit & { t
   if (!response.ok) {
     if (response.status === 401) {
       cachedAccessToken = null;
+      clearCognitoAccessTokenCache();
     }
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.message || errorData.detail || `API Error: ${response.status}`);
