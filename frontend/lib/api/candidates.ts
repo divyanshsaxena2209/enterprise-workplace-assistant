@@ -49,7 +49,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit & { t
   if (!hasContentType && typeof options.body === "string") {
     headers["Content-Type"] = "application/json";
   }
-  console.log(`[fetchWithAuth] Executing fetch with headers:`, headers);
+  console.log(`[fetchWithAuth] Executing fetch request: ${options.method || "GET"} ${endpoint}`);
   let fetchPromise;
   try {
     const fetchOptions: RequestInit = {
