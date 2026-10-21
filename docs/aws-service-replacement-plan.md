@@ -30,7 +30,7 @@ Do not remove Supabase, Gemini, Qdrant, Lambda, or ECR until each replacement is
 - Added `STORAGE_PROVIDER`, `AWS_REGION`, `AWS_S3_BUCKET`, and presigned-URL lifetime settings. The default provider remains `supabase`, so existing production configuration is unchanged.
 - Added an object-storage provider using the Lambda execution role's default AWS credential chain (no AWS access keys), SSE-S3 encryption, private object keys under `knowledge/` and `resumes/`, and short-lived presigned GET URLs.
 - Updated knowledge-document upload/delete/view flow and resume upload/detail flow to use S3 when `STORAGE_PROVIDER=s3`.
-- Added unit tests for S3 object prefixes, encryption, deletes, and presigned URL scope. These tests are committed but have not yet been run in CI.
+- Added unit tests for S3 object prefixes, encryption, deletes, and presigned URL scope. The isolated GitHub Actions test workflow passed on commit `ef124a681d8af3ff5e2f4855847280be6c2a6543`.
 - This branch has not been merged or deployed. The S3 bucket and Lambda IAM policy are not yet created. Existing Supabase files/data have not been bulk-migrated to S3.
 
 ## Safe migration order
