@@ -9,9 +9,13 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.security import bearer_scheme
+from app.core.cognito_security import decode_cognito_id_token
+from app.core.exceptions import AuthenticationError, AuthorizationError
+from app.repositories.cognito_identity_repository import CognitoIdentityRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.db.supabase import get_supabase_client
 from app.dependencies.auth import get_current_user
-from app.schemas.auth import LoginRequest, SignupRequest, TokenResponse
+from app.schemas.auth import CognitoLinkRequest, LoginRequest, SignupRequest, TokenResponse
 from app.schemas.common import ErrorResponse, SuccessResponse
 from app.schemas.profile import ProfileResponse
 from app.services.auth_service import AuthService
@@ -150,3 +154,34 @@ def get_me(
     Use this endpoint to bootstrap the frontend after login.
     """
     return current_user
+
+
+@router.post(
+    "/cognito/link",
+    response_model=SuccessResponse,
+    summary="Link Cognito to the currently signed-in Supabase profile",
+    description=(
+        "Staging migration endpoint. Requires the current Supabase session and a "
+        "verified Cognito ID token whose email exactly matches the existing profile. "
+        "Application roles continue to come from the Supabase profile."
+    ),
+)
+def link_cognito_identity(
+    body: CognitoLinkRequest,
+    current_user: ProfileResponse = Depends(get_current_user),
+) -> SuccessResponse:
+    """Link both identities only after proving control of both accounts."""
+    claims = decode_cognito_id_token(body.id_token)
+    cognito_email = str(claims["email"]).strip().lower()
+    profile_email = str(current_user.email).strip().lower()
+    if cognito_email != profile_email:
+        raise AuthorizationError(
+            "The verified Cognito email must match the currently signed-in account."
+        )
+    if not current_user.is_active:
+        raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
+
+    client = get_supabase_client()
+    mapping_repo = CognitoIdentityRepository(client)
+    mapping_repo.create_mapping(str(claims["sub"]), str(current_user.id))
+    return SuccessResponse(message="Cognito identity linked to the existing profile.")
