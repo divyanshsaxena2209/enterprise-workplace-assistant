@@ -6,8 +6,10 @@ Architecture:
 """
 
 import logging
+import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.middleware.auth_middleware import AuthMiddleware
@@ -88,7 +90,16 @@ app = FastAPI(
 app.add_middleware(AuthMiddleware)
 
 
-# CORS is configured at the AWS Lambda Function URL layer to avoid duplicate CORS headers.
+# Lambda Function URLs add the configured CORS headers themselves. Avoid emitting
+# a second set from FastAPI in Lambda; retain FastAPI CORS for local development.
+if not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[url.strip() for url in settings.FRONTEND_URLS.split(",") if url.strip()] if settings.FRONTEND_URLS else ["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 
