@@ -73,20 +73,26 @@ def upload_resume(
     client = get_supabase_client()
     
     
-    unique_filename = f"{uuid.uuid4()}_{file.filename.replace(' ', '_')}"
-    
     try:
-        
-        client.storage.from_("resumes").upload(
-            path=unique_filename,
-            file=file_bytes,
-            file_options={"content-type": file.content_type}
+        from app.core.config import settings
+        from app.services.object_storage import upload_knowledge_document
+
+        stored = upload_knowledge_document(
+            file.filename,
+            file_bytes,
+            file.content_type or "application/octet-stream",
+            prefix="resumes",
         )
-        
-        
-        file_url = client.storage.from_("resumes").get_public_url(unique_filename)
+        # Persist a stable S3 object key rather than an expiring presigned URL.
+        # CandidateRepository signs it when an authorised user requests details.
+        if stored["storage_provider"] == "s3":
+            file_url = f"s3://{stored['file_key']}"
+        else:
+            file_url = stored["file_url"]
     except Exception as exc:
-        raise DatabaseError(f"Failed to upload resume to storage: {exc}") from exc
+        raise DatabaseError(
+            f"Failed to upload resume to {settings.STORAGE_PROVIDER} object storage: {type(exc).__name__}"
+        ) from exc
 
     
     repo = CandidateRepository(client)
