@@ -50,6 +50,12 @@ Required Lambda environment variables:
 
 Keep `STORAGE_PROVIDER=supabase` until the S3 bucket, IAM policy, image build, and tests are complete. Setting it to `s3` changes new knowledge-document and resume uploads to S3; it does not automatically migrate old files. Existing Supabase URLs/objects remain where they are until a separate migration is planned.
 
+## What S3 stores in this app
+
+- Chatbot / Knowledge Base: the original PDF/DOCX file under `knowledge/`. Text chunks/embeddings remain in Qdrant so retrieval can work.
+- Resume uploads: the original PDF/DOCX file under `resumes/`. Parsed candidate data and the resume record remain in the relational database.
+- Job listings: the current form writes title, description, requirements, department, status, etc. as database fields; it does not upload a file. Do not copy listing text to S3. If a Job Description attachment feature is added later, give it a separate `job-descriptions/` prefix and store its object key in the database.
+
 ## 4. Smoke-test after deployment
 
 1. Health endpoint returns `status: ok`.
