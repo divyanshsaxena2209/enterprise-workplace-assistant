@@ -7,6 +7,7 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/test-service-replacements.yml"
+      - ".github/workflows/build-backend-ecr.yml"
   workflow_dispatch:
 
 permissions:
