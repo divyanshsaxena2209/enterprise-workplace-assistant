@@ -43,7 +43,7 @@ def test_s3_upload_uses_private_prefix_and_server_side_encryption(monkeypatch):
     )
 
     assert result["storage_provider"] == "s3"
-    assert result["file_key"].startswith("resumes/knowledge_")
+    assert result["file_key"].startswith("resumes/resumes_")
     assert result["file_url"] == "https://example.invalid/presigned"
     assert fake_s3.put_calls[0]["Bucket"] == "ewa-private-documents"
     assert fake_s3.put_calls[0]["Body"] == b"pdf-bytes"
