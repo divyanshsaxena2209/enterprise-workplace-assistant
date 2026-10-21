@@ -19,10 +19,11 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute("create schema public")
         conn.execute("drop schema if exists auth cascade")
         conn.execute("create schema auth")
+        conn.execute("create schema storage")
         conn.execute("create role anon nologin")
         conn.execute("create role authenticated nologin")
         conn.execute("create role service_role nologin bypassrls")
-        conn.execute("grant usage on schema public to anon, authenticated, service_role")
+        conn.execute("grant usage on schema public, storage to anon, authenticated, service_role")
         conn.execute(
             """
             create function auth.jwt() returns jsonb
@@ -39,6 +40,8 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         )
         conn.execute("create table public.profiles (id uuid primary key, role text not null)")
         conn.execute("create table public.test_owned (user_id uuid not null)")
+        conn.execute("create table storage.objects (owner_id uuid not null)")
+        conn.execute("alter table storage.objects enable row level security")
         conn.execute("alter table public.profiles enable row level security")
         conn.execute("alter table public.test_owned enable row level security")
         conn.execute(
@@ -53,9 +56,16 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             for select to authenticated using (auth.uid() = user_id)
             """
         )
-        conn.execute("grant select on public.test_owned to authenticated")
+        conn.execute(
+            """
+            create policy storage_owner_rows on storage.objects
+            for select to authenticated using (auth.uid() = owner_id)
+            """
+        )
+        conn.execute("grant select on public.test_owned, storage.objects to authenticated")
         conn.execute("insert into public.profiles (id, role) values (%s, 'EMPLOYEE')", (PROFILE_ID,))
         conn.execute("insert into public.test_owned (user_id) values (%s), (%s)", (PROFILE_ID, COGNITO_SUB))
+        conn.execute("insert into storage.objects (owner_id) values (%s), (%s)", (PROFILE_ID, COGNITO_SUB))
 
         migration = MIGRATION.read_text(encoding="utf-8")
         # psycopg executes the full migration as one script with prepare=False.
@@ -66,6 +76,11 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         ).fetchone()
         assert policy is not None
         assert "current_profile_id()" in (policy[0] or "")
+        storage_policy = conn.execute(
+            "select qual from pg_policies where schemaname='storage' and policyname='storage_owner_rows'"
+        ).fetchone()
+        assert storage_policy is not None
+        assert "current_profile_id()" in (storage_policy[0] or "")
         profile_policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='profile_self_update'"
         ).fetchone()
@@ -88,6 +103,10 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         mapped_rows = conn.execute("select user_id from public.test_owned").fetchall()
         assert [str(row[0]) for row in mapped_rows] == [PROFILE_ID]
         conn.execute("reset role")
+        conn.execute("set role authenticated")
+        storage_rows = conn.execute("select owner_id from storage.objects").fetchall()
+        assert [str(row[0]) for row in storage_rows] == [PROFILE_ID]
+        conn.execute("reset role")
 
         # An unlinked Cognito subject must resolve to NULL, not to its own sub.
         conn.execute(
@@ -97,6 +116,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         assert conn.execute("select public.current_profile_id()").fetchone()[0] is None
         conn.execute("set role authenticated")
         assert conn.execute("select user_id from public.test_owned").fetchall() == []
+        assert conn.execute("select owner_id from storage.objects").fetchall() == []
         conn.execute("reset role")
 
         # Existing Supabase Auth subjects still fall back to auth.uid().
