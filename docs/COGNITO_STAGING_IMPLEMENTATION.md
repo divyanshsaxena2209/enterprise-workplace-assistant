@@ -1,80 +1,55 @@
-# Cognito staging integration: implementation notes
+# Cognito staging integration
 
 ## Scope and safety
 
-This is a staged authentication migration only. Do not change `main`, deploy Lambda, remove Supabase Auth, or migrate Supabase PostgreSQL. Keep Gemini and Qdrant unchanged.
+This change is an opt-in staging path. The existing Supabase Auth login/signup, Supabase PostgreSQL, Gemini, and Qdrant remain the default/active services. Do not change Production Vercel variables, Production Lambda, the Supabase Production schema, or merge this PR until real staging login and regression checks pass.
 
-Staging Cognito resources created in `ap-south-1`:
+Staging Cognito identifiers:
+- Region: `ap-south-1`
 - User pool ID: `ap-south-1_89s6YRnwQ`
-- Public app client ID: `7npkisjjm5jj0fsqf94et8lqra`
-- Intended OAuth flow: authorization code grant with PKCE.
-- Requested OIDC scopes: `openid email`.
+- App client ID: `7npkisjjm5jj0fsqf94et8lqra`
+- OAuth: authorization code grant + PKCE
+- OIDC scopes: `openid email`
+- Cognito remains disabled in the backend unless `COGNITO_ENABLED=true`.
 
-Do not put secrets in source control. The app client must be a public client without a client secret.
+## What is implemented in the branch
 
-## Findings from the current code
+- FastAPI validates Cognito access tokens with RS256/JWKS, issuer, expiry, `token_use=access`, and app client ID. A separate ID-token verifier checks signature, issuer, expiry, audience/app client, `token_use=id`, verified email, and the OAuth nonce.
+- The API resolves Cognito `sub` through `public.cognito_identity_mappings` to the existing `public.profiles.id`; the application's role/active status is read from the existing profile row, never from Cognito claims.
+- The account-link/provision endpoint verifies Cognito ID-token claims and checks any existing profile's email against the corresponding Supabase Auth user record. New public signups are provisioned as `EMPLOYEE` server-side; browser profile fields cannot assign a role.
+- The additive migration `supabase/migrations/20261021000000_cognito_third_party_auth.sql` creates a service-role-only mapping table, maps existing `auth.uid()` RLS ownership checks to a linked profile ID for Cognito issuers, and leaves the legacy Supabase Auth `auth.uid()` behavior unchanged.
+- The pre-token-generation V2_0 Lambda handler adds Supabase's infrastructure claim `role=authenticated` to Cognito JWTs. It does not grant application `MANAGEMENT` privileges.
+- The frontend's Cognito flow is gated by `NEXT_PUBLIC_AUTH_PROVIDER=cognito`. If unset, legacy Supabase authentication remains selected. The Cognito flow uses authorization code + PKCE, state and nonce, server-set HttpOnly cookies, refresh, logout, and the API token resolver.
+- CI runs the backend tests, PostgreSQL migration/RLS integration test, and Next.js frontend build.
 
-- `frontend/app/login/page.tsx` authenticates with `supabase.auth.signInWithPassword`.
-- `frontend/app/signup/page.tsx` uses `supabase.auth.signUp` and submits profile metadata including role and employment fields.
-- `frontend/lib/context/UserContext.tsx` loads the profile from Supabase `profiles` using the Supabase user UUID and obtains the access token from the Supabase session.
-- `frontend/middleware.ts` delegates session handling to `frontend/lib/supabase/middleware.ts`, which calls `supabase.auth.getUser()`.
-- FastAPI `backend/app/dependencies/auth.py` verifies a bearer token, reads its `sub`, and loads a profile by that ID through `ProfileRepository.get_by_id`.
-- The current backend verifier in `backend/app/core/security.py` is for Supabase HS256 tokens.
-- The Cognito RS256 access-token verifier lives in `backend/app/core/cognito_security.py`.
-- `POST /api/v1/auth/cognito/link` requires both an existing valid Supabase session and a Cognito ID token with verified email that matches that existing profile.
-- The additive migration `backend/migrations/20261021_cognito_identity_mappings.sql` creates a service-role-only mapping from Cognito `sub` to the existing Supabase profile UUID.
-- The FastAPI middleware/dependency resolver supports Cognito access tokens only after `COGNITO_ENABLED=true` and after a valid profile mapping exists.
+## Preview configuration needed before a live sign-in test
 
-Therefore, adding a Cognito button or callback alone would not make Cognito sign-in work end-to-end: the frontend profile context, Next.js middleware, API bearer-token verification, and identity-to-existing-profile mapping all need to agree.
-
-## Minimal safe implementation sequence
-
-1. Add a separate Cognito OIDC verifier in FastAPI that validates the token signature against the User Pool JWKS and validates issuer, expiry, token type, and app-client audience/client ID. Keep Supabase verification supported during migration.
-2. Define an explicit identity mapping between Cognito `sub` and the existing Supabase profile UUID. Do not assume Cognito `sub` equals the Supabase user UUID. Prefer a small mapping table in the existing Supabase PostgreSQL database; do not migrate the database. Establish mapping by a verified, unique email and an explicit linking/migration procedure, not by trusting arbitrary email claims from an unverified token.
-3. Make the API resolve the mapped Supabase profile and continue to use its database-backed role. Never accept role claims or signup form fields as authority for Management access.
-4. Add Cognito hosted-login initiation and callback using authorization code + PKCE, validating state and exchanging the code for tokens without any client secret.
-5. Update the frontend session/context and middleware to support the staged Cognito session without breaking existing Supabase sessions. Preserve a rollback path.
-6. Add integration tests for new Cognito sign-in, mapping, expired/invalid token rejection, employee/manager authorization, and existing Supabase sign-in.
-7. Only after staging passes, register the exact production Vercel callback/sign-out URLs and plan a controlled cutover.
-
-## Cognito redirect note
-
-The app's callback route has not yet been implemented. Do not save a guessed callback URL in Cognito. The final registered callback must exactly match the implemented route and the `redirect_uri` used by the authorization request. Use HTTPS on Vercel. Do not assume the existing CloudFront URL is a valid callback until its ownership and behavior are confirmed.
-
-## Not yet implemented by this document
-
-This file documents verified dependencies and guards against an incomplete callback-only change. It does not implement Cognito login, create the mapping table, change AWS configuration, or deploy anything.
-
-
-## Frontend and managed-login flow now in the staging branch
-
-The opt-in frontend flow is gated by `NEXT_PUBLIC_AUTH_PROVIDER=cognito`. With that variable unset, the existing Supabase login/signup and middleware remain the default. The Cognito callback uses authorization code + PKCE, validates state, verifies the ID-token nonce at the backend, keeps tokens in HttpOnly cookies, and provisions only Employee profiles when the verified Cognito email has no existing profile. Roles are never accepted from browser signup metadata.
-
-### Required Vercel preview environment values
-
-Set these only on a branch Preview environment after a staging API exists. Do not set them on Production yet.
+Only set these in a **Vercel Preview** environment after confirming that a separate staging API is available. Do not set them in Production.
 
 - `NEXT_PUBLIC_AUTH_PROVIDER=cognito`
-- `NEXT_PUBLIC_API_URL`: the staging Lambda Function URL/API base URL. Use the exact value already used by your frontend, but for the staging Lambda—not production.
-- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`: the existing Supabase project URL and browser-safe anon/publishable key.
-- `COGNITO_DOMAIN`: the exact HTTPS domain shown under Cognito User Pool → Branding/Domain; do not use the sample CloudFront callback.
+- `NEXT_PUBLIC_API_URL`: staging backend base URL, not the existing Production API.
+- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`: existing Supabase project URL and browser-safe anon/publishable key. Do not use the service-role key here.
+- `COGNITO_DOMAIN`: exact HTTPS Cognito managed-login domain shown in the user pool's domain/branding settings.
 - `COGNITO_APP_CLIENT_ID=7npkisjjm5jj0fsqf94et8lqra`
-- `COGNITO_REDIRECT_URI`: the exact HTTPS Vercel Preview URL followed by `/auth/callback`.
-- `COGNITO_SIGN_OUT_URI`: the same Preview origin followed by `/login`; register this exact URL as an allowed sign-out URL.
-- `COGNITO_LINK_API_URL`: the staging backend's full HTTPS `/api/v1/auth/cognito/link` endpoint.
-- `COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS`: set to the refresh-token lifetime configured on the Cognito app client (seconds).
+- `COGNITO_REDIRECT_URI`: exact HTTPS Preview origin plus `/auth/callback`.
+- `COGNITO_SIGN_OUT_URI`: exact Preview origin plus `/login`.
+- `COGNITO_LINK_API_URL`: full HTTPS staging backend endpoint ending `/api/v1/auth/cognito/link`.
+- `COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS`: refresh-token lifetime configured on the app client, in seconds.
 
-No client secret belongs in the browser or this repository. The browser-based app client must remain a public client with authorization code grant and PKCE.
+Never create or expose a browser client secret. Cognito must use a public app client with authorization-code grant and PKCE.
 
-### Required Cognito and Supabase settings before a live test
+## AWS/Supabase steps required for staging
 
-1. In the Cognito app client, register the exact Preview callback and sign-out URLs above. Keep Cognito user pool as the identity provider, Authorization code grant selected, and the `openid` and `email` scopes selected.
-2. In Supabase Dashboard → Authentication → Third-Party Auth, add AWS Cognito with User Pool ID `ap-south-1_89s6YRnwQ` and region `ap-south-1`.
-3. Deploy `infra/cognito/pre-token-generation/index.mjs` as a small Node.js Lambda and attach it to the user pool's Pre token generation trigger using event version `V2_0`. This adds Supabase's infrastructure claim `role=authenticated` to Cognito ID and access tokens. It does **not** assign application-management privileges.
-4. Apply `supabase/migrations/20261021000000_cognito_third_party_auth.sql` to a staging database first and review the generated policy changes. It adds a protected identity-mapping table and updates existing `auth.uid()` ownership expressions to resolve mapped Cognito identities to existing profile IDs, while falling back to `auth.uid()` for legacy Supabase Auth tokens.
-5. On the staging backend only, set `COGNITO_ENABLED=true`, `COGNITO_REGION=ap-south-1`, `COGNITO_USER_POOL_ID=ap-south-1_89s6YRnwQ`, and `COGNITO_APP_CLIENT_ID=7npkisjjm5jj0fsqf94et8lqra`.
-6. Run existing Supabase sign-in and Cognito sign-in against staging; verify employee RLS, manager RLS, profile mapping, signup provisioning and sign-out. Do not change Production Vercel variables or production Lambda until these tests pass.
+1. Confirm the Cognito app client uses Cognito user-pool authentication, authorization-code grant, `openid` and `email` scopes, and no client secret.
+2. Register the exact Vercel Preview `/auth/callback` URL as an allowed callback and the exact Preview `/login` URL as an allowed sign-out URL. Select the callback as the default redirect URI. Keep the existing CloudFront URL until we confirm it is unnecessary.
+3. In Supabase Dashboard → Authentication → Third-Party Auth, add Amazon Cognito using user pool `ap-south-1_89s6YRnwQ` and region `ap-south-1`.
+4. Deploy `infra/cognito/pre-token-generation/index.mjs` as a small Node.js Lambda and attach it to the Cognito user pool's Pre token generation trigger using event version `V2_0`.
+5. Apply `supabase/migrations/20261021000000_cognito_third_party_auth.sql` to a **staging Supabase project first**. Review the RLS policy rewrite before applying: it changes ownership checks that call `auth.uid()` in `public` and `storage` so mapped Cognito subjects resolve to their existing profile IDs. Unmapped Cognito subjects resolve to no profile; existing Supabase JWTs retain their old behavior.
+6. Create or identify a **separate staging backend deployment** before setting its Cognito environment variables: `COGNITO_ENABLED=true`, `COGNITO_REGION=ap-south-1`, `COGNITO_USER_POOL_ID=ap-south-1_89s6YRnwQ`, and `COGNITO_APP_CLIENT_ID=7npkisjjm5jj0fsqf94et8lqra`. Keep the current production Lambda configuration unchanged.
+7. Run live tests in Preview/staging: Cognito sign-in and signup, existing-account mapping, new employee provisioning, employee and manager route permissions, Supabase table and storage RLS, token refresh, logout, and the existing Supabase login. Do not perform a production cutover until all pass.
 
-### Local automated coverage
+## Validation boundary
 
-GitHub Actions now runs the backend unit tests and a PostgreSQL integration test for the SQL migration, including mapped Cognito ownership, rejected unmapped subjects, legacy Supabase fallback, and Supabase Storage ownership policies. It also builds the Next.js frontend with harmless placeholder environment values. These are staging/code tests, not a claim that the live AWS or Supabase settings have been configured.
+GitHub Actions run #58 passed for the commit associated with the current staging branch at that time. That run shows automated tests and the frontend build passed; it does not prove the actual AWS Lambda trigger, Supabase Third-Party Auth integration, staging environment variables, real browser login, or production ECR registry state.
+
+The PR must remain draft until staging configuration and live end-to-end tests pass.
