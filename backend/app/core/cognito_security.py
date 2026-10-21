@@ -1,4 +1,4 @@
-"""Cognito access-token verification groundwork; not wired into auth yet."""
+"""Strict JWT validation for the staged Cognito authentication path."""
 from functools import lru_cache
 from typing import Any
 
