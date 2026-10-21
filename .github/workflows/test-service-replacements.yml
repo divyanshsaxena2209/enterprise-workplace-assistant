@@ -10,6 +10,7 @@ on:
       - "backend/**"
       - ".github/workflows/test-service-replacements.yml"
       - ".github/workflows/build-backend-ecr.yml"
+      - ".github/workflows/build-cognito-staging-ecr.yml"
       - "docs/COGNITO_STAGING_IMPLEMENTATION.md"
       - "supabase/migrations/**"
       - "frontend/**"
