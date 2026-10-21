@@ -10,7 +10,7 @@ import tempfile
 UPLOAD_DIR = tempfile.gettempdir()
 
 from fastapi import Depends
-from app.dependencies.auth import require_authenticated_user
+from app.dependencies.auth import require_authenticated_user, require_management
 from app.schemas.profile import ProfileResponse
 from app.schemas.knowledge_chat import ChatSessionCreate, ChatSessionUpdate
 from app.services import knowledge_chat_service
@@ -23,7 +23,7 @@ class QueryRequest(BaseModel):
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
-    current_user: ProfileResponse = Depends(require_authenticated_user),
+    current_user: ProfileResponse = Depends(require_management),
 ):
     
     ALLOWED_TYPES = [
@@ -191,7 +191,7 @@ def get_document_download_url(
 async def delete_document_endpoint(
     request: Request,
     body: DeleteDocumentRequest,
-    current_user: ProfileResponse = Depends(require_authenticated_user),
+    current_user: ProfileResponse = Depends(require_management),
 ):
     try:
         from app.services.knowledge_rag import delete_document
