@@ -20,6 +20,10 @@ Do not put secrets in source control. The app client must be a public client wit
 - `frontend/middleware.ts` delegates session handling to `frontend/lib/supabase/middleware.ts`, which calls `supabase.auth.getUser()`.
 - FastAPI `backend/app/dependencies/auth.py` verifies a bearer token, reads its `sub`, and loads a profile by that ID through `ProfileRepository.get_by_id`.
 - The current backend verifier in `backend/app/core/security.py` is for Supabase HS256 tokens.
+- The Cognito RS256 access-token verifier lives in `backend/app/core/cognito_security.py`.
+- `POST /api/v1/auth/cognito/link` requires both an existing valid Supabase session and a Cognito ID token with verified email that matches that existing profile.
+- The additive migration `backend/migrations/20261021_cognito_identity_mappings.sql` creates a service-role-only mapping from Cognito `sub` to the existing Supabase profile UUID.
+- The FastAPI middleware/dependency resolver supports Cognito access tokens only after `COGNITO_ENABLED=true` and after a valid profile mapping exists.
 
 Therefore, adding a Cognito button or callback alone would not make Cognito sign-in work end-to-end: the frontend profile context, Next.js middleware, API bearer-token verification, and identity-to-existing-profile mapping all need to agree.
 
