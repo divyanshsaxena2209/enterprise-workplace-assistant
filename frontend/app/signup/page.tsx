@@ -3,11 +3,12 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import CognitoSignupForm from "@/components/auth/CognitoSignupForm";
 import { 
   User, Mail, Lock, Briefcase, Phone, MapPin, 
   FileText, Shield, ArrowRight, ArrowLeft, Loader2, Sparkles, CheckCircle
 } from "lucide-react";
-export default function SignupPage() {
+function LegacySignupPage() {
   const router = useRouter();
   const supabase = createClient();
   const [step, setStep] = useState(1);
@@ -404,4 +405,12 @@ export default function SignupPage() {
       </div>
     </div>
   );
+}
+
+
+export default function SignupPage() {
+  if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+    return <CognitoSignupForm />;
+  }
+  return <LegacySignupPage />;
 }
