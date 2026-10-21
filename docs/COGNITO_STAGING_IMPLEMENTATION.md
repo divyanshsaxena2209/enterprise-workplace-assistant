@@ -20,7 +20,8 @@ Staging Cognito identifiers:
 - The additive migration `supabase/migrations/20261021000000_cognito_third_party_auth.sql` creates a service-role-only mapping table, maps existing `auth.uid()` RLS ownership checks to a linked profile ID for Cognito issuers, and leaves the legacy Supabase Auth `auth.uid()` behavior unchanged.
 - The pre-token-generation V2_0 Lambda handler adds Supabase's infrastructure claim `role=authenticated` to Cognito JWTs. It does not grant application `MANAGEMENT` privileges.
 - The frontend's Cognito flow is gated by `NEXT_PUBLIC_AUTH_PROVIDER=cognito`. If unset, legacy Supabase authentication remains selected. The Cognito flow uses authorization code + PKCE, state and nonce, server-set HttpOnly cookies, refresh, logout, and the API token resolver.
-- CI runs the backend tests, PostgreSQL migration/RLS integration test, and Next.js frontend build.
+- CI runs the backend tests, PostgreSQL migration/RLS integration test, Node.js pre-token-trigger tests, and Next.js frontend build.
+- The direct API calls for job creation/publication and interview scheduling now select the Cognito access token when Cognito mode is enabled instead of assuming a Supabase Auth session exists.
 
 ## Preview configuration needed before a live sign-in test
 

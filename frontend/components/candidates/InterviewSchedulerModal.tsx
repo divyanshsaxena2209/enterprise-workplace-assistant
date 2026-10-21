@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Calendar, Clock, Link as LinkIcon, UserCircle, Bot, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getCognitoAccessToken } from "@/lib/auth/cognito";
 interface InterviewSchedulerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -50,8 +51,15 @@ export default function InterviewSchedulerModal({
         meeting_link: meetingLinkVal || null,
         management_notes: notesVal || null
       };
-      const supabase = createClient();
-      const { data: session } = await supabase.auth.getSession();
+      let accessToken: string | null = null;
+      if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+        accessToken = await getCognitoAccessToken();
+      } else {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getSession();
+        accessToken = data.session?.access_token ?? null;
+      }
+      if (!accessToken) throw new Error("Authentication failed. Please sign in again.");
       const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
       if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
       const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
@@ -59,7 +67,7 @@ export default function InterviewSchedulerModal({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.session?.access_token}`
+          "Authorization": `Bearer ${accessToken}`
         },
         body: JSON.stringify(payload)
       });
