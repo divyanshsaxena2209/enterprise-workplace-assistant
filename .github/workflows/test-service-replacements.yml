@@ -5,10 +5,12 @@ on:
     branches:
       - aws-service-replacements
       - aws-service-review-fixes
+      - cognito-staging-integration
     paths:
       - "backend/**"
       - ".github/workflows/test-service-replacements.yml"
       - ".github/workflows/build-backend-ecr.yml"
+      - "docs/COGNITO_STAGING_IMPLEMENTATION.md"
   workflow_dispatch:
 
 permissions:
@@ -29,4 +31,4 @@ jobs:
       - name: Compile backend and test files
         run: python -m compileall -q backend/app backend/tests
       - name: Run isolated service replacement tests
-        run: PYTHONPATH=backend pytest -q backend/tests/test_object_storage.py backend/tests/test_role_permissions.py backend/tests/test_jwt_verification.py
+        run: PYTHONPATH=backend pytest -q backend/tests/test_object_storage.py backend/tests/test_role_permissions.py backend/tests/test_jwt_verification.py backend/tests/test_cognito_security.py
