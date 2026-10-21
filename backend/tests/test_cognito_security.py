@@ -1,18 +1,132 @@
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError
-from app.core.cognito_security import decode_cognito_access_token
+from app.core import cognito_security
 
 
-def test_cognito_access_tokens_rejected_while_feature_disabled(monkeypatch):
+REGION = "ap-south-1"
+POOL_ID = "ap-south-1_testPool"
+CLIENT_ID = "test-public-client"
+ISSUER = f"https://cognito-idp.{REGION}.amazonaws.com/{POOL_ID}"
+
+
+@pytest.fixture
+def signing_keys(monkeypatch):
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    wrong_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    class FakeJwksClient:
+        def __init__(self, key):
+            self.key = key
+
+        def get_signing_key_from_jwt(self, token):
+            # The fake models a JWKS key selected for this test's key ID.
+            return SimpleNamespace(key=self.key)
+
+    monkeypatch.setattr(settings, "COGNITO_ENABLED", True)
+    monkeypatch.setattr(settings, "COGNITO_REGION", REGION)
+    monkeypatch.setattr(settings, "COGNITO_USER_POOL_ID", POOL_ID)
+    monkeypatch.setattr(settings, "COGNITO_APP_CLIENT_ID", CLIENT_ID)
+    monkeypatch.setattr(cognito_security, "_jwks_client", lambda: FakeJwksClient(private_key.public_key()))
+    return private_key, wrong_private_key
+
+
+def make_token(private_key, **overrides):
+    now = datetime.now(timezone.utc)
+    claims = {
+        "iss": ISSUER,
+        "sub": "cognito-user-sub",
+        "client_id": CLIENT_ID,
+        "token_use": "access",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=5)).timestamp()),
+        "scope": "openid email",
+    }
+    claims.update(overrides)
+    return jwt.encode(claims, private_key, algorithm="RS256", headers={"kid": "unit-test-key"})
+
+
+def test_cognito_tokens_rejected_while_feature_disabled(monkeypatch):
     monkeypatch.setattr(settings, "COGNITO_ENABLED", False)
     with pytest.raises(AuthenticationError, match="not enabled"):
-        decode_cognito_access_token("not-a-real-token")
+        cognito_security.decode_cognito_access_token("not-a-real-token")
 
 
-def test_cognito_access_tokens_rejected_without_client_id(monkeypatch):
+def test_cognito_tokens_rejected_without_client_id(monkeypatch):
     monkeypatch.setattr(settings, "COGNITO_ENABLED", True)
     monkeypatch.setattr(settings, "COGNITO_APP_CLIENT_ID", "")
     with pytest.raises(AuthenticationError, match="app client is not configured"):
-        decode_cognito_access_token("not-a-real-token")
+        cognito_security.decode_cognito_access_token("not-a-real-token")
+
+
+def test_accepts_valid_signed_access_token(signing_keys):
+    private_key, _ = signing_keys
+    claims = cognito_security.decode_cognito_access_token(make_token(private_key))
+    assert claims["sub"] == "cognito-user-sub"
+    assert claims["token_use"] == "access"
+
+
+def test_rejects_invalid_signature(signing_keys):
+    _, wrong_private_key = signing_keys
+    with pytest.raises(AuthenticationError, match="Invalid Cognito access token"):
+        cognito_security.decode_cognito_access_token(make_token(wrong_private_key))
+
+
+def test_rejects_wrong_issuer(signing_keys):
+    private_key, _ = signing_keys
+    with pytest.raises(AuthenticationError, match="Invalid Cognito access token"):
+        cognito_security.decode_cognito_access_token(
+            make_token(private_key, iss="https://attacker.example")
+        )
+
+
+def test_rejects_expired_token(signing_keys):
+    private_key, _ = signing_keys
+    past = datetime.now(timezone.utc) - timedelta(minutes=5)
+    with pytest.raises(AuthenticationError, match="Invalid Cognito access token"):
+        cognito_security.decode_cognito_access_token(
+            make_token(private_key, exp=int(past.timestamp()))
+        )
+
+
+def test_rejects_id_token_instead_of_access_token(signing_keys):
+    private_key, _ = signing_keys
+    with pytest.raises(AuthenticationError, match="A Cognito access token is required"):
+        cognito_security.decode_cognito_access_token(
+            make_token(private_key, token_use="id")
+        )
+
+
+def test_rejects_token_for_different_app_client(signing_keys):
+    private_key, _ = signing_keys
+    with pytest.raises(AuthenticationError, match="different Cognito app client"):
+        cognito_security.decode_cognito_access_token(
+            make_token(private_key, client_id="other-client")
+        )
+
+
+def test_rejects_missing_subject(signing_keys):
+    private_key, _ = signing_keys
+    token = make_token(private_key)
+    # Create a correctly signed token with no sub claim.
+    now = datetime.now(timezone.utc)
+    token = jwt.encode(
+        {
+            "iss": ISSUER,
+            "client_id": CLIENT_ID,
+            "token_use": "access",
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(minutes=5)).timestamp()),
+        },
+        private_key,
+        algorithm="RS256",
+        headers={"kid": "unit-test-key"},
+    )
+    with pytest.raises(AuthenticationError, match="Invalid Cognito access token"):
+        cognito_security.decode_cognito_access_token(token)
