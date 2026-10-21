@@ -94,23 +94,25 @@ export default function KnowledgeDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Search and ask questions about your company documents.</p>
         </div>
         <div className="flex gap-3">
-          <div className="flex items-center gap-2">
-            <input 
-              type="file" 
-              id="file-upload" 
-              className="hidden" 
-              accept=".pdf,.docx" 
-              onChange={handleFileUpload}
-              disabled={isUploading}
-            />
-            <label 
-              htmlFor="file-upload"
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-secondary transition-all shadow-sm ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
-            >
-              {isUploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-              {isUploading ? "Indexing..." : "Upload Document"}
-            </label>
-          </div>
+          {profile?.role === "MANAGEMENT" && (
+            <div className="flex items-center gap-2">
+              <input 
+                type="file" 
+                id="file-upload" 
+                className="hidden" 
+                accept=".pdf,.docx" 
+                onChange={handleFileUpload}
+                disabled={isUploading}
+              />
+              <label 
+                htmlFor="file-upload"
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-secondary transition-all shadow-sm ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {isUploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                {isUploading ? "Indexing..." : "Upload Document"}
+              </label>
+            </div>
+          )}
           <Link 
             href="/knowledge/chat" 
             className="flex items-center gap-2 bg-transparent border border-white hover:bg-white/10 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer shadow-sm"
@@ -169,13 +171,15 @@ export default function KnowledgeDashboard() {
                 <span className="px-2.5 py-0.5 bg-secondary border border-border/50 text-[9px] uppercase tracking-wider rounded-full font-bold text-muted-foreground">
                   {doc.dept}
                 </span>
-                <button 
-                  className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
-                  onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider)}
-                  title="Delete Document"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {profile?.role === "MANAGEMENT" && (
+                  <button 
+                    className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
+                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider)}
+                    title="Delete Document"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
