@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, UploadFile, File, status
 
 from app.db.supabase import get_supabase_client
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import require_management_or_employee
 from app.schemas.profile import ProfileResponse
 from app.schemas.resume import ResumeUploadResponse
 from app.schemas.common import ErrorResponse
@@ -38,12 +38,12 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 )
 def upload_resume(
     file: UploadFile = File(...),
-    current_user: ProfileResponse = Depends(get_current_user)
+    current_user: ProfileResponse = Depends(require_management_or_employee)
 ) -> ResumeUploadResponse:
     """
     **Uploads a candidate resume.**
     - Validates file type and size.
-    - Uploads raw file to Supabase Storage.
+    - Uploads raw file through the configured private object storage provider (Supabase during rollback; S3 after cutover).
     - Extracts raw text using PyPDF2 / docx2txt.
     - Parses text into structured JSON via Gemini AI.
     - Saves Candidate and Resume to database.
