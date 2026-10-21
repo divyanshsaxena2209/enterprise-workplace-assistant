@@ -31,4 +31,4 @@ jobs:
       - name: Compile backend and test files
         run: python -m compileall -q backend/app backend/tests
       - name: Run isolated service replacement tests
-        run: PYTHONPATH=backend pytest -q backend/tests/test_object_storage.py backend/tests/test_role_permissions.py backend/tests/test_jwt_verification.py backend/tests/test_cognito_security.py
+        run: PYTHONPATH=backend pytest -q backend/tests/test_object_storage.py backend/tests/test_role_permissions.py backend/tests/test_jwt_verification.py backend/tests/test_cognito_security.py backend/tests/test_identity_resolver.py backend/tests/test_cognito_identity_repository.py
