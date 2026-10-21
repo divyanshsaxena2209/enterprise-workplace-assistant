@@ -188,3 +188,13 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int = Field(description="Token lifetime in seconds.")
     user: ProfileResponse
+
+
+class CognitoLinkRequest(BaseModel):
+    """ID token used to link the signed-in Supabase account to Cognito."""
+    id_token: str = Field(
+        ...,
+        min_length=20,
+        max_length=10000,
+        description="Cognito ID token from the staging authorization-code flow. Never log this value.",
+    )
