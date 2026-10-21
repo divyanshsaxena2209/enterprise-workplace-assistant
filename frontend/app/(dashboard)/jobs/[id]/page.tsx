@@ -27,31 +27,61 @@ export default function JobDetailPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   useEffect(() => {
+    let cancelled = false;
     const fetchJobDetails = async () => {
+      setJobLoading(true);
+      setJobError(null);
       try {
         const jobData = await getJob(id);
-        setJob(jobData);
-        if (profile?.role !== "MANAGEMENT") {
-          try {
-            const myApps = await getMyApplications(1, 100);
-            setMyApplications(myApps.items || []);
-            const myApp = myApps.items?.find((app: any) => app.job_id === id);
-            if (myApp) {
-              const details = await getApplicationDetails(myApp.id);
-              setMyApplicationDetails(details);
-            }
-          } catch (e: any) {
-            console.warn("Failed to load my applications:", e.message || e);
-          }
-        }
+        if (!cancelled) setJob(jobData);
       } catch (err: any) {
-        setJobError(err.message || "Failed to load job details.");
+        if (!cancelled) setJobError(err.message || "Failed to load job details.");
       } finally {
-        setJobLoading(false);
+        if (!cancelled) setJobLoading(false);
       }
     };
-    if (id) fetchJobDetails();
+    if (id) void fetchJobDetails();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
+
+  useEffect(() => {
+    // Do not request the employee-only /applications/my endpoint until the
+    // profile has loaded and its role is known. Otherwise management users can
+    // accidentally send this request during the initial render.
+    if (!id || !profile || profile.role === "MANAGEMENT") {
+      if (profile?.role === "MANAGEMENT") {
+        setMyApplications([]);
+        setMyApplicationDetails(null);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const fetchMyApplications = async () => {
+      try {
+        const myApps = await getMyApplications(1, 100);
+        if (cancelled) return;
+        setMyApplications(myApps.items || []);
+        const myApp = myApps.items?.find((app: any) => app.job_id === id);
+        if (myApp) {
+          const details = await getApplicationDetails(myApp.id);
+          if (!cancelled) setMyApplicationDetails(details);
+        } else {
+          setMyApplicationDetails(null);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          console.warn("Failed to load my applications:", e.message || e);
+        }
+      }
+    };
+    void fetchMyApplications();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, profile?.id, profile?.role]);
   if (jobLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-muted-foreground space-y-4">
