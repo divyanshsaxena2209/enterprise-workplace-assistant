@@ -198,3 +198,9 @@ class CognitoLinkRequest(BaseModel):
         max_length=10000,
         description="Cognito ID token from the staging authorization-code flow. Never log this value.",
     )
+    nonce: str = Field(
+        ...,
+        min_length=16,
+        max_length=256,
+        description="OAuth nonce kept in the server-side flow cookie; never log this value.",
+    )
