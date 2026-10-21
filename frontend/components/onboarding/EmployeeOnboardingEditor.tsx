@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { getCognitoAccessToken } from "@/lib/auth/cognito";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import { CheckCircle, Clock, Search, ChevronRight, X, GripVertical, Plus, Trash2, ArrowUp, ArrowDown, Save, Calendar, AlertTriangle, Circle, CheckCircle2, MoreHorizontal, HelpCircle } from "lucide-react";
 import OnboardingProgressMeter from "./OnboardingProgressMeter";
 export default function EmployeeOnboardingEditor({ employee, onClose, onUpdate }: { employee: any, onClose: () => void, onUpdate: () => void }) {
@@ -23,28 +23,11 @@ export default function EmployeeOnboardingEditor({ employee, onClose, onUpdate }
       if (day1Tasks.length > 0 && day1Tasks[0].id === progressId) {
         const newEmployeeId = `SS-${Math.floor(50000 + Math.random() * 10000)}`;
         try {
-          let accessToken: string | null = null;
-          if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
-            accessToken = await getCognitoAccessToken();
-          } else {
-            const { data } = await supabase.auth.getSession();
-            accessToken = data.session?.access_token ?? null;
-          }
-          if (!accessToken) throw new Error("Sign in again before assigning an employee ID.");
-
-          const res = await fetch("/api/assign-employee-id", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ employeeId: employee.id, newEmployeeId })
+          await fetchWithAuth(`/profile/employees/${employee.id}/employee-id`, {
+            method: "PATCH",
+            body: JSON.stringify({ employee_id: newEmployeeId }),
           });
-          if (res.ok) {
-            employee.employee_id = newEmployeeId; 
-          } else {
-            console.error("Failed to assign employee ID:", await res.text());
-          }
+          employee.employee_id = newEmployeeId;
         } catch (e) {
           console.error("Error assigning employee ID:", e);
         }

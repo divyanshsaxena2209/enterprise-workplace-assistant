@@ -22,7 +22,7 @@ Staging Cognito identifiers:
 - The frontend's Cognito flow is gated by `NEXT_PUBLIC_AUTH_PROVIDER=cognito`. If unset, legacy Supabase authentication remains selected. The Cognito flow uses authorization code + PKCE, state and nonce, server-set HttpOnly cookies, refresh, logout, and the API token resolver.
 - CI runs the backend tests, PostgreSQL migration/RLS integration test, Node.js pre-token-trigger tests, and Next.js frontend build.
 - The direct API calls for job creation/publication and interview scheduling now select the Cognito access token when Cognito mode is enabled instead of assuming a Supabase Auth session exists.
-- The onboarding employee-ID route verifies the bearer token through FastAPI, requires a database-backed management role, validates the target employee profile and generated ID format, and no longer updates profiles without authorization.
+- Employee-ID assignment is handled inside FastAPI at `PATCH /api/v1/profile/employees/{profile_id}/employee-id`. It requires a database-backed management role and validates that the target row is an employee. The old Next.js service-role mutation route is removed so Vercel does not need a Supabase service-role key.
 
 ## Preview configuration needed before a live sign-in test
 
