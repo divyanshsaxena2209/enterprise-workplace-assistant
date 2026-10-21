@@ -118,6 +118,18 @@ def delete_knowledge_document_object(
     )
 
 
+def download_s3_object_bytes(file_key: str, *, prefix: str = "resumes") -> bytes:
+    """Download a private object through the Lambda execution role."""
+    if prefix not in {"knowledge", "resumes"} or not file_key.startswith(f"{prefix}/") or ".." in file_key:
+        raise ValueError("Invalid S3 document object key.")
+    response = _s3_client().get_object(Bucket=settings.AWS_S3_BUCKET, Key=file_key)
+    body = response["Body"]
+    try:
+        return body.read()
+    finally:
+        body.close()
+
+
 def _create_presigned_download_url(file_key: str, prefix: str) -> str:
     if not file_key.startswith(f"{prefix}/") or ".." in file_key:
         raise ValueError("Invalid S3 document object key.")
