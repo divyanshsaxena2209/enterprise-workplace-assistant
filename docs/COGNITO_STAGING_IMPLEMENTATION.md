@@ -52,7 +52,7 @@ Never create or expose a browser client secret. Cognito must use a public app cl
 
 ## Validation boundary
 
-GitHub Actions run #58 passed for the commit associated with the current staging branch at that time. That run shows automated tests and the frontend build passed; it does not prove the actual AWS Lambda trigger, Supabase Third-Party Auth integration, staging environment variables, real browser login, or production ECR registry state.
+GitHub Actions run #68 passed for commit `9b1fab677bf43c810f8e33dc2b7bd6f953b8377e`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39621760819. It verifies the frontend build, backend tests, Cognito token/identity tests, PostgreSQL migration/RLS integration tests, and pre-token trigger tests. It does not prove the actual AWS Lambda trigger, Supabase Third-Party Auth integration, staging environment variables, real browser login, or staging ECR image publication.
 
 The PR must remain draft until staging configuration and live end-to-end tests pass.
 
@@ -62,7 +62,7 @@ The PR must remain draft until staging configuration and live end-to-end tests p
 The branch workflow `.github/workflows/build-cognito-staging-ecr.yml` builds the backend from this branch and pushes only a unique ECR tag:
 `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-<commit-sha>`.
 
-It does not push `latest`, update the production Lambda function, or change its environment. Use this exact staging-tagged image only when creating a separate staging Lambda function. If the build fails during OIDC role assumption, the IAM role trust policy must be reviewed to allow this repository branch in addition to the existing permitted branch; do not broaden permissions beyond this repository/branch need.
+It does not push `latest`, update the production Lambda function, or change its environment. Use this exact staging-tagged image only when creating a separate staging Lambda function. The workflow uses a dedicated `GitHubActions-EWA-Cognito-Staging-ECR` role, not the existing production deployment role. Its trust policy must be scoped to this repository and the `cognito-staging-integration` branch; do not broaden permissions beyond the ECR repository push actions listed below.
 
 The staging Lambda should use separate staging configuration and a staging database/project. Do not point a Cognito-preview signup flow at Production Lambda, because the new-user linking endpoint provisions profile records.
 
