@@ -33,15 +33,19 @@ def upload_knowledge_document(
     filename: str,
     file_bytes: bytes,
     content_type: str,
+    *,
+    prefix: str = "knowledge",
 ) -> dict[str, str | None]:
+    if prefix not in {"knowledge", "resumes"}:
+        raise ValueError("Unsupported object prefix.")
     provider = settings.STORAGE_PROVIDER.strip().lower()
     safe_name = _safe_filename(filename)
-    object_name = f"knowledge_{uuid.uuid4()}_{safe_name}"
+    object_name = f"{prefix}_{uuid.uuid4()}_{safe_name}"
 
     if provider == "s3":
         bucket = settings.AWS_S3_BUCKET
         s3 = _s3_client()
-        key = f"knowledge/{object_name}"
+        key = f"{prefix}/{object_name}"
         s3.put_object(
             Bucket=bucket,
             Key=key,
@@ -90,8 +94,12 @@ def delete_knowledge_document_object(
     provider = (storage_provider or "supabase").strip().lower()
 
     if provider == "s3":
-        if not file_key or not file_key.startswith("knowledge/") or ".." in file_key:
-            raise ValueError("Invalid S3 knowledge-document key.")
+        if (
+            not file_key
+            or not file_key.startswith(("knowledge/", "resumes/"))
+            or ".." in file_key
+        ):
+            raise ValueError("Invalid S3 document object key.")
         _s3_client().delete_object(Bucket=settings.AWS_S3_BUCKET, Key=file_key)
         return
 
@@ -110,12 +118,22 @@ def delete_knowledge_document_object(
     )
 
 
-def create_knowledge_document_download_url(file_key: str) -> str:
-    if not file_key.startswith("knowledge/") or ".." in file_key:
-        raise ValueError("Invalid S3 knowledge-document key.")
+def _create_presigned_download_url(file_key: str, prefix: str) -> str:
+    if not file_key.startswith(f"{prefix}/") or ".." in file_key:
+        raise ValueError("Invalid S3 document object key.")
     s3 = _s3_client()
     return s3.generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.AWS_S3_BUCKET, "Key": file_key},
         ExpiresIn=settings.S3_PRESIGNED_URL_TTL_SECONDS,
     )
+
+
+def create_knowledge_document_download_url(file_key: str) -> str:
+    # Knowledge route is deliberately scoped to knowledge objects only.
+    return _create_presigned_download_url(file_key, "knowledge")
+
+
+def create_resume_download_url(file_key: str) -> str:
+    # Resume URLs are generated only by authenticated candidate-detail routes.
+    return _create_presigned_download_url(file_key, "resumes")
