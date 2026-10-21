@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     
     SUPABASE_JWT_SECRET: str = ""
 
+    # Cognito remains disabled until identity-to-profile mapping and staging tests
+    # are implemented. These public identifiers are not secrets.
+    COGNITO_ENABLED: bool = False
+    COGNITO_REGION: str = "ap-south-1"
+    COGNITO_USER_POOL_ID: str = ""
+    COGNITO_APP_CLIENT_ID: str = ""
+
     # Object storage provider. Keep "supabase" until the private S3 bucket and IAM
     # permissions have been created and the S3 upload flow has been verified.
     STORAGE_PROVIDER: str = "supabase"
