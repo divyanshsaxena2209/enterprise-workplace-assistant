@@ -17,9 +17,9 @@ Do not remove Supabase, Gemini, Qdrant, Lambda, or ECR until each replacement is
 |---|---|---|
 | Backend hosting | AWS Lambda + ECR | Deployed and smoke-tested |
 | CI/CD AWS access | GitHub Actions OIDC -> IAM role | Build/push role already configured; Lambda auto-update still needs verification |
-| Lambda access to AWS resources | Lambda execution IAM role, least privilege | Existing execution role; add only permissions required by each cutover |
+| Lambda access to AWS resources | Lambda execution IAM role, least privilege | S3 policy still needs to be attached to the existing Lambda execution role; app business roles are enforced by FastAPI |
 | User authentication | Amazon Cognito User Pool | Not migrated |
-| File/object storage | Private Amazon S3 bucket | S3 provider implementation staged on this branch for knowledge documents and resumes; Supabase remains the default until bucket and IAM permissions are configured |
+| File/object storage | Private Amazon S3 bucket | S3 provider staged for chatbot knowledge-document files and resume files; Supabase remains default until bucket and IAM permissions are configured. Job listing text stays in the relational database because the current job schema has no file-attachment upload |
 | Relational application database | Amazon RDS for PostgreSQL (assumed missing item) | Not migrated; current backend uses Supabase PostgREST/client and has relational schema |
 | Monitoring and alerts | CloudWatch Logs, log retention, metrics/alarms | Lambda logs use CloudWatch by default; retention and alarms need final setup |
 | AI and vector search | Gemini + Qdrant Cloud | Keep unchanged |
@@ -30,7 +30,9 @@ Do not remove Supabase, Gemini, Qdrant, Lambda, or ECR until each replacement is
 - Added `STORAGE_PROVIDER`, `AWS_REGION`, `AWS_S3_BUCKET`, and presigned-URL lifetime settings. The default provider remains `supabase`, so existing production configuration is unchanged.
 - Added an object-storage provider using the Lambda execution role's default AWS credential chain (no AWS access keys), SSE-S3 encryption, private object keys under `knowledge/` and `resumes/`, and short-lived presigned GET URLs.
 - Updated knowledge-document upload/delete/view flow and resume upload/detail flow to use S3 when `STORAGE_PROVIDER=s3`.
-- Added unit tests for S3 object prefixes, encryption, deletes, and presigned URL scope. The isolated GitHub Actions test workflow passed on commit `ef124a681d8af3ff5e2f4855847280be6c2a6543`.
+- Added tests for S3 object prefixes, encryption, deletion guards, presigned URL scope, and manager/employee/guest role permissions. The isolated storage + RBAC tests passed in [GitHub Actions](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39587229252); a full backend syntax-compile step has now been added and is running.
+- Manager/employee enforcement is staged: management-only job mutations, candidate/recruiter/evaluation visibility, knowledge upload/delete, and employee-scoped applications/onboarding; public signup cannot self-assign Management; guest mode is no longer a manager and cannot use write guards.
+- Chatbot file bytes are designed for S3 under `knowledge/`; resume bytes under `resumes/`. The chatbot's indexed chunks remain in Qdrant, resume/application records remain in the relational database, and job listing fields remain in the relational database. The job schema does not currently support uploaded JD attachments.
 - This branch has not been merged or deployed. The S3 bucket and Lambda IAM policy are not yet created. Existing Supabase files/data have not been bulk-migrated to S3.
 
 ## Safe migration order
