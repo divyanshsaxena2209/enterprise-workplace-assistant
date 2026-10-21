@@ -204,3 +204,22 @@ class CognitoLinkRequest(BaseModel):
         max_length=256,
         description="OAuth nonce kept in the server-side flow cookie; never log this value.",
     )
+
+
+class CognitoSignupProfile(BaseModel):
+    """Non-authoritative employee profile fields collected before Cognito signup."""
+    full_name: str = Field(..., min_length=2, max_length=128)
+    department: str = Field(..., min_length=1, max_length=100)
+    job_title: str = Field(..., min_length=1, max_length=100)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    location: Optional[str] = Field(default=None, max_length=128)
+    bio: Optional[str] = Field(default=None, max_length=500)
+    avatar_url: Optional[str] = Field(default=None, max_length=1024)
+
+    @field_validator("full_name", "department", "job_title")
+    @classmethod
+    def trim_required_profile_fields(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This profile field cannot be blank.")
+        return value
