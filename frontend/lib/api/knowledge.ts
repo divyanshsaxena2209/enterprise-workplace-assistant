@@ -31,14 +31,26 @@ export async function queryKnowledgeBase(question: string, session_id?: string, 
     signal,
   });
 }
-export async function deleteKnowledgeDocument(filename: string, file_url?: string) {
+export async function deleteKnowledgeDocument(
+  filename: string,
+  file_url?: string,
+  file_key?: string,
+  storage_provider?: string,
+) {
   return fetchWithAuth("/knowledge/document", {
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ filename, file_url }),
+    body: JSON.stringify({ filename, file_url, file_key, storage_provider }),
   });
+}
+
+export async function getKnowledgeDocumentDownloadUrl(file_key: string) {
+  return fetchWithAuth(
+    `/knowledge/document/download?file_key=${encodeURIComponent(file_key)}`,
+    { method: "GET" },
+  );
 }
 export async function getChatSessions() {
   return fetchWithAuth("/knowledge/sessions", {
