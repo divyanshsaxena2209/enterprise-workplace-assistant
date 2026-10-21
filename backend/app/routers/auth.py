@@ -5,12 +5,15 @@ All routes use AuthService which delegates to Supabase Auth.
 Errors are handled centrally by the error middleware — no try/except here.
 """
 
+import secrets
+
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.security import bearer_scheme
 from app.core.cognito_security import decode_cognito_id_token
-from app.core.exceptions import AuthenticationError, NotFoundError
+from app.core.enums import UserRole
+from app.core.exceptions import AuthenticationError, ConflictError, DatabaseError, NotFoundError
 from app.repositories.cognito_identity_repository import CognitoIdentityRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.db.supabase import get_supabase_client
@@ -175,9 +178,69 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     profile_repo = ProfileRepository(client)
     profile = profile_repo.get_by_email(cognito_email)
     if profile is None:
-        raise NotFoundError(
-            "No existing profile matches this verified email. Create the account using the current signup flow before linking Cognito."
-        )
+        if body.profile is None:
+            raise NotFoundError(
+                "No existing profile matches this verified email. Use the signup form to provide employee profile details."
+            )
+
+        # Create a Supabase Auth shadow identity so the existing profiles.id
+        # foreign key remains valid. Cognito remains the only interactive login
+        # provider in Cognito mode; this random password is never returned.
+        signup = body.profile
+        metadata = {
+            "full_name": signup.full_name,
+            "role": UserRole.EMPLOYEE.value,
+            "department": signup.department,
+            "job_title": signup.job_title,
+            "phone": signup.phone,
+            "location": signup.location,
+            "bio": signup.bio,
+            "avatar_url": signup.avatar_url,
+            "is_management_verified": False,
+        }
+        try:
+            created = client.auth.admin.create_user({
+                "email": cognito_email,
+                "password": secrets.token_urlsafe(48),
+                "email_confirm": True,
+                "user_metadata": metadata,
+            })
+        except Exception as exc:
+            # A concurrent request may have created the profile after the first
+            # lookup. Reuse only that exact email-matched profile; never overwrite
+            # an existing user's role or profile fields.
+            profile = profile_repo.get_by_email(cognito_email)
+            if profile is None:
+                raise ConflictError(
+                    "Could not provision an employee profile for this Cognito account. Please contact support."
+                ) from exc
+
+        if profile is None:
+            created_user = getattr(created, "user", None) or created
+            created_user_id = getattr(created_user, "id", None)
+            if not created_user_id:
+                raise DatabaseError("Supabase did not return the ID for the Cognito shadow user.")
+
+            try:
+                profile = profile_repo.upsert({
+                    "id": str(created_user_id),
+                    "email": cognito_email,
+                    "full_name": signup.full_name,
+                    "role": UserRole.EMPLOYEE.value,
+                    "department": signup.department,
+                    "job_title": signup.job_title,
+                    "phone": signup.phone,
+                    "location": signup.location,
+                    "bio": signup.bio,
+                    "avatar_url": signup.avatar_url,
+                    "is_active": True,
+                    "is_management_verified": False,
+                })
+            except Exception as exc:
+                raise DatabaseError(
+                    "The Cognito account was created but its employee profile could not be saved."
+                ) from exc
+
     if not profile.is_active:
         raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
 
