@@ -204,6 +204,10 @@ class CognitoLinkRequest(BaseModel):
         max_length=256,
         description="OAuth nonce kept in the server-side flow cookie; never log this value.",
     )
+    profile: Optional[CognitoSignupProfile] = Field(
+        default=None,
+        description="Employee profile fields supplied during Cognito signup. Roles are never accepted from this request.",
+    )
 
 
 class CognitoSignupProfile(BaseModel):
