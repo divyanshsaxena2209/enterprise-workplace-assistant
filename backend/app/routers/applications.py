@@ -24,6 +24,13 @@ def get_application_service(client: Client = Depends(get_supabase_client)) -> Ap
 from fastapi import BackgroundTasks
 
 @router.post(
+    "",
+    response_model=ApplicationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit an application",
+    description="Submit a new application for a job. Associates the current authenticated employee with the application."
+)
+@router.post(
     "/",
     response_model=ApplicationResponse,
     status_code=status.HTTP_201_CREATED,
@@ -39,6 +46,12 @@ def create_application(
     return service.create_application(application, user_id=current_user.id, background_tasks=background_tasks)
 
 
+@router.get(
+    "",
+    response_model=ApplicationListResponse,
+    summary="List applications",
+    description="List all applications. This endpoint is restricted to Management. Supports filtering by job_id, candidate_id, and status."
+)
 @router.get(
     "/",
     response_model=ApplicationListResponse,
