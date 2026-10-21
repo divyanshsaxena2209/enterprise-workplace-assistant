@@ -1,5 +1,4 @@
 FROM python:3.10-slim
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
 
 WORKDIR /app
 
@@ -19,9 +18,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Expose the port (Railway respects $PORT but 8000 is a good default)
-EXPOSE 8000
-ENV PORT=8000 AWS_LWA_PORT=8000 AWS_LWA_READINESS_CHECK_PATH=/health AWS_LWA_ASYNC_INIT=true
+# Lambda runs with a read-only application directory; place model and temp caches in /tmp.
+ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache HF_HOME=/tmp/huggingface FASTEMBED_CACHE_PATH=/tmp/fastembed_cache TMPDIR=/tmp
 
-# Command to run the application using Uvicorn
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# AWS Lambda Runtime Interface Client + Mangum expose this FastAPI app through a Function URL.
+ENTRYPOINT ["/usr/local/bin/python", "-m", "awslambdaric"]
+CMD ["app.lambda_handler.handler"]
