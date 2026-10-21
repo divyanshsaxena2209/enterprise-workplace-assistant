@@ -1,7 +1,7 @@
 """
-Authentication router — POST /auth/signup, /auth/login, /auth/logout, GET /auth/me
+Authentication router — existing Supabase routes plus the staged Cognito identity-link route.
 
-All routes use AuthService which delegates to Supabase Auth.
+Legacy signup/login/logout continue to use AuthService and Supabase Auth.
 Errors are handled centrally by the error middleware — no try/except here.
 """
 
@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.core.security import bearer_scheme
 from app.core.cognito_security import decode_cognito_id_token
 from app.core.enums import UserRole
-from app.core.exceptions import AuthenticationError, ConflictError, DatabaseError, NotFoundError
+from app.core.exceptions import AuthenticationError, AuthorizationError, ConflictError, DatabaseError, NotFoundError
 from app.repositories.cognito_identity_repository import CognitoIdentityRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.db.supabase import get_supabase_client
@@ -170,7 +170,7 @@ def get_me(
     ),
 )
 def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
-    """Link a verified Cognito identity to an existing profile by verified email."""
+    """Link a Cognito identity only after matching verified email to the Auth user record."""
     claims = decode_cognito_id_token(body.id_token, body.nonce)
     cognito_email = str(claims["email"]).strip().lower()
 
@@ -240,6 +240,23 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
                 raise DatabaseError(
                     "The Cognito account was created but its employee profile could not be saved."
                 ) from exc
+
+    # The profiles table email is application data. Cross-check it against
+    # the actual Supabase Auth identity so an editable/stale profile email can
+    # never be used to attach Cognito to a different account.
+    try:
+        auth_record = client.auth.admin.get_user_by_id(str(profile.id))
+        auth_user = getattr(auth_record, "user", None) or auth_record
+        auth_email = getattr(auth_user, "email", None)
+    except Exception as exc:
+        raise AuthorizationError(
+            "Could not verify the existing account's identity safely. Contact support."
+        ) from exc
+
+    if not isinstance(auth_email, str) or auth_email.strip().lower() != cognito_email:
+        raise AuthorizationError(
+            "The verified Cognito email does not match the linked Supabase Auth account."
+        )
 
     if not profile.is_active:
         raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
