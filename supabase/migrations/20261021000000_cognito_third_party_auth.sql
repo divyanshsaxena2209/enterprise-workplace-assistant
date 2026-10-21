@@ -19,15 +19,16 @@ stable
 security definer
 set search_path = public, auth, pg_temp
 as $$
-    select coalesce(
-        (
-            select m.profile_id
-            from public.cognito_identity_mappings as m
-            where m.cognito_sub = (auth.jwt() ->> 'sub')
-            limit 1
-        ),
-        auth.uid()
-    );
+    select case
+        when coalesce(auth.jwt() ->> 'iss', '') like 'https://cognito-idp.%.amazonaws.com/%' then
+            (
+                select m.profile_id
+                from public.cognito_identity_mappings as m
+                where m.cognito_sub = (auth.jwt() ->> 'sub')
+                limit 1
+            )
+        else auth.uid()
+    end;
 $$;
 
 revoke all on function public.current_profile_id() from public;
