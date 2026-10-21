@@ -55,3 +55,13 @@ Never create or expose a browser client secret. Cognito must use a public app cl
 GitHub Actions run #58 passed for the commit associated with the current staging branch at that time. That run shows automated tests and the frontend build passed; it does not prove the actual AWS Lambda trigger, Supabase Third-Party Auth integration, staging environment variables, real browser login, or production ECR registry state.
 
 The PR must remain draft until staging configuration and live end-to-end tests pass.
+
+
+## Isolated backend image for Cognito staging
+
+The branch workflow `.github/workflows/build-cognito-staging-ecr.yml` builds the backend from this branch and pushes only a unique ECR tag:
+`745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-<commit-sha>`.
+
+It does not push `latest`, update the production Lambda function, or change its environment. Use this exact staging-tagged image only when creating a separate staging Lambda function. If the build fails during OIDC role assumption, the IAM role trust policy must be reviewed to allow this repository branch in addition to the existing permitted branch; do not broaden permissions beyond this repository/branch need.
+
+The staging Lambda should use separate staging configuration and a staging database/project. Do not point a Cognito-preview signup flow at Production Lambda, because the new-user linking endpoint provisions profile records.
