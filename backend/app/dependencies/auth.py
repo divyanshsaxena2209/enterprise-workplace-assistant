@@ -147,6 +147,17 @@ def require_management(
     return current_user
 
 
+def require_management_or_employee(
+    current_user: ProfileResponse = Depends(get_current_user),
+) -> ProfileResponse:
+    """Require a real, active application user, excluding the read-only guest identity."""
+    if str(current_user.id) == "00000000-0000-0000-0000-000000000000":
+        raise AuthorizationError("Guest mode is read-only. Sign in to perform this action.")
+    if current_user.role not in (UserRole.MANAGEMENT, UserRole.EMPLOYEE):
+        raise AuthorizationError("This action requires a Management or Employee account.")
+    return current_user
+
+
 def require_employee(
     current_user: ProfileResponse = Depends(get_current_user),
 ) -> ProfileResponse:
