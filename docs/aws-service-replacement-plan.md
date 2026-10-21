@@ -19,11 +19,19 @@ Do not remove Supabase, Gemini, Qdrant, Lambda, or ECR until each replacement is
 | CI/CD AWS access | GitHub Actions OIDC -> IAM role | Build/push role already configured; Lambda auto-update still needs verification |
 | Lambda access to AWS resources | Lambda execution IAM role, least privilege | Existing execution role; add only permissions required by each cutover |
 | User authentication | Amazon Cognito User Pool | Not migrated |
-| File/object storage | Private Amazon S3 bucket | Not migrated; current knowledge upload uses Supabase Storage |
+| File/object storage | Private Amazon S3 bucket | S3 provider implementation staged on this branch for knowledge documents and resumes; Supabase remains the default until bucket and IAM permissions are configured |
 | Relational application database | Amazon RDS for PostgreSQL (assumed missing item) | Not migrated; current backend uses Supabase PostgREST/client and has relational schema |
 | Monitoring and alerts | CloudWatch Logs, log retention, metrics/alarms | Lambda logs use CloudWatch by default; retention and alarms need final setup |
 | AI and vector search | Gemini + Qdrant Cloud | Keep unchanged |
 | Frontend | Vercel | Keep unchanged |
+
+## Implementation staged on branch `aws-service-replacements`
+
+- Added `STORAGE_PROVIDER`, `AWS_REGION`, `AWS_S3_BUCKET`, and presigned-URL lifetime settings. The default provider remains `supabase`, so existing production configuration is unchanged.
+- Added an object-storage provider using the Lambda execution role's default AWS credential chain (no AWS access keys), SSE-S3 encryption, private object keys under `knowledge/` and `resumes/`, and short-lived presigned GET URLs.
+- Updated knowledge-document upload/delete/view flow and resume upload/detail flow to use S3 when `STORAGE_PROVIDER=s3`.
+- Added unit tests for S3 object prefixes, encryption, deletes, and presigned URL scope. These tests are committed but have not yet been run in CI.
+- This branch has not been merged or deployed. The S3 bucket and Lambda IAM policy are not yet created. Existing Supabase files/data have not been bulk-migrated to S3.
 
 ## Safe migration order
 
