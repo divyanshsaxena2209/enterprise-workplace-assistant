@@ -12,9 +12,11 @@ on:
       - ".github/workflows/build-backend-ecr.yml"
       - ".github/workflows/build-cognito-staging-ecr.yml"
       - "docs/COGNITO_STAGING_IMPLEMENTATION.md"
+      - "docs/S3_STAGING_SETUP.md"
       - "supabase/migrations/**"
       - "frontend/**"
       - "infra/cognito/**"
+      - "infra/aws/**"
   workflow_dispatch:
 
 permissions:
