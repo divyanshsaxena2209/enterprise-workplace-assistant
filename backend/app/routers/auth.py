@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.security import bearer_scheme
 from app.core.cognito_security import decode_cognito_id_token
-from app.core.exceptions import AuthenticationError, AuthorizationError
+from app.core.exceptions import AuthenticationError, NotFoundError
 from app.repositories.cognito_identity_repository import CognitoIdentityRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.db.supabase import get_supabase_client
@@ -159,29 +159,28 @@ def get_me(
 @router.post(
     "/cognito/link",
     response_model=SuccessResponse,
-    summary="Link Cognito to the currently signed-in Supabase profile",
+    summary="Link a verified Cognito identity to an existing profile",
     description=(
-        "Staging migration endpoint. Requires the current Supabase session and a "
-        "verified Cognito ID token whose email exactly matches the existing profile. "
-        "Application roles continue to come from the Supabase profile."
+        "Staging migration endpoint. Verifies the Cognito ID token, OAuth nonce, "
+        "and verified email, then links it to an existing Supabase profile with "
+        "the same email. Application roles continue to come from the database."
     ),
 )
-def link_cognito_identity(
-    body: CognitoLinkRequest,
-    current_user: ProfileResponse = Depends(get_current_user),
-) -> SuccessResponse:
-    """Link both identities only after proving control of both accounts."""
-    claims = decode_cognito_id_token(body.id_token)
+def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
+    """Link a verified Cognito identity to an existing profile by verified email."""
+    claims = decode_cognito_id_token(body.id_token, body.nonce)
     cognito_email = str(claims["email"]).strip().lower()
-    profile_email = str(current_user.email).strip().lower()
-    if cognito_email != profile_email:
-        raise AuthorizationError(
-            "The verified Cognito email must match the currently signed-in account."
-        )
-    if not current_user.is_active:
-        raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
 
     client = get_supabase_client()
+    profile_repo = ProfileRepository(client)
+    profile = profile_repo.get_by_email(cognito_email)
+    if profile is None:
+        raise NotFoundError(
+            "No existing profile matches this verified email. Create the account using the current signup flow before linking Cognito."
+        )
+    if not profile.is_active:
+        raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
+
     mapping_repo = CognitoIdentityRepository(client)
-    mapping_repo.create_mapping(str(claims["sub"]), str(current_user.id))
+    mapping_repo.create_mapping(str(claims["sub"]), str(profile.id))
     return SuccessResponse(message="Cognito identity linked to the existing profile.")
