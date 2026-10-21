@@ -210,7 +210,7 @@ class CognitoSignupProfile(BaseModel):
 
 
 class CognitoLinkRequest(BaseModel):
-    """ID token used to link the signed-in Supabase account to Cognito."""
+    """Verified Cognito ID token used to link or provision an existing application identity."""
     id_token: str = Field(
         ...,
         min_length=20,
