@@ -4,6 +4,7 @@ from typing import Any
 
 import jwt
 from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError, PyJWKClientError
 
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError
@@ -21,7 +22,7 @@ def _jwks_client() -> PyJWKClient:
 
 
 def decode_cognito_access_token(token: str) -> dict[str, Any]:
-    """Validate signature, issuer, expiry, token type, and app client ID."""
+    """Validate signature, issuer, expiry, required claims, token type, and app client ID."""
     if not settings.COGNITO_ENABLED:
         raise AuthenticationError("Cognito authentication is not enabled.")
     if not settings.COGNITO_APP_CLIENT_ID:
@@ -32,22 +33,26 @@ def decode_cognito_access_token(token: str) -> dict[str, Any]:
         f"{settings.COGNITO_USER_POOL_ID}"
     )
     try:
-        key = _jwks_client().get_signing_key_from_jwt(token).key
+        signing_key = _jwks_client().get_signing_key_from_jwt(token).key
         claims = jwt.decode(
             token,
-            key,
+            signing_key,
             algorithms=["RS256"],
             issuer=issuer,
-            options={"verify_signature": True, "verify_exp": True, "verify_iss": True, "verify_aud": False},
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_iss": True,
+                "verify_aud": False,
+                "require": ["exp", "iss", "sub", "token_use", "client_id"],
+            },
         )
         if claims.get("token_use") != "access":
             raise AuthenticationError("A Cognito access token is required.")
         if claims.get("client_id") != settings.COGNITO_APP_CLIENT_ID:
             raise AuthenticationError("Token was issued to a different Cognito app client.")
-        if not claims.get("sub"):
-            raise AuthenticationError("Cognito token is missing its subject.")
         return claims
     except AuthenticationError:
         raise
-    except (jwt.InvalidTokenError, jwt.PyJWKClientError, ValueError) as exc:
+    except (InvalidTokenError, PyJWKClientError, ValueError, TypeError) as exc:
         raise AuthenticationError("Invalid Cognito access token.") from exc
