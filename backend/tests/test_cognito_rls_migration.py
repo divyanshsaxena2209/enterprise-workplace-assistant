@@ -6,6 +6,7 @@ import psycopg
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261021000000_cognito_third_party_auth.sql"
+SECURITY_HARDENING_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022000000_harden_trigger_functions.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -39,6 +40,23 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             """
         )
         conn.execute("create table public.profiles (id uuid primary key, role text not null)")
+        # Model existing trigger functions from the baseline Supabase schema.
+        # The Cognito migration redefines log_onboarding_history; the hardening
+        # migration should secure all three trigger-only functions.
+        conn.execute(
+            """
+            create function public.handle_new_user() returns trigger
+            language plpgsql security definer
+            as $ begin return new; end $
+            """
+        )
+        conn.execute(
+            """
+            create function public.set_updated_at() returns trigger
+            language plpgsql
+            as $ begin return new; end $
+            """
+        )
         conn.execute("create table public.test_owned (user_id uuid not null)")
         conn.execute("create table storage.objects (owner_id uuid not null)")
         conn.execute("alter table storage.objects enable row level security")
@@ -70,6 +88,8 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         migration = MIGRATION.read_text(encoding="utf-8")
         # psycopg executes the full migration as one script with prepare=False.
         conn.execute(migration, prepare=False)
+        security_hardening = SECURITY_HARDENING_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(security_hardening, prepare=False)
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -147,6 +167,25 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         assert current_profile_function is not None
         assert current_profile_function[0] is True
         assert "search_path=public, auth, pg_temp" in (current_profile_function[1] or [])
+
+        # Trigger-only functions must use a fixed search_path and not be
+        # executable as browser-callable PostgREST RPCs.
+        for function_name in ("handle_new_user", "set_updated_at", "log_onboarding_history"):
+            function_config = conn.execute(
+                "select proconfig from pg_proc where oid = %s::regprocedure",
+                (f"public.{function_name}()",),
+            ).fetchone()
+            assert function_config is not None
+            assert "search_path=pg_catalog, public, auth, pg_temp" in (function_config[0] or [])
+            client_execute_privileges = conn.execute(
+                """
+                select
+                  has_function_privilege('anon', %s, 'EXECUTE'),
+                  has_function_privilege('authenticated', %s, 'EXECUTE')
+                """,
+                (f"public.{function_name}()", f"public.{function_name}()"),
+            ).fetchone()
+            assert client_execute_privileges == (False, False)
 
         conn.execute(
             "insert into public.cognito_identity_mappings (cognito_sub, profile_id) values (%s, %s)",
