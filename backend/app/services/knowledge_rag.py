@@ -6,7 +6,16 @@ from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from app.core.config import settings
 
-embedding_model = FastEmbedEmbeddings()
+embedding_model = None
+
+
+def get_embedding_model():
+    global embedding_model
+
+    if embedding_model is None:
+        embedding_model = FastEmbedEmbeddings()
+
+    return embedding_model
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-flash-latest",
@@ -41,7 +50,7 @@ def get_vector_store():
     return QdrantVectorStore(
         client=client,
         collection_name=collection_name,
-        embedding=embedding_model,
+        embedding=get_embedding_model(),
     )
 
 def process_and_store_document(file_path: str):
