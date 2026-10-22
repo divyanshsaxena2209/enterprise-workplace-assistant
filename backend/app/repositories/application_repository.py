@@ -20,6 +20,17 @@ class ApplicationRepository:
     def __init__(self, client: Client) -> None:
         self._db = client
 
+    @staticmethod
+    def _resume_from_row(row: Dict[str, Any] | None) -> ResumeResponse | None:
+        if not row:
+            return None
+        resume_row = dict(row)
+        file_url = resume_row.get("file_url") or ""
+        if file_url.startswith("s3://"):
+            from app.services.object_storage import create_resume_download_url
+            resume_row["file_url"] = create_resume_download_url(file_url.removeprefix("s3://"))
+        return ResumeResponse.model_validate(resume_row)
+
     def create_application(self, application_data: Dict[str, Any]) -> ApplicationResponse:
         """
         Creates a new application in the database.
@@ -54,7 +65,7 @@ class ApplicationRepository:
             
             job = JobResponse.model_validate(row["jobs"]) if row.get("jobs") else None
             candidate = CandidateResponse.model_validate(row["candidates"]) if row.get("candidates") else None
-            resume = ResumeResponse.model_validate(row["resumes"]) if row.get("resumes") else None
+            resume = self._resume_from_row(row.get("resumes"))
             
             score = None
             if row.get("candidate_scores"):
@@ -115,7 +126,7 @@ class ApplicationRepository:
                 candidate = CandidateResponse.model_validate(cand_res.data[0]) if cand_res.data else None
                 
                 res_res = self._db.table("resumes").select("*").eq("id", str(application.resume_id)).execute()
-                resume = ResumeResponse.model_validate(res_res.data[0]) if res_res.data else None
+                resume = self._resume_from_row(res_res.data[0] if res_res.data else None)
                 
                 score_res = self._db.table("candidate_scores").select("*").eq("application_id", str(application.id)).execute()
                 score = CandidateScoreResponse.model_validate(score_res.data[0]) if score_res.data else None

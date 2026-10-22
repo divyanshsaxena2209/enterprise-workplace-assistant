@@ -26,6 +26,7 @@ from app.core.config import settings
 from app.core.enums import UserRole
 from app.core.exceptions import (
     AuthenticationError,
+    AuthorizationError,
     BadRequestError,
     ConflictError,
     DatabaseError,
@@ -50,7 +51,8 @@ class AuthService:
 
     def signup(self, data: SignupRequest) -> TokenResponse:
         """
-        Register a new user.
+        Register a new employee account. Elevated management access must be
+        assigned through a trusted administrator workflow, never self-selected.
 
         1. Check for existing email (give friendly error before Supabase rejects).
         2. Call supabase.auth.sign_up() with profile metadata.
@@ -58,6 +60,11 @@ class AuthService:
         4. Return access_token, refresh_token, and ProfileResponse.
         """
         
+        if data.role != UserRole.EMPLOYEE:
+            raise AuthorizationError(
+                "Public signup is limited to employee accounts. Management accounts must be provisioned by an administrator."
+            )
+
         existing = self._repo.get_by_email(data.email)
         if existing:
             raise ConflictError(

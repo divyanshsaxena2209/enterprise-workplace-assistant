@@ -37,7 +37,7 @@ def list_candidates(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by name or email"),
-    current_user: ProfileResponse = Depends(get_current_user),
+    current_user: ProfileResponse = Depends(require_management),
     repo: CandidateRepository = Depends(_get_candidate_repo),
 ) -> PaginatedResponse[CandidateResponse]:
     """
@@ -68,7 +68,7 @@ def list_candidates(
 )
 def get_candidate(
     candidate_id: str,
-    current_user: ProfileResponse = Depends(get_current_user),
+    current_user: ProfileResponse = Depends(require_management),
     repo: CandidateRepository = Depends(_get_candidate_repo),
 ) -> CandidateDetailResponse:
     """

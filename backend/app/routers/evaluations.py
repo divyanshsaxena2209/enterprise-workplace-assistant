@@ -36,11 +36,9 @@ def force_evaluate_application(
 )
 def get_application_score(
     application_id: UUID,
-    current_user: ProfileResponse = Depends(require_authenticated_user),
+    current_user: ProfileResponse = Depends(require_management),
     service: MatchingService = Depends(get_matching_service)
 ):
-    
-    
     return service.get_application_score(application_id)
 
 @router.get(

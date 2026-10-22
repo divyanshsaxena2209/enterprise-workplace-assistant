@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { Search, UploadCloud, MessageSquare, FileText, Database, MoreHorizontal, Sparkles, Loader2, X, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/context/UserContext";
-import { uploadKnowledgeDocument, deleteKnowledgeDocument } from "@/lib/api/knowledge";
+import { uploadKnowledgeDocument, deleteKnowledgeDocument, getKnowledgeDocumentDownloadUrl } from "@/lib/api/knowledge";
 import LockedFeature from "@/components/layout/LockedFeature";
 export default function KnowledgeDashboard() {
   const { profile, isHired } = useUser();
@@ -20,12 +20,12 @@ export default function KnowledgeDashboard() {
     const savedSearches = parseInt(localStorage.getItem('knowledge_searches') || '0', 10);
     setSearchesRun(savedSearches);
   }, []);
-  const handleDeleteDocument = async (e: React.MouseEvent, docId: string, filename: string, file_url?: string) => {
+  const handleDeleteDocument = async (e: React.MouseEvent, docId: string, filename: string, file_url?: string, file_key?: string, storage_provider?: string) => {
     e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete "${filename}" from the Knowledge Base? This cannot be undone.`)) return;
     setIsDeleting(true);
     try {
-      await deleteKnowledgeDocument(filename, file_url);
+      await deleteKnowledgeDocument(filename, file_url, file_key, storage_provider);
       await new Promise(resolve => setTimeout(resolve, 2000));
       const updatedDocs = documents.filter(doc => doc.id !== docId);
       setDocuments(updatedDocs);
@@ -55,7 +55,9 @@ export default function KnowledgeDashboard() {
         title: result.filename || file.name,
         uploaded: new Date().toLocaleDateString(),
         dept: "Knowledge Base",
-        file_url: result.file_url
+        file_url: result.file_url,
+        file_key: result.file_key,
+        storage_provider: result.storage_provider
       };
       const updatedDocs = [newDoc, ...documents];
       setDocuments(updatedDocs);
@@ -92,23 +94,25 @@ export default function KnowledgeDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Search and ask questions about your company documents.</p>
         </div>
         <div className="flex gap-3">
-          <div className="flex items-center gap-2">
-            <input 
-              type="file" 
-              id="file-upload" 
-              className="hidden" 
-              accept=".pdf,.docx" 
-              onChange={handleFileUpload}
-              disabled={isUploading}
-            />
-            <label 
-              htmlFor="file-upload"
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-secondary transition-all shadow-sm ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
-            >
-              {isUploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-              {isUploading ? "Indexing..." : "Upload Document"}
-            </label>
-          </div>
+          {profile?.role === "MANAGEMENT" && (
+            <div className="flex items-center gap-2">
+              <input 
+                type="file" 
+                id="file-upload" 
+                className="hidden" 
+                accept=".pdf,.docx" 
+                onChange={handleFileUpload}
+                disabled={isUploading}
+              />
+              <label 
+                htmlFor="file-upload"
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-secondary transition-all shadow-sm ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {isUploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                {isUploading ? "Indexing..." : "Upload Document"}
+              </label>
+            </div>
+          )}
           <Link 
             href="/knowledge/chat" 
             className="flex items-center gap-2 bg-transparent border border-white hover:bg-white/10 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer shadow-sm"
@@ -138,8 +142,16 @@ export default function KnowledgeDashboard() {
             <div 
               key={doc.id} 
               className={`p-5 flex items-center justify-between transition-colors group ${doc.file_url ? 'hover:bg-secondary/30 cursor-pointer' : ''}`}
-              onClick={() => {
-                if (doc.file_url) {
+              onClick={async () => {
+                if (doc.storage_provider === "s3" && doc.file_key) {
+                  try {
+                    const result = await getKnowledgeDocumentDownloadUrl(doc.file_key);
+                    if (!result?.file_url) throw new Error("No download URL was returned.");
+                    setViewingDoc({ url: result.file_url, title: doc.title });
+                  } catch (error: any) {
+                    setToastMessage({ type: 'error', text: error.message || "Could not generate a secure download link." });
+                  }
+                } else if (doc.file_url) {
                   setViewingDoc({ url: doc.file_url, title: doc.title });
                 } else {
                   setToastMessage({ type: 'error', text: 'This legacy document was not uploaded to storage and cannot be viewed.' });
@@ -159,13 +171,15 @@ export default function KnowledgeDashboard() {
                 <span className="px-2.5 py-0.5 bg-secondary border border-border/50 text-[9px] uppercase tracking-wider rounded-full font-bold text-muted-foreground">
                   {doc.dept}
                 </span>
-                <button 
-                  className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
-                  onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url)}
-                  title="Delete Document"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {profile?.role === "MANAGEMENT" && (
+                  <button 
+                    className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
+                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider)}
+                    title="Delete Document"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </div>
           ))}

@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     
     SUPABASE_JWT_SECRET: str = ""
 
+    # Object storage provider. Keep "supabase" until the private S3 bucket and IAM
+    # permissions have been created and the S3 upload flow has been verified.
+    STORAGE_PROVIDER: str = "supabase"
+    AWS_REGION: str = "ap-south-1"
+    AWS_S3_BUCKET: str = ""
+    S3_PRESIGNED_URL_TTL_SECONDS: int = 900
+
     
     
     

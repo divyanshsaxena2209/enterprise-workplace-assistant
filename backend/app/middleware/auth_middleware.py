@@ -71,9 +71,10 @@ class AuthMiddleware:
                         id="00000000-0000-0000-0000-000000000000",
                         email="guest@workforceos.internal",
                         full_name="Guest Administrator",
-                        role=UserRole.MANAGEMENT,
+                        # Guest mode is a read-only demo identity, never a manager.
+                        role=UserRole.EMPLOYEE,
                         is_active=True,
-                        is_management_verified=True,
+                        is_management_verified=False,
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
