@@ -88,6 +88,66 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         assert "current_profile_id()" in (profile_policy[0] or "")
         assert "current_profile_id()" in (profile_policy[1] or "")
 
+        # The identity mapping table is backend-only: client roles must not
+        # read or write it directly, even though the backend service role can.
+        mapping_table_rls = conn.execute(
+            """
+            select relrowsecurity
+            from pg_class
+            where oid = 'public.cognito_identity_mappings'::regclass
+            """
+        ).fetchone()
+        assert mapping_table_rls == (True,)
+        mapping_privileges = conn.execute(
+            """
+            select
+                has_table_privilege('anon', 'public.cognito_identity_mappings', 'SELECT'),
+                has_table_privilege('authenticated', 'public.cognito_identity_mappings', 'SELECT'),
+                has_table_privilege('anon', 'public.cognito_identity_mappings', 'INSERT'),
+                has_table_privilege('authenticated', 'public.cognito_identity_mappings', 'INSERT'),
+                has_table_privilege('service_role', 'public.cognito_identity_mappings', 'SELECT'),
+                has_table_privilege('service_role', 'public.cognito_identity_mappings', 'INSERT')
+            """
+        ).fetchone()
+        assert mapping_privileges == (False, False, False, False, True, True)
+
+        # Policy rewriting must cover both application tables and Storage.
+        remaining_uid_policies = conn.execute(
+            """
+            select count(*)
+            from pg_policies
+            where schemaname in ('public', 'storage')
+              and (
+                coalesce(qual, '') like '%auth.uid()%'
+                or coalesce(with_check, '') like '%auth.uid()%'
+              )
+            """
+        ).fetchone()[0]
+        assert remaining_uid_policies == 0
+        rewritten_policy_count = conn.execute(
+            """
+            select count(*)
+            from pg_policies
+            where schemaname in ('public', 'storage')
+              and (
+                coalesce(qual, '') like '%current_profile_id()%'
+                or coalesce(with_check, '') like '%current_profile_id()%'
+              )
+            """
+        ).fetchone()[0]
+        assert rewritten_policy_count >= 3
+
+        current_profile_function = conn.execute(
+            """
+            select prosecdef, proconfig
+            from pg_proc
+            where oid = 'public.current_profile_id()'::regprocedure
+            """
+        ).fetchone()
+        assert current_profile_function is not None
+        assert current_profile_function[0] is True
+        assert "search_path=public, auth, pg_temp" in (current_profile_function[1] or [])
+
         conn.execute(
             "insert into public.cognito_identity_mappings (cognito_sub, profile_id) values (%s, %s)",
             (COGNITO_SUB, PROFILE_ID),
