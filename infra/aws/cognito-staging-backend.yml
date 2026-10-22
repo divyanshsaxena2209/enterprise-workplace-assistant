@@ -125,7 +125,6 @@ Resources:
           - PUT
           - PATCH
           - DELETE
-          - OPTIONS
         AllowOrigins:
           - !Ref PreviewOrigin
         MaxAge: 300
