@@ -7,6 +7,7 @@ import psycopg
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261021000000_cognito_third_party_auth.sql"
 SECURITY_HARDENING_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022000000_harden_trigger_functions.sql"
+ROLE_SCOPED_POLICY_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022000001_restrict_role_scoped_rls_policies.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -40,6 +41,44 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             """
         )
         conn.execute("create table public.profiles (id uuid primary key, role text not null)")
+        # Stand-ins for tables whose baseline migrations include legacy broad
+        # service-role policies. These let this single isolated test validate
+        # the full role-scoped policy hardening migration.
+        for table_name in (
+            "application_status_history",
+            "applications",
+            "candidate_scores",
+            "candidates",
+            "resumes",
+            "jobs",
+            "recruiter_notes",
+        ):
+            conn.execute(f"create table public.{table_name} (id uuid primary key)")
+            conn.execute(f"alter table public.{table_name} enable row level security")
+        conn.execute("create table public.interviews (id uuid primary key)")
+        conn.execute("alter table public.interviews enable row level security")
+        conn.execute(
+            'create policy "Allow public read access to profiles" on public.profiles for select using (true)'
+        )
+        conn.execute(
+            'create policy "Allow service role to insert profiles" on public.profiles for insert with check (true)'
+        )
+        for table_name, policy_name in (
+            ("application_status_history", "Allow service role full access to status history"),
+            ("applications", "Allow service role full access to applications"),
+            ("candidate_scores", "Allow service role full access to scores"),
+            ("candidates", "Allow service role full access to candidates"),
+            ("resumes", "Allow service role full access to resumes"),
+            ("jobs", "Allow service role full access to jobs"),
+            ("recruiter_notes", "Allow service role full access to recruiter notes"),
+        ):
+            conn.execute(
+                f'create policy "{policy_name}" on public.{table_name} for all using (true)'
+            )
+        conn.execute(
+            'create policy "Allow full access to interviews" on public.interviews for all using (true)'
+        )
+        conn.execute("grant all on public.interviews to authenticated, service_role")
         # Model existing trigger functions from the baseline Supabase schema.
         # The Cognito migration redefines log_onboarding_history; the hardening
         # migration should secure all three trigger-only functions.
@@ -90,6 +129,8 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute(migration, prepare=False)
         security_hardening = SECURITY_HARDENING_MIGRATION.read_text(encoding="utf-8")
         conn.execute(security_hardening, prepare=False)
+        role_scoped_policies = ROLE_SCOPED_POLICY_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(role_scoped_policies, prepare=False)
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -186,6 +227,42 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
                 (f"public.{function_name}()", f"public.{function_name}()"),
             ).fetchone()
             assert client_execute_privileges == (False, False)
+
+        # Security-sensitive RLS policies are narrowed to service_role;
+        # management-sensitive interview rows cannot be read or modified by
+        # an ordinary authenticated user via Supabase's Data API.
+        for table_name, policy_name in (
+            ("application_status_history", "Allow service role full access to status history"),
+            ("applications", "Allow service role full access to applications"),
+            ("candidate_scores", "Allow service role full access to scores"),
+            ("candidates", "Allow service role full access to candidates"),
+            ("resumes", "Allow service role full access to resumes"),
+            ("jobs", "Allow service role full access to jobs"),
+            ("recruiter_notes", "Allow service role full access to recruiter notes"),
+            ("interviews", "Allow service role full access to interviews"),
+        ):
+            policy_roles = conn.execute(
+                "select roles from pg_policies where schemaname='public' and tablename=%s and policyname=%s",
+                (table_name, policy_name),
+            ).fetchone()
+            assert policy_roles is not None
+            assert policy_roles[0] == ["service_role"]
+        assert conn.execute(
+            "select count(*) from pg_policies where schemaname='public' and tablename='profiles' and policyname='Allow public read access to profiles'"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "select count(*) from pg_policies where schemaname='public' and tablename='profiles' and policyname='Allow service role to insert profiles'"
+        ).fetchone()[0] == 1
+        profile_insert_roles = conn.execute(
+            "select roles from pg_policies where schemaname='public' and tablename='profiles' and policyname='Allow service role to insert profiles'"
+        ).fetchone()
+        assert profile_insert_roles == (["service_role"],)
+        assert conn.execute(
+            "select has_table_privilege('authenticated', 'public.interviews', 'SELECT'), has_table_privilege('authenticated', 'public.interviews', 'INSERT'), has_table_privilege('authenticated', 'public.interviews', 'UPDATE'), has_table_privilege('authenticated', 'public.interviews', 'DELETE')"
+        ).fetchone() == (False, False, False, False)
+        assert conn.execute(
+            "select has_table_privilege('service_role', 'public.interviews', 'SELECT'), has_table_privilege('service_role', 'public.interviews', 'INSERT'), has_table_privilege('service_role', 'public.interviews', 'UPDATE'), has_table_privilege('service_role', 'public.interviews', 'DELETE')"
+        ).fetchone() == (True, True, True, True)
 
         conn.execute(
             "insert into public.cognito_identity_mappings (cognito_sub, profile_id) values (%s, %s)",
