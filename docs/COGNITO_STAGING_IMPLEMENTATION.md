@@ -40,10 +40,21 @@ Only set these in a **Vercel Preview** environment after confirming that a separ
 
 Never create or expose a browser client secret. Cognito must use a public app client with authorization-code grant and PKCE.
 
+## Verified staging checkpoint (2026-10-22)
+
+- GitHub CI run #71 passed after the initial-profile-role migration fix: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39642137364.
+- Staging ECR image build #4 passed for commit `0174c50b992222d01a87bea0f323e9196ddd511d`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39642644236. Image tag: `cognito-staging-0174c50b992222d01a87bea0f323e9196ddd511d`.
+- Vercel reports a Ready preview deployment for this branch head, with branch alias `enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app`. Before using it, confirm the latest staging deployment still has this alias.
+- Candidate staging callback URL: `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/auth/callback`. Candidate sign-out URL: `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/login`. These routes match the Next.js callback handler; the old CloudFront root did not.
+- The Cognito managed-login page opened and a newly created Cognito user authenticated, but the manual test started at Cognito's hosted page and returned to the CloudFront root. That did **not** exercise the application's state/nonce/PKCE callback or the backend account-link endpoint.
+- The Vercel environment-variable inventory shows shared Production/Preview variables for Supabase URL, Supabase anon key, and API URL, but no branch-specific Preview overrides for `cognito-staging-integration`. Do not turn Cognito on for this preview until branch-specific values point to the staging Supabase project and a separate staging backend; otherwise Preview may call Production services.
+- Staging Supabase migration audit: all 17 migrations recorded; 16/16 public tables have RLS enabled; zero remaining `auth.uid()` references in public/storage policies; 25 policies use `public.current_profile_id()`; unmapped Cognito subjects resolve to NULL; the identity mapping table has no client policies or anon/authenticated table privileges, while service_role retains select/insert.
+- The Cognito third-party integration is shown enabled in the dashboard, and the pre-token-generation Lambda is attached with `V2_0`; its mock test passed. Real Supabase acceptance of a Cognito JWT and real application callback/account linking have not yet been verified.
+
 ## AWS/Supabase steps required for staging
 
 1. Confirm the Cognito app client uses Cognito user-pool authentication, authorization-code grant, `openid` and `email` scopes, and no client secret.
-2. Register the exact Vercel Preview `/auth/callback` URL as an allowed callback and the exact Preview `/login` URL as an allowed sign-out URL. Select the callback as the default redirect URI. Keep the existing CloudFront URL until we confirm it is unnecessary.
+2. Register the staging branch's actual Vercel Preview callback URL (the HTTPS origin plus `/auth/callback`) as an allowed callback, and the same origin plus `/login` as an allowed sign-out URL. Select the `/auth/callback` URL as the default redirect URI. Do not use the old CloudFront root `https://d84l1y8p4kdic.cloudfront.net/` as the OAuth callback: the observed sign-in returned to Cognito's generic success page instead of the Next.js callback handler. Initiate real app sign-in from the staging app's `/login` route so the PKCE verifier, state, and nonce cookies are set.
 3. In Supabase Dashboard → Authentication → Third-Party Auth, add Amazon Cognito using user pool `ap-south-1_89s6YRnwQ` and region `ap-south-1`.
 4. Deploy `infra/cognito/pre-token-generation/index.mjs` as a small Node.js Lambda and attach it to the Cognito user pool's Pre token generation trigger using event version `V2_0`.
 5. Apply `supabase/migrations/20261021000000_cognito_third_party_auth.sql` to a **staging Supabase project first**. Review the RLS policy rewrite before applying: it changes ownership checks that call `auth.uid()` in `public` and `storage` so mapped Cognito subjects resolve to their existing profile IDs. Unmapped Cognito subjects resolve to no profile; existing Supabase JWTs retain their old behavior.
