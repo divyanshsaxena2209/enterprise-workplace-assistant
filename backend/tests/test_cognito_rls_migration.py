@@ -93,7 +93,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             """
             create function public.set_updated_at() returns trigger
             language plpgsql
-            as $ begin return new; end $
+            as $fn$ begin return new; end $fn$
             """
         )
         conn.execute("create table public.test_owned (user_id uuid not null)")
