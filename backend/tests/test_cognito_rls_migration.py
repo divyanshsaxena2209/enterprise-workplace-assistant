@@ -86,7 +86,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             """
             create function public.handle_new_user() returns trigger
             language plpgsql security definer
-            as $ begin return new; end $
+            as $fn$ begin return new; end $fn$
             """
         )
         conn.execute(
