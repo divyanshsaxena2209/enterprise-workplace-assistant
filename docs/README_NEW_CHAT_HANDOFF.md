@@ -405,3 +405,36 @@ Read docs/README_NEW_CHAT_HANDOFF.md first. Continue the Enterprise Workplace As
 - **IAM:** staging execution role exists with scoped log-write actions; complete IAM replacement/least-privilege audit pending.
 
 **Next action:** identify/confirm the exact Cognito managed-login domain and refresh-token lifetime from the staging user pool/app client, then set all Cognito frontend variables for Preview branch `cognito-staging-integration` only. Do not ask the user to run multiple micro-tests; after configuration, do one consolidated verification. Update this handoff again after that milestone.
+
+
+## Milestone update — 2026-10-24: Cognito domain and token lifetime confirmed
+
+### Verified from the user's AWS console screenshots
+- Staging Cognito pool: `ap-south-1_89s6YRnwQ`, region `ap-south-1`.
+- Managed-login domain: `https://ap-south-189s6yrnwq.auth.ap-south-1.amazoncognito.com`.
+- App client: `enterprise-workplace-assistant-staging`, ID `7npkisjjm5jj0fsqf94et8lqra`.
+- Refresh token expiry: **5 days = 432000 seconds**. Access and ID token expiry: 60 minutes each.
+- CloudFormation stack `ewa-cognito-staging-api` showed `UPDATE_COMPLETE`; outputs gave the staging API URL and branch Preview callback/sign-out URLs listed in the prior milestone.
+
+### Work attempted and blocker
+- Attempted to read the branch-scoped Vercel Preview env inventory and add the seven missing Cognito variables using the connected Vercel integration, scoped to project `prj_ap3BHcwJymfIxo2ABdaBegLJRLBh`, team `team_ajq6NlIYClqTjsKIYbLhLm97`, and branch `cognito-staging-integration`.
+- The Vercel API returned `404 Project not found` for both env listing and env creation. **No Vercel environment variables were changed by those failed calls.** Do not claim the Cognito frontend variables have been configured.
+- Required values are now known:
+  - `NEXT_PUBLIC_AUTH_PROVIDER=cognito`
+  - `COGNITO_DOMAIN=https://ap-south-189s6yrnwq.auth.ap-south-1.amazoncognito.com`
+  - `COGNITO_APP_CLIENT_ID=7npkisjjm5jj0fsqf94et8lqra`
+  - `COGNITO_REDIRECT_URI=https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/auth/callback`
+  - `COGNITO_SIGN_OUT_URI=https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/login`
+  - `COGNITO_LINK_API_URL=https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/api/v1/auth/cognito/link`
+  - `COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS=432000`
+- These must be added only as Vercel **Preview** variables with Git branch `cognito-staging-integration`. Do not edit shared Production variables. Before adding them, resolve Vercel project/team access so the existing project is positively identified and branch scoping is preserved.
+- Cognito's app client must also allow the exact callback URL above and sign-out URL above. Do not remove the old CloudFront callback until the app-originated staging flow passes.
+
+### Current status / next consolidated action
+- Cognito domain and refresh-token lifetime: **confirmed**.
+- Staging Lambda image and CloudFormation update: **deployed**, but end-to-end runtime behavior still pending.
+- Vercel branch-scoped Cognito configuration: **blocked by Vercel connector project-not-found response**.
+- S3: **not deployed**; keep Supabase Storage.
+- IAM: least-privilege review and real role-denial behavior still pending.
+- CloudWatch: 7-day retention configured; inspect one correlated invocation during the consolidated staging pass.
+- Next: resolve Vercel project access/identifier, add the seven branch-only Preview variables, ensure Cognito callback/sign-out allowlists, create a fresh Preview deployment, then run one consolidated app-originated login/authorization/refresh/logout test. Update this handoff again after the milestone.
