@@ -319,3 +319,55 @@ Never share the code query URL or token contents. Do not test on Production user
 ## Starter prompt for the new chat
 
 Read docs/README_NEW_CHAT_HANDOFF.md first. Continue the Enterprise Workplace Assistant AWS migration on cognito-staging-integration and keep PR #3 draft. Verify current branch head, PR, CI, Vercel Preview deployment and env configuration, staging Supabase migrations/RLS, and AWS resource state before acting. Optimize for one consolidated high-value end-to-end test, not repetitive individual tests. The Cognito hosted-login test returned to the CloudFront root and did not exercise the Next.js /auth/callback handler. Do not touch main, Production Vercel variables, Production Lambda, Production Supabase or the protected busted project. Keep Supabase PostgreSQL/Auth/Storage as the default until staging Cognito/S3 tests pass. I have no budget: do not provision potentially chargeable resources unless cost is established as acceptable. No RDS migration; keep Supabase, Gemini and Qdrant.
+
+---
+
+## 11. Milestone update — 2026-10-24 (AWS staging image deployed)
+
+### Completed in this milestone
+
+- GitHub Actions workflow **Build Cognito staging backend image to Amazon ECR #11** succeeded in 7m57s:
+  https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39996288700
+- Published staging-only backend image tag:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-8222e09e1d8a8f5a7761102b1f0a224f4d9e98ed`
+- Updated `infra/aws/cognito-staging-backend.yml` on `cognito-staging-integration` to use that tag. Commit: `bce5d4b1f7b2314707b3b14b74daed207fcf15ba`.
+- User applied the updated template to the existing CloudFormation stack `ewa-cognito-staging-api` in `ap-south-1`; console showed stack `UPDATE_COMPLETE` and resource `StagingApi` `UPDATE_COMPLETE`.
+- User's Lambda console screenshot confirmed the new image tag and a resolved digest beginning `sha256:25ee90f5120e646f89814227e52dc7798aea742ad5d37406b31906568c759544eb`.
+- User confirmed the Lambda environment values `COGNITO_ENABLED=true`, `ENVIRONMENT=staging`, and `STORAGE_PROVIDER=supabase` are correct. Do not request secret values.
+
+### Migration requirements and progress snapshot
+
+| Requirement | Status | Evidence / remaining work |
+|---|---|---|
+| IAM least-privilege and role-based authorization | **Partially implemented** | A dedicated ECR-only IAM role is used for the image publishing workflow; the staging Lambda has its own execution role. App authorization remains based on database profile roles, with public Cognito signup restricted to EMPLOYEE. Still verify effective deployed policies and end-to-end employee/manager authorization. Do not confuse AWS IAM roles with application roles. |
+| Cognito authentication | **Infrastructure deployed; app E2E pending** | Staging pool, app client, pre-token trigger and backend image exist. Previous hosted-login attempt returned to CloudFront root instead of exercising Next.js `/auth/callback`. Next: wire branch-scoped Vercel Preview env and callback allowlists, then one consolidated app-originated login test. |
+| Lambda backend | **Staging image deployed; runtime integration pending** | CloudFormation stack and `StagingApi` show `UPDATE_COMPLETE`; new image tag/digest visible in console. Still confirm health/current-user and Cognito link route via the staging endpoint as part of the consolidated E2E test. |
+| CloudWatch logging/monitoring | **Basic logging configured; application behavior not verified** | Template configures staging log retention of 7 days. Earlier Lambda test showed `Runtime.Unknown` and log-stream confusion; don't mark logging/runtime healthy solely from stack update. During the consolidated API test, inspect one corresponding CloudWatch log stream and check errors. Alarms remain optional pending cost review. |
+| S3 document-storage replacement | **Not implemented/deployed** | `infra/aws/private-document-storage.yml` and `docs/S3_STAGING_SETUP.md` are proposals/guides only. Keep `STORAGE_PROVIDER=supabase` until cost is accepted and private bucket, encryption, public-access block, TLS policy and prefix-scoped role are in place. Then test one non-sensitive knowledge file and one test resume. |
+| Supabase PostgreSQL/Auth/Storage, Gemini, Qdrant | **Retained intentionally** | No RDS migration. Keep current defaults and Production untouched until staging migration is proven. Gemini key is configured in staging Lambda per user's report; never print it. |
+| Vercel Preview isolation | **Configuration work recorded; verify current live values before relying on it** | Keep Production variables unchanged. Preview must use staging API and staging Supabase, with Cognito provider enabled only for the intended staging Preview. |
+| Release readiness | **Not ready** | PR #3 remains draft. Do not merge or cut over Production until one consolidated staging E2E pass, rollback review, and cost review are complete. |
+
+### Initial migration scope (keep this checklist current)
+
+1. **IAM:** least-privilege AWS execution/deployment roles; preserve application authorization by database profile role; never grant role based on browser-supplied claims.
+2. **Cognito:** migrate sign-in to Cognito in staging first; app-originated OAuth authorization-code + PKCE callback, identity linking, session refresh/logout and role enforcement must pass.
+3. **Lambda:** isolated staging API deployment from the dedicated ECR image; prove the running API works before routing Preview traffic to it.
+4. **CloudWatch:** logs with bounded retention, then check real invocation logs/errors; only add alarms after checking costs.
+5. **S3:** private staging document storage for knowledge documents and resumes, least-privilege access by `knowledge/*` and `resumes/*`, encryption and TLS enforcement; don't bulk-copy legacy files.
+6. **App integration:** branch-scoped Vercel Preview env/callback allowlists only; do not change Production.
+7. **Preserve current services:** Supabase PostgreSQL, Gemini and Qdrant stay. Supabase Auth/Storage remain fallback/default until staging Cognito/S3 validation passes. No RDS migration.
+8. **Safety/cost:** user has no budget. Do not create additional potentially billable resources or enable extra services/alarms without establishing cost and getting explicit approval.
+
+### Next work — avoid repetitive micro-tests
+
+1. Verify the current staging Preview environment variables and Cognito callback/sign-out allowlists, without changing Production.
+2. Connect Preview to the staging API and Cognito.
+3. Run **one consolidated end-to-end staging pass** covering app-originated login/callback, state/nonce/PKCE, profile link/provision, employee access, manager-only denial, unmapped-subject denial, refresh/logout, legacy Supabase fallback, and a single correlated CloudWatch log check.
+4. After Cognito is sound, review S3 cost and deploy private S3 only with explicit cost approval.
+5. Update this handoff at each major milestone with commit/run IDs, what actually changed, evidence, and remaining work. Never label an item complete based only on CI/template validation.
+
+### Handoff maintenance rule
+
+**Required after every major milestone:** update this file on `cognito-staging-integration` with date, changed files/commit or AWS resource, concrete verification evidence, status of IAM/Cognito/S3/Lambda/CloudWatch/Vercel, remaining blockers and the next consolidated action. Keep it factual; distinguish code/CI success from a deployed AWS resource and from end-to-end behavior. Preserve all Production, cost and protected-project constraints. Avoid making the user repeat context or perform many tiny checks.
+
