@@ -371,3 +371,37 @@ Read docs/README_NEW_CHAT_HANDOFF.md first. Continue the Enterprise Workplace As
 
 **Required after every major milestone:** update this file on `cognito-staging-integration` with date, changed files/commit or AWS resource, concrete verification evidence, status of IAM/Cognito/S3/Lambda/CloudWatch/Vercel, remaining blockers and the next consolidated action. Keep it factual; distinguish code/CI success from a deployed AWS resource and from end-to-end behavior. Preserve all Production, cost and protected-project constraints. Avoid making the user repeat context or perform many tiny checks.
 
+
+
+## Milestone update — 2026-10-24: isolated staging API connected to Preview env
+
+**Branch:** `cognito-staging-integration`  
+**Scope:** branch-specific Vercel Preview only; Production untouched.
+
+### Completed with live evidence
+- GitHub Actions workflow **Build and push isolated Cognito staging image #11** succeeded in 7m57s. Image tag: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-8222e09e1d8a8f5a7761102b1f0a224f4d9e98ed`. Run: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39996288700
+- CloudFormation stack `ewa-cognito-staging-api` is `UPDATE_COMPLETE`. Its Outputs currently report:
+  - Staging API base URL: `https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/`
+  - Cognito link endpoint: `https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/api/v1/auth/cognito/link`
+  - Preview callback: `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/auth/callback`
+  - Preview sign-out: `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/login`
+- Updated Vercel env `NEXT_PUBLIC_API_URL` for Preview branch `cognito-staging-integration` to the staging API URL above. The live env listing confirmed the branch filter and Preview target. This does not change Production.
+- Rechecked the branch-scoped Vercel env inventory. Present: `NEXT_PUBLIC_SUPABASE_URL` points to isolated staging project `https://wxulxcsdpwsyhtpkbazi.supabase.co`; `NEXT_PUBLIC_SUPABASE_ANON_KEY` is configured as sensitive; `NEXT_PUBLIC_API_URL` points to staging API. No Cognito frontend variables were present in the branch-specific Preview inventory at this checkpoint.
+
+### Remaining blockers — do not claim end-to-end success
+- Cognito frontend Preview variables still need branch-scoped configuration: `NEXT_PUBLIC_AUTH_PROVIDER=cognito`, `COGNITO_DOMAIN`, `COGNITO_APP_CLIENT_ID=7npkisjjm5jj0fsqf94et8lqra`, `COGNITO_REDIRECT_URI`, `COGNITO_SIGN_OUT_URI`, `COGNITO_LINK_API_URL`, and `COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS`. Confirm the exact active Cognito domain and app-client refresh-token lifetime before setting values. Never configure these for Production.
+- Confirm staging Lambda health and account-link route against the deployed image, and correlate one invocation with CloudWatch logs. Stack status alone does not prove runtime health.
+- Create a fresh Vercel Preview deployment after env changes, then perform one consolidated app-originated Cognito E2E test. The prior hosted-login-only attempt did not test the app callback/account linking.
+- IAM least privilege and role separation remain under review; don't elevate app roles from Cognito claims or browser input.
+- S3 replacement is **not deployed**. `STORAGE_PROVIDER=supabase` remains. Review cost and get explicit approval before provisioning S3 or any additional potentially billable resources.
+- Preserve Supabase PostgreSQL, Gemini and Qdrant. No RDS migration. Supabase Auth/Storage remain fallback/default until Cognito and S3 staging checks pass. Production Lambda, Production Vercel variables, Production Supabase and protected project `busted` remain off-limits.
+
+### Migration status at this milestone
+- **Cognito:** backend trigger and isolated staging pool exist; app callback/E2E pending.
+- **Lambda:** isolated staging API deployed/updated; health/runtime verification pending.
+- **CloudWatch:** log group retention configured at 7 days; real invocation/error check pending.
+- **Vercel Preview isolation:** staging API URL now configured on the target branch; Cognito frontend variables and a fresh deployment pending.
+- **S3:** not implemented/deployed; Supabase Storage retained.
+- **IAM:** staging execution role exists with scoped log-write actions; complete IAM replacement/least-privilege audit pending.
+
+**Next action:** identify/confirm the exact Cognito managed-login domain and refresh-token lifetime from the staging user pool/app client, then set all Cognito frontend variables for Preview branch `cognito-staging-integration` only. Do not ask the user to run multiple micro-tests; after configuration, do one consolidated verification. Update this handoff again after that milestone.
