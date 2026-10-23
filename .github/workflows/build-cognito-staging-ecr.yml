@@ -11,6 +11,7 @@ jobs:
   build-and-push-cognito-staging:
     name: Build and push isolated Cognito staging image
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -35,5 +36,7 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
+          cache-from: type=gha,scope=ewa-cognito-staging
+          cache-to: type=gha,mode=max,scope=ewa-cognito-staging,timeout=2m,ignore-error=true
           tags: |
             745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-${{ github.sha }}
