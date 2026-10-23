@@ -8,8 +8,8 @@ Description: >
 Parameters:
   ImageUri:
     Type: String
-    Default: 745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-0174c50b992222d01a87bea0f323e9196ddd511d
-    Description: Existing staging-tagged ECR image. Backend application code has not changed since this image was built.
+    Default: 745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-8222e09e1d8a8f5a7761102b1f0a224f4d9e98ed
+    Description: Newly built isolated Cognito staging ECR image from the successful build workflow.
 
   SupabaseProjectUrl:
     Type: String
