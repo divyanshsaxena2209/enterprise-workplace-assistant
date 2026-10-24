@@ -1,4 +1,5 @@
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+import sys
 
 import pytest
 from fastapi import HTTPException
@@ -11,6 +12,7 @@ def test_query_checks_session_ownership_before_writing_any_messages(
     monkeypatch, owns_session
 ):
     events = []
+    rag_module = ModuleType("app.services.knowledge_rag")
 
     def get_session_messages(session_id, user_id):
         events.append(("ownership_check", session_id, user_id))
@@ -25,11 +27,14 @@ def test_query_checks_session_ownership_before_writing_any_messages(
         events.append(("retrieve", question, k, chat_history))
         return {"answer": "safe answer", "sources": []}
 
+    rag_module.retrieve_and_answer = retrieve_and_answer
+    rag_module.process_and_store_document = lambda *_args, **_kwargs: {}
+    monkeypatch.setitem(sys.modules, "app.services.knowledge_rag", rag_module)
+
     monkeypatch.setattr(
         knowledge.knowledge_chat_service, "get_session_messages", get_session_messages
     )
     monkeypatch.setattr(knowledge.knowledge_chat_service, "add_message", add_message)
-    monkeypatch.setattr(knowledge, "retrieve_and_answer", retrieve_and_answer)
 
     query = knowledge.QueryRequest(question="new question", session_id="session-123")
     current_user = SimpleNamespace(id="employee-123")
