@@ -16,13 +16,13 @@
 > **Fastest safe completion path:** (1) inspect existing stack and Lambda in AWS Console, (2) compare current stack parameters/environment and deployed image to the successful build, (3) change only what is demonstrably missing, (4) run one end-to-end staging check for signup/sign-in, callback/session, `/api/v1/auth/me`, Employee authorization, Management grant/request, refresh and logout, (5) update this handoff with the exact observed results. Keep PR #3 draft until those tests pass. Do not touch Production, the protected `busted` project, S3, or unrelated CloudWatch work.
 
 
-**Snapshot:** 24 October 2026 (Asia/Kolkata)  
+**Snapshot:** 25 October 2026 (Asia/Kolkata)  
 **Repository:** https://github.com/divyanshsaxena2209/enterprise-workplace-assistant  
 **Working branch:** cognito-staging-integration  
 **Draft PR:** https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3  
 **PR base:** aws-service-replacements  
 **Latest handoff audit commit:** tracked in the final “Requirements traceability and migration progress” section below; always query the live branch SHA before building/deploying  
-**Most recent inspected successful CI checkpoint:** run #40116073644 — https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40116073644 (67 passed, 10 warnings; tested code SHA documented below)  
+**Most recent inspected successful CI checkpoint:** run #40124516406 — https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40124516406 (112 passed, 10 warnings; tested source SHA `961adefa90ddab9195b1102a453998ff8a64b4e6`; later branch changes were documentation-only)  
 
 Keep PR #3 in draft. The handoff-documentation commit may advance the branch SHA; check the current SHA before any build or deployment. Do not merge into main before real staging end-to-end tests pass.
 
@@ -37,7 +37,7 @@ Enterprise Workplace Assistant is a workforce-operations and hiring platform wit
 - Company knowledge-document uploads, retrieval and department-sensitive RAG/chatbot features.
 - Separate management and employee dashboards.
 
-The frontend is Next.js App Router. The backend is FastAPI. The relational schema is PostgreSQL accessed through Supabase/PostgREST. Gemini powers LLM features and Qdrant Cloud supplies vector retrieval. These are the existing services to preserve while introducing Cognito and, later, private S3 storage.
+The frontend is Next.js App Router. The backend is FastAPI. The relational schema is PostgreSQL accessed through Supabase/PostgREST. Gemini powers LLM features and Qdrant Cloud supplies vector retrieval. Preserve the existing services. The current migration scope is Cognito authentication and IAM/access control only; S3 migration is explicitly out of scope.
 
 ## 2. User preferences and non-negotiable guardrails
 
@@ -52,7 +52,7 @@ The frontend is Next.js App Router. The backend is FastAPI. The relational schem
 - The user has no budget / cannot spend money. AWS and Supabase usage may not be $0 even when a resource is small or eligible for a free tier. Do not provision chargeable resources unless the cost is proven acceptable and the user explicitly agrees.
 - The user has explicitly decided **not to migrate PostgreSQL to RDS**. Keep Supabase PostgreSQL. Do not create RDS, NAT Gateway, EC2, paid Supabase branches or other cost-prone resources without explicit approval.
 - Preserve Gemini and Qdrant Cloud.
-- Leave Supabase Auth and Supabase Storage as defaults until the Cognito/S3 integrations have passed staging checks and a rollback plan exists.
+- Keep Supabase Storage as-is; do not migrate to S3. Cognito can be enabled only for the isolated staging path after the Cognito end-to-end checks pass. Do not change Production authentication or shared environment variables.
 
 ## 3. Production baseline — do not disturb
 
