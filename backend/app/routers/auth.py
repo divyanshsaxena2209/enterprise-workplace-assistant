@@ -5,6 +5,7 @@ Legacy signup/login/logout continue to use AuthService and Supabase Auth.
 Errors are handled centrally by the error middleware — no try/except here.
 """
 
+import logging
 import secrets
 
 from fastapi import APIRouter, Depends, Request, status
@@ -27,6 +28,8 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _get_auth_service() -> AuthService:
@@ -208,11 +211,19 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
         except Exception as exc:
             # A concurrent request may have created the profile after the first
             # lookup. Reuse only that exact email-matched profile; never overwrite
-            # an existing user's role or profile fields.
+            # an existing user's role or profile fields. If the profile still
+            # does not exist, the original exception could be an Auth API failure,
+            # a trigger failure, bad staging credentials, or a transient outage.
+            # Do not mislabel all such failures as a duplicate-account conflict.
+            logger.warning(
+                "Cognito staging shadow-user provisioning failed (exception_type=%s)",
+                type(exc).__name__,
+            )
             profile = profile_repo.get_by_email(cognito_email)
             if profile is None:
-                raise ConflictError(
-                    "Could not provision an employee profile for this Cognito account. Please contact support."
+                raise DatabaseError(
+                    "Could not provision the employee profile in the staging database. "
+                    "Check staging Supabase Auth and profile-trigger configuration."
                 ) from exc
 
         if profile is None:
