@@ -90,6 +90,9 @@ Resources:
       Role: !GetAtt StagingApiExecutionRole.Arn
       MemorySize: 1024
       Timeout: 60
+      # This public staging endpoint is intentionally low-concurrency to limit
+      # accidental or abusive parallel compute spend during validation.
+      ReservedConcurrentExecutions: 2
       Architectures:
         - x86_64
       Environment:
