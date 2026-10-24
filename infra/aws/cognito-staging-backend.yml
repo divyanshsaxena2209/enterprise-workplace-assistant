@@ -8,7 +8,7 @@ Description: >
 Parameters:
   ImageUri:
     Type: String
-    Default: 745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-5f67a3ec61e09b8dab1181f8b134a1894bb4b4ae
+    Default: 745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-c2141b64f5022cfb86e65859408974cba55fe4f1
     Description: Newly built isolated Cognito staging ECR image from the successful build workflow.
 
   StorageProvider:
