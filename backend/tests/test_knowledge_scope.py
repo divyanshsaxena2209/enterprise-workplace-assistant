@@ -24,6 +24,9 @@ def test_scope_normalization_and_employee_visibility_are_case_insensitive():
     assert document_scope_visible("engineering", "Engineering")
     assert not document_scope_visible("HR", "Engineering")
     assert not document_scope_visible("HR", None)
+    assert not document_scope_visible("REVIEW_REQUIRED", "Engineering")
+    assert not document_scope_visible("REVIEW_REQUIRED", None)
+    assert document_scope_visible("REVIEW_REQUIRED", None, is_management=True)
     assert document_scope_visible("HR", None, is_management=True)
 
 

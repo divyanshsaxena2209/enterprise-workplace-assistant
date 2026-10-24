@@ -25,6 +25,8 @@ def document_scope_visible(
         return True
     scope_key = normalize_department_scope_key(document_scope)
     department_key = normalize_department_scope_key(user_department)
+    if scope_key == "review_required":
+        return False
     return scope_key == "all" or (department_key != "all" and scope_key == department_key)
 
 
