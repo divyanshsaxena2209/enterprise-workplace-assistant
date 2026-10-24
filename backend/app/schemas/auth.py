@@ -5,7 +5,7 @@ Strict Pydantic v2 validation for all auth-related API payloads.
 """
 
 import re
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core.enums import UserRole
@@ -182,6 +182,10 @@ class CognitoSignupProfile(BaseModel):
     location: Optional[str] = Field(default=None, max_length=128)
     bio: Optional[str] = Field(default=None, max_length=500)
     avatar_url: Optional[str] = Field(default=None, max_length=1024)
+    requested_access_level: Literal["EMPLOYEE", "MANAGEMENT"] = Field(
+        default="EMPLOYEE",
+        description="Requested application access. MANAGEMENT is only a request and never grants privileges by itself.",
+    )
 
     @field_validator("full_name", "department", "job_title")
     @classmethod
