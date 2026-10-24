@@ -11,6 +11,7 @@ type SignupProfile = {
   location?: string;
   bio?: string;
   avatar_url?: string;
+  requested_access_level: "EMPLOYEE" | "MANAGEMENT";
 };
 
 function config() {
@@ -94,7 +95,17 @@ function parseSignupProfile(value: unknown): SignupProfile {
     }
     return item.trim();
   };
-  // Deliberately don't read or accept a role/permission field from the browser.
+  // This is a requested access level, not an authoritative role. The backend
+  // always provisions EMPLOYEE first and stores MANAGEMENT requests for review.
+  // Deliberately do not accept or propagate a client-supplied "role" field.
+  const requestedAccess = raw.requested_access_level;
+  if (
+    requestedAccess !== undefined &&
+    requestedAccess !== "EMPLOYEE" &&
+    requestedAccess !== "MANAGEMENT"
+  ) {
+    throw new Error("Choose Employee access or request Management access.");
+  }
   return {
     full_name: required("full_name", 128),
     department: required("department", 100),
@@ -103,6 +114,7 @@ function parseSignupProfile(value: unknown): SignupProfile {
     location: optional("location", 128),
     bio: optional("bio", 500),
     avatar_url: optional("avatar_url", 1024),
+    requested_access_level: requestedAccess === "MANAGEMENT" ? "MANAGEMENT" : "EMPLOYEE",
   };
 }
 
