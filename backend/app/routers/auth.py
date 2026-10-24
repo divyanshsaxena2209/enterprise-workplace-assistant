@@ -215,9 +215,16 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
             # does not exist, the original exception could be an Auth API failure,
             # a trigger failure, bad staging credentials, or a transient outage.
             # Do not mislabel all such failures as a duplicate-account conflict.
+            upstream_status = getattr(exc, "status_code", None)
+            if not isinstance(upstream_status, int):
+                upstream_status = getattr(exc, "status", None)
+            if not isinstance(upstream_status, int) or not 100 <= upstream_status <= 599:
+                upstream_status = None
             logger.warning(
-                "Cognito staging shadow-user provisioning failed (exception_type=%s)",
+                "Cognito staging shadow-user provisioning failed "
+                "(exception_type=%s upstream_status=%s)",
                 type(exc).__name__,
+                upstream_status,
             )
             profile = profile_repo.get_by_email(cognito_email)
             if profile is None:
