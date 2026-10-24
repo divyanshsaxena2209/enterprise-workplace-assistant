@@ -2,11 +2,6 @@ name: Build Cognito staging backend image to Amazon ECR
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - cognito-staging-integration
-    paths:
-      - 'docs/.staging-ecr-build-trigger'
 
 permissions:
   contents: read
