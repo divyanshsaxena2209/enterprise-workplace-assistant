@@ -130,12 +130,19 @@ export async function GET(request: NextRequest) {
       cache: "no-store",
     });
     if (!linkResponse.ok) {
-      // Do not include backend response bodies, user attributes, or tokens in logs or URLs.
+      // Log only the HTTP status: never log response bodies, user attributes, or tokens.
+      console.error("[cognito-staging] account-link endpoint returned a non-success status", {
+        status: linkResponse.status,
+      });
       const response = loginError(request, linkResponse.status === 404 ? "profile_not_found" : "cognito_account_link_failed");
       clearTemporaryCookies(response);
       return response;
     }
-  } catch {
+  } catch (error) {
+    // Log the exception class only; request payloads contain ID tokens and profile data.
+    console.error("[cognito-staging] account-link request failed before a successful response", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
     const response = loginError(request, "cognito_account_link_failed");
     clearTemporaryCookies(response);
     return response;
