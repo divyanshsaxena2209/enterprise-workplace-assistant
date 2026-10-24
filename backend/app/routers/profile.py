@@ -156,6 +156,43 @@ class ManagementAccessReviewRequest(BaseModel):
         return cleaned or None
 
 
+class ManagementAccessRequestSubmit(BaseModel):
+    request_note: str | None = Field(default=None, max_length=500)
+    model_config = {"extra": "forbid"}
+
+    @field_validator("request_note")
+    @classmethod
+    def normalize_request_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+@router.post(
+    "/management-access-request",
+    summary="Submit or resubmit a Management access request",
+)
+def submit_management_access_request(
+    body: ManagementAccessRequestSubmit,
+    current_user: ProfileResponse = Depends(require_management_or_employee),
+):
+    """Submitting a request never changes the caller's application role."""
+    if current_user.role != UserRole.EMPLOYEE:
+        raise AuthorizationError("Only Employee accounts may request Management access.")
+    request_record = ManagementAccessRequestRepository(get_supabase_client()).submit(
+        str(current_user.id), request_note=body.request_note
+    )
+    return {
+        "request": request_record,
+        "message": (
+            "Management access request submitted for administrator review."
+            if request_record.get("status") == "PENDING"
+            else f"Your Management access request is {request_record.get('status', 'unavailable')}."
+        ),
+    }
+
+
 @router.get(
     "/management-access-request",
     summary="Get the authenticated user's Management access request",
