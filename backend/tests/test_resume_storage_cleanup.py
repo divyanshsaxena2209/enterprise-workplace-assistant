@@ -145,3 +145,80 @@ def test_supabase_resume_persists_stable_provider_key(monkeypatch):
     result = router.upload_resume(make_upload(), SimpleNamespace(id="employee-2"))
     assert result.candidate_id == "candidate-2"
     assert result.resume_id == "resume-2"
+
+
+@pytest.mark.parametrize(
+    "stored_locator",
+    [
+        "supabase://resumes_uuid_resume.pdf",
+        "https://staging.supabase.co/storage/v1/object/public/resumes/resumes_uuid_resume.pdf",
+    ],
+)
+def test_candidate_detail_converts_supabase_resume_locator_to_signed_url(monkeypatch, stored_locator):
+    from app.repositories.candidate_repository import CandidateRepository
+
+    candidate = {
+        "id": "candidate-1",
+        "full_name": "Test Candidate",
+        "email": "candidate@example.invalid",
+        "phone": None,
+        "created_at": "2026-10-24T00:00:00+00:00",
+        "updated_at": "2026-10-24T00:00:00+00:00",
+        "is_deleted": False,
+    }
+    resume = {
+        "id": "resume-1",
+        "candidate_id": "candidate-1",
+        "file_url": stored_locator,
+        "parsed_data": {
+            "full_name": "Test Candidate",
+            "email": "candidate@example.invalid",
+            "phone": None,
+            "skills": [],
+            "experience": [],
+            "education": [],
+            "certifications": [],
+            "projects": [],
+            "previous_companies": [],
+        },
+        "status": "UPLOADED",
+        "created_at": "2026-10-24T00:00:00+00:00",
+    }
+
+    class FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=self.rows)
+
+    class FakeClient:
+        def table(self, table_name):
+            return FakeQuery([candidate] if table_name == "candidates" else [resume])
+
+    signed_calls = []
+    monkeypatch.setattr(
+        object_storage,
+        "create_resume_download_url",
+        lambda key, storage_provider="s3": (
+            signed_calls.append((key, storage_provider)) or "https://signed.invalid/resume?token=short-lived"
+        ),
+    )
+
+    details = CandidateRepository(FakeClient()).get_candidate_by_id("candidate-1")
+
+    assert details.resume is not None
+    assert details.resume.file_url == "https://signed.invalid/resume?token=short-lived"
+    assert signed_calls == [("resumes_uuid_resume.pdf", "supabase")]

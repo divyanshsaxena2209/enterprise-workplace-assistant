@@ -283,3 +283,30 @@ def test_extract_legacy_supabase_resume_urls_without_fetching_them():
             "https://project.supabase.co/storage/v1/object/public/resumes/knowledge_policy.pdf",
             prefix="resumes",
         )
+
+
+def test_supabase_resume_download_reads_only_validated_resume_object(monkeypatch):
+    from app.db import supabase as supabase_module
+
+    class FakeBucket:
+        def __init__(self):
+            self.downloaded = []
+
+        def download(self, path):
+            self.downloaded.append(path)
+            return b"private-resume-bytes"
+
+    bucket = FakeBucket()
+    client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _name: bucket))
+    monkeypatch.setattr(supabase_module, "get_supabase_client", lambda: client)
+
+    assert object_storage.download_supabase_object_bytes(
+        "resumes_uuid_resume.pdf", prefix="resumes"
+    ) == b"private-resume-bytes"
+    assert bucket.downloaded == ["resumes_uuid_resume.pdf"]
+
+    with pytest.raises(ValueError):
+        object_storage.download_supabase_object_bytes(
+            "knowledge_policy.pdf", prefix="resumes"
+        )
+    assert bucket.downloaded == ["resumes_uuid_resume.pdf"]
