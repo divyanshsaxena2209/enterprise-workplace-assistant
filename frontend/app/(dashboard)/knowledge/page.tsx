@@ -51,9 +51,19 @@ export default function KnowledgeDashboard() {
         const registeredKeys = new Set(
           registered.map((doc: any) => doc.file_key ? `${doc.storage_provider}:${doc.file_key}` : ""),
         );
+        const isManagementProfile = ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "");
         const legacy = savedDocs.filter((doc: any) => {
           const key = doc.file_key ? `${doc.storage_provider || "supabase"}:${doc.file_key}` : "";
-          return !key || !registeredKeys.has(key);
+          const rawScope = typeof doc.department_scope === "string" ? doc.department_scope.trim() : "";
+          const scopeAllowed =
+            isManagementProfile ||
+            rawScope.toUpperCase() === "ALL" ||
+            Boolean(rawScope && profile?.department &&
+              rawScope.toLocaleLowerCase() === profile.department.trim().toLocaleLowerCase());
+          // Old browser-local documents have no trustworthy server-side scope.
+          // Keep them for management to review/re-upload; employees only retain
+          // explicitly scoped legacy entries so localStorage cannot bypass API RBAC.
+          return scopeAllowed && (!key || !registeredKeys.has(key));
         }).map((doc: any) => ({ ...doc, managed_by_api: false }));
         const merged = [...registered, ...legacy];
         if (!cancelled) {
@@ -67,7 +77,7 @@ export default function KnowledgeDashboard() {
 
     if (profile?.id) void loadRegisteredDocuments();
     return () => { cancelled = true; };
-  }, [profile?.id]);
+  }, [profile?.id, profile?.department, profile?.role]);
   const handleDeleteDocument = async (e: React.MouseEvent, docId: string, filename: string, file_url?: string, file_key?: string, storage_provider?: string, managedByApi?: boolean) => {
     e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete "${filename}" from the Knowledge Base? This cannot be undone.`)) return;

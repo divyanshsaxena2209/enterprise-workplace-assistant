@@ -27,16 +27,15 @@ def test_scope_normalization_and_employee_visibility_are_case_insensitive():
     assert document_scope_visible("HR", None, is_management=True)
 
 
-def test_qdrant_filter_includes_global_matching_department_and_legacy_documents():
+def test_qdrant_filter_includes_only_global_and_matching_department_scopes():
     filter_value = build_department_scope_filter("Engineering")
 
     assert isinstance(filter_value, models.Filter)
     assert filter_value.should is not None
-    assert len(filter_value.should) == 3
+    assert len(filter_value.should) == 2
     assert filter_value.should[0].key == "metadata.department_scope_key"
     assert filter_value.should[0].match.value == "all"
     assert filter_value.should[1].match.value == "engineering"
-    assert filter_value.should[2].is_null.key == "metadata.department_scope_key"
 
 
 def test_management_query_has_no_department_filter():
@@ -59,7 +58,6 @@ def test_employee_document_list_filters_other_departments(monkeypatch):
         {"id": "global", "filename": "company-policy.pdf", "department_scope": "ALL"},
         {"id": "engineering", "filename": "engineering.pdf", "department_scope": "Engineering"},
         {"id": "hr", "filename": "hr.pdf", "department_scope": "HR"},
-        {"id": "legacy", "filename": "legacy.pdf"},
     ]
 
     class FakeRepository:
@@ -75,7 +73,26 @@ def test_employee_document_list_filters_other_departments(monkeypatch):
 
     result = router.list_knowledge_documents(employee)
 
-    assert [row["id"] for row in result] == ["global", "engineering", "legacy"]
+    assert [row["id"] for row in result] == ["global", "engineering"]
+
+
+def test_management_can_see_legacy_unscoped_records_for_retagging(monkeypatch):
+    router = load_knowledge_router(monkeypatch)
+    records = [
+        {"id": "global", "filename": "company-policy.pdf", "department_scope": "ALL"},
+        {"id": "legacy", "filename": "legacy.pdf"},
+    ]
+
+    class FakeRepository:
+        def list_documents(self):
+            return records
+
+    monkeypatch.setattr(router, "_document_repository", lambda: FakeRepository())
+    manager = SimpleNamespace(id="manager-1", role=UserRole.MANAGEMENT, department=None)
+
+    result = router.list_knowledge_documents(manager)
+
+    assert [row["id"] for row in result] == ["global", "legacy"]
 
 
 def test_employee_cannot_get_signed_url_for_another_departments_document(monkeypatch):

@@ -31,8 +31,8 @@ def document_scope_visible(
 def build_department_scope_filter(department_scope: str | None):
     """Build a Qdrant filter; None means the caller has management-wide access.
 
-    Legacy points without this metadata are treated as company-wide so existing
-    indexed policies remain available until they are re-uploaded/tagged.
+    Points without an explicit scope are excluded (fail closed). Reindex legacy
+    documents with a manager-selected scope before making them searchable again.
     """
     if department_scope is None:
         return None
@@ -40,12 +40,13 @@ def build_department_scope_filter(department_scope: str | None):
     from qdrant_client.http import models
 
     field_key = "metadata.department_scope_key"
+    # Missing metadata is not public by default: only explicit company-wide
+    # and matching-department scopes are visible to employee queries.
     should = [
         models.FieldCondition(
             key=field_key,
             match=models.MatchValue(value="all"),
         ),
-        models.IsNullCondition(is_null=models.PayloadField(key=field_key)),
     ]
     department_key = normalize_department_scope_key(department_scope)
     if department_key and department_key != "all":
