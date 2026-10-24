@@ -479,3 +479,34 @@ Read docs/README_NEW_CHAT_HANDOFF.md first. Continue the Enterprise Workplace As
 - **S3:** still not migrated; Supabase Storage remains the active/default provider. Do not deploy S3 resources without explicit cost approval.
 - **IAM:** dedicated staging execution/OIDC roles and least-privilege groundwork exist; final policy audit and end-to-end role checks remain.
 - **CloudWatch:** log groups are present and basic Lambda events are visible; useful application-level account-link diagnostics were missing and are now being added.
+
+---
+
+## 13. Cognito account-link diagnostic update — 24 October 2026
+
+**Working branch:** cognito-staging-integration  
+**Relevant source files:** frontend/app/auth/callback/route.ts; frontend/components/auth/CognitoLoginPage.tsx; frontend/app/api/auth/cognito/access-token/route.ts
+
+### Findings from the latest investigation
+
+- The user-visible failure is cognito_account_link_failed; a separate Vercel Request Logs entry showed GET /api/auth/cognito/access-token returning HTTP 401. The access-token 401 can be expected after callback failure clears session cookies; it is not proof of the original cause.
+- Read-only SQL against staging only (wxulxcsdpwsyhtpkbazi) returned 0 rows in auth.users, public.profiles, and public.cognito_identity_mappings. Therefore this staging test has not successfully provisioned and mapped an app user.
+- Historical CloudWatch rows included an initial slow/cold Lambda invocation and older runtime warnings. Those are not enough to identify the link endpoint's actual HTTP status/error code.
+- No Cognito tokens, authorization codes, user profile values or keys were read or logged in this investigation.
+- Vercel Hobby runtime log retention is limited to one hour, so the previous attempt's exact callback log may no longer be available. Vercel connector reads for this project were returning project-not-found/forbidden; deployment state was not independently verified through that connector.
+
+### Code changes committed in the staging branch
+
+1. Commit b807e5996d71d6f264d5ab0f6d00333cd403c6d1: add safe logging of the link endpoint HTTP status, or the exception class for a fetch failure.
+2. Commit d28d342607b52164c06b32c972b4ec8379e83174: parse only an allow-listed error_code from the staging backend's standardized error response and log status + safe errorCode; never log response bodies, tokens, nonce or user data. Translate common backend error categories into diagnostic login error keys.
+3. Commit 5b4cd788f826f9ba4c53db380a458fca9c57ab83: add corresponding user-safe explanations for token rejection, profile identity mismatch, mapping conflict, invalid profile data, database error, unavailable service, and generic backend failure.
+
+The new behavior is frontend-only and does not modify AWS resources, the staging Supabase database, Production environment variables, Production Lambda, or the main branch. It is not considered deployed until the Vercel Preview is Ready on a commit containing these changes.
+
+### Next action after Preview is Ready
+
+- Make one app-originated attempt through the current branch Preview, using /signup to supply the employee profile and the existing test Cognito user if the Hosted UI allows sign-in from that screen. Do not begin at the Cognito dashboard/root URL. If the existing Cognito identity cannot complete the signup path, stop and report the exact on-screen message rather than creating multiple identities.
+- The login page should now show a more specific safe category. That single result should tell us whether the failure is token/JWKS validation (cognito_link_token_rejected), identity mismatch (cognito_link_identity_mismatch), conflict, validation, database, service or generic backend.
+- If a generic failure remains, use the newly logged Vercel entry to record the safe HTTP status/error code and correlate with the same staging Lambda invocation in CloudWatch. Do not run broad repetitive log queries.
+- Do not change the Cognito refresh-token lifetime based only on Vercel's Needs Attention warning. It is a configuration-exposure warning for a numeric value, not evidence of this profile-link failure.
+- Keep PR #3 draft. Do not deploy a new backend image or alter CloudFormation unless the diagnosis shows it is necessary and the user accepts any possible cost. Keep Supabase Auth/Storage as fallback and do not perform a Production cutover.
