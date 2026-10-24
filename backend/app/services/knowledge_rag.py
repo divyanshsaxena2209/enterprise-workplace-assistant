@@ -5,6 +5,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from app.core.config import settings
+from app.services.knowledge_scope import build_department_scope_filter, normalize_department_scope_key
 
 embedding_model = None
 
@@ -53,7 +54,7 @@ def get_vector_store():
         embedding=get_embedding_model(),
     )
 
-def process_and_store_document(file_path: str):
+def process_and_store_document(file_path: str, department_scope: str = "ALL"):
     if file_path.lower().endswith(".pdf"):
         loader = PyPDFLoader(file_path)
     elif file_path.lower().endswith(".docx"):
@@ -63,6 +64,9 @@ def process_and_store_document(file_path: str):
     else:
         raise ValueError("Unsupported file format. Only PDF and DOCX are allowed.")
     documents = loader.load()
+    scope_key = normalize_department_scope_key(department_scope)
+    for document in documents:
+        document.metadata["department_scope_key"] = scope_key
     
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=4000,
@@ -140,20 +144,28 @@ def delete_document(filename: str, *, exact_source: bool = False):
 
     return deleted_count
 
-def retrieve_and_answer(question: str, k: int = 15, chat_history: list = None):
+def retrieve_and_answer(question: str, k: int = 15, chat_history: list = None, department_scope: str | None = ""):
     try:
         clean_question = question
 
         try:
             vector_store = get_vector_store()
-            results = vector_store.similarity_search(clean_question, k=k)
+            results = vector_store.similarity_search(
+                clean_question,
+                k=k,
+                filter=build_department_scope_filter(department_scope),
+            )
         except Exception as e:
             if "10053" in str(e) or "aborted" in str(e).lower():
                 print("[WARN] Retrying vector search due to 10053 connection abort...")
                 import time
                 time.sleep(2)
                 vector_store = get_vector_store()
-                results = vector_store.similarity_search(clean_question, k=k)
+                results = vector_store.similarity_search(
+                    clean_question,
+                    k=k,
+                    filter=build_department_scope_filter(department_scope),
+                )
             else:
                 raise e
         

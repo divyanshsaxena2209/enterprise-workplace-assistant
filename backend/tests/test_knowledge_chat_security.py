@@ -23,7 +23,7 @@ def test_query_checks_session_ownership_before_writing_any_messages(
     def add_message(session_id, role, content, sources=None):
         events.append(("message", session_id, role, content, sources))
 
-    def retrieve_and_answer(question, *, k, chat_history):
+    def retrieve_and_answer(question, *, k, chat_history, department_scope=None):
         events.append(("retrieve", question, k, chat_history))
         return {"answer": "safe answer", "sources": []}
 

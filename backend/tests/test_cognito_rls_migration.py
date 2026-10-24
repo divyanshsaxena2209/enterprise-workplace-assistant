@@ -15,6 +15,7 @@ PUBLIC_SIGNUP_ROLE_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024
 BACKEND_TABLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024040000_grant_backend_service_role_table_privileges.sql"
 KNOWLEDGE_DOCUMENTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024050000_knowledge_document_registry.sql"
 KNOWLEDGE_DOCUMENTS_INDEX_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024060000_knowledge_document_registry_fk_index.sql"
+KNOWLEDGE_DOCUMENTS_SCOPE_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024070000_knowledge_document_department_scope.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -153,6 +154,20 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute(knowledge_documents_migration, prepare=False)
         knowledge_documents_index_migration = KNOWLEDGE_DOCUMENTS_INDEX_MIGRATION.read_text(encoding="utf-8")
         conn.execute(knowledge_documents_index_migration, prepare=False)
+        knowledge_documents_scope_migration = KNOWLEDGE_DOCUMENTS_SCOPE_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(knowledge_documents_scope_migration, prepare=False)
+        scope_column = conn.execute(
+            """
+            select column_default, is_nullable
+            from information_schema.columns
+            where table_schema='public' and table_name='knowledge_documents'
+              and column_name='department_scope'
+            """
+        ).fetchone()
+        assert scope_column is not None
+        assert "ALL" in (scope_column[0] or "")
+        assert scope_column[1] == "NO"
+        assert conn.execute("select to_regclass('public.knowledge_documents_department_scope_idx')").fetchone()[0]
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"

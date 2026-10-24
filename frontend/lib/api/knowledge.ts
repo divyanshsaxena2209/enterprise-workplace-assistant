@@ -2,9 +2,10 @@ import { fetchWithAuth } from "./candidates";
 import { createClient } from "@/lib/supabase/client";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 const API_URL = BASE_URL?.includes("/api/v1") ? BASE_URL : `${BASE_URL?.replace(/\/$/, "")}/api/v1`;
-export async function uploadKnowledgeDocument(file: File) {
+export async function uploadKnowledgeDocument(file: File, departmentScope = "ALL") {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("department_scope", departmentScope.trim() || "ALL");
   const controller = new AbortController();
   try {
     return await fetchWithAuth("/knowledge/upload", {

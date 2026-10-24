@@ -6,7 +6,7 @@ from app.core.exceptions import DatabaseError
 
 _TABLE = "knowledge_documents"
 _PUBLIC_COLUMNS = (
-    "id, filename, storage_provider, file_key, file_url, pages, chunks, "
+    "id, filename, storage_provider, file_key, file_url, department_scope, pages, chunks, "
     "uploaded_by, created_at, updated_at"
 )
 
@@ -49,6 +49,21 @@ class KnowledgeDocumentRepository:
                 self._db.table(_TABLE)
                 .select("*")
                 .eq("id", document_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise DatabaseError("Failed to load the knowledge document.") from exc
+        return response.data[0] if response.data else None
+
+
+    def get_by_file_key(self, file_key: str) -> dict | None:
+        """Look up one registered file key before minting a temporary download URL."""
+        try:
+            response = (
+                self._db.table(_TABLE)
+                .select("*")
+                .eq("file_key", file_key)
                 .limit(1)
                 .execute()
             )

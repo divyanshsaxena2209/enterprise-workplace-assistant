@@ -14,6 +14,7 @@ export default function KnowledgeDashboard() {
   const [toastMessage, setToastMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
   const [viewingDoc, setViewingDoc] = useState<{url: string, title: string} | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [uploadDepartmentScope, setUploadDepartmentScope] = useState("ALL");
   useEffect(() => {
     let cancelled = false;
     const savedSearches = parseInt(localStorage.getItem('knowledge_searches') || '0', 10);
@@ -39,7 +40,8 @@ export default function KnowledgeDashboard() {
           managed_by_api: true,
           title: doc.filename,
           uploaded: doc.created_at ? new Date(doc.created_at).toLocaleDateString() : "",
-          dept: "Knowledge Base",
+          dept: doc.department_scope || "ALL",
+          department_scope: doc.department_scope || "ALL",
           file_url: doc.file_url || undefined,
           file_key: doc.file_key,
           storage_provider: doc.storage_provider,
@@ -95,13 +97,14 @@ export default function KnowledgeDashboard() {
     setIsUploading(true);
     setToastMessage(null);
     try {
-      const result = await uploadKnowledgeDocument(file);
+      const result = await uploadKnowledgeDocument(file, uploadDepartmentScope);
       const newDoc = {
         id: String(result.id || Date.now()),
         managed_by_api: Boolean(result.id),
         title: result.filename || file.name,
         uploaded: result.created_at ? new Date(result.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
-        dept: "Knowledge Base",
+        dept: result.department_scope || uploadDepartmentScope || "ALL",
+        department_scope: result.department_scope || uploadDepartmentScope || "ALL",
         file_url: result.file_url || undefined,
         file_key: result.file_key,
         storage_provider: result.storage_provider,
@@ -144,7 +147,18 @@ export default function KnowledgeDashboard() {
         </div>
         <div className="flex gap-3">
           {profile?.role === "MANAGEMENT" && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="text"
+                value={uploadDepartmentScope}
+                onChange={(event) => setUploadDepartmentScope(event.target.value)}
+                aria-label="Knowledge document department scope"
+                title="Use ALL for a company-wide policy, or enter the department name exactly as used in employee profiles."
+                placeholder="ALL or department"
+                maxLength={100}
+                className="w-36 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
+                disabled={isUploading}
+              />
               <input 
                 type="file" 
                 id="file-upload" 

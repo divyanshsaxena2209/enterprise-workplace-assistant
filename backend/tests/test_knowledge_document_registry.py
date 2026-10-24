@@ -121,7 +121,8 @@ def test_s3_upload_registers_stable_metadata_and_cleans_temporary_file(monkeypat
     events = []
     rag = ModuleType("app.services.knowledge_rag")
 
-    def process(path):
+    def process(path, department_scope="ALL"):
+        assert department_scope == "ALL"
         assert __import__("os").path.exists(path)
         events.append(("index", path))
         return {"pages": 1, "chunks": 3}
@@ -170,7 +171,11 @@ def test_s3_upload_registers_stable_metadata_and_cleans_temporary_file(monkeypat
     )
 
     result = asyncio.run(
-        knowledge_router.upload_document(file, SimpleNamespace(id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+        knowledge_router.upload_document(
+            file,
+            SimpleNamespace(id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", role="MANAGEMENT", department=None),
+            department_scope="ALL",
+        )
     )
 
     assert result["success"] is True
@@ -180,6 +185,7 @@ def test_s3_upload_registers_stable_metadata_and_cleans_temporary_file(monkeypat
     assert [event[0] for event in events] == ["store", "index", "register"]
     registry_values = events[-1][1]
     assert registry_values["storage_provider"] == "s3"
+    assert registry_values["department_scope"] == "ALL"
     assert registry_values["file_url"] is None
     assert registry_values["pages"] == 1
     assert registry_values["chunks"] == 3

@@ -12,11 +12,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase_client
+from app.core.enums import UserRole
 from app.dependencies.auth import require_management, require_management_or_employee
 from app.repositories.knowledge_document_repository import KnowledgeDocumentRepository
 from app.schemas.knowledge_chat import ChatSessionCreate, ChatSessionUpdate
 from app.schemas.profile import ProfileResponse
 from app.services import knowledge_chat_service
+from app.services.knowledge_scope import document_scope_visible, normalize_department_scope
 
 router = APIRouter()
 UPLOAD_DIR = tempfile.gettempdir()
@@ -55,7 +57,7 @@ def _public_document(row: dict) -> dict:
     return {
         key: row.get(key)
         for key in (
-            "id", "filename", "storage_provider", "file_key", "file_url",
+            "id", "filename", "storage_provider", "file_key", "file_url", "department_scope",
             "pages", "chunks", "uploaded_by", "created_at", "updated_at",
         )
     }
@@ -73,9 +75,18 @@ def _remove_temp_file(path: str) -> None:
 def list_knowledge_documents(
     current_user: ProfileResponse = Depends(require_management_or_employee),
 ):
-    """Return the shared registry without exposing internal vector paths."""
+    """Return only company-wide and department-matched records to employees."""
     try:
-        return _document_repository().list_documents()
+        rows = _document_repository().list_documents()
+        is_management = current_user.role in UserRole.management_roles()
+        return [
+            row for row in rows
+            if document_scope_visible(
+                row.get("department_scope"),
+                current_user.department,
+                is_management=is_management,
+            )
+        ]
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail="Unable to load the knowledge-document list."
@@ -86,6 +97,7 @@ def list_knowledge_documents(
 async def upload_document(
     file: UploadFile = File(...),
     current_user: ProfileResponse = Depends(require_management),
+    department_scope: str = Form(default="ALL", max_length=100),
 ):
     original_name = (file.filename or "").replace("\\", "/")
     safe_filename = os.path.basename(original_name)
@@ -103,6 +115,10 @@ async def upload_document(
         raise HTTPException(status_code=413, detail="Documents must be 10 MB or smaller.")
     if not file_bytes:
         raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+
+    scope_label = normalize_department_scope(department_scope)
+    if len(scope_label) > 100:
+        raise HTTPException(status_code=422, detail="Department scope must be 100 characters or fewer.")
 
     file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{safe_filename}")
     stored = None
@@ -125,7 +141,12 @@ async def upload_document(
         from app.services.knowledge_rag import process_and_store_document
         loop = asyncio.get_running_loop()
         index_result = await loop.run_in_executor(
-            None, functools.partial(process_and_store_document, file_path)
+            None,
+            functools.partial(
+                process_and_store_document,
+                file_path,
+                department_scope=scope_label,
+            ),
         )
 
         provider = str(stored["storage_provider"])
@@ -138,6 +159,7 @@ async def upload_document(
                 "storage_provider": provider,
                 "file_key": file_key,
                 "file_url": durable_url,
+                "department_scope": scope_label,
                 "index_source": file_path,
                 "pages": int(index_result.get("pages", 0)),
                 "chunks": int(index_result.get("chunks", 0)),
@@ -254,7 +276,14 @@ def query_documents(query: QueryRequest, current_user: ProfileResponse = Depends
             knowledge_chat_service.add_message(query.session_id, "user", query.question)
 
         from app.services.knowledge_rag import retrieve_and_answer
-        result = retrieve_and_answer(query.question, k=15, chat_history=chat_history)
+        is_management = current_user.role in UserRole.management_roles()
+        department_scope = None if is_management else str(current_user.department or "")
+        result = retrieve_and_answer(
+            query.question,
+            k=15,
+            chat_history=chat_history,
+            department_scope=department_scope,
+        )
 
         if query.session_id:
             answer = result.get("answer", "") if isinstance(result, dict) else str(result)
@@ -272,7 +301,19 @@ def query_documents(query: QueryRequest, current_user: ProfileResponse = Depends
 def get_document_download_url(file_key: str, current_user: ProfileResponse = Depends(require_management_or_employee)):
     from app.services.object_storage import create_knowledge_document_download_url
     try:
+        record = _document_repository().get_by_file_key(file_key)
+        if not record or record.get("storage_provider") != "s3":
+            raise HTTPException(status_code=404, detail="Knowledge document not found.")
+        is_management = current_user.role in UserRole.management_roles()
+        if not document_scope_visible(
+            record.get("department_scope"),
+            current_user.department,
+            is_management=is_management,
+        ):
+            raise HTTPException(status_code=404, detail="Knowledge document not found.")
         return {"file_url": create_knowledge_document_download_url(file_key)}
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid knowledge document key.") from exc
     except Exception as exc:
