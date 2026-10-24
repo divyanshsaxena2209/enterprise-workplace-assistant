@@ -71,6 +71,48 @@ def get_profile(
         422: {"description": "Validation error.", "model": ErrorResponse},
     },
 )
+
+
+# Employee IDs are managed by administrators, not by self-service profile edits.
+# The database trigger remains responsible for generated EMP-/MGR- IDs; this route
+# supports the legacy HR-assigned SS-12345 format only.
+import re
+from pydantic import BaseModel, Field
+from app.core.enums import UserRole
+from app.core.exceptions import AuthorizationError, NotFoundError
+from app.repositories.profile_repository import ProfileRepository
+from app.dependencies.auth import require_management
+
+
+class EmployeeIdUpdateRequest(BaseModel):
+    employee_id: str = Field(
+        pattern=r"^SS-[0-9]{5}$",
+        description="Legacy HR-assigned employee identifier in SS-12345 format.",
+    )
+
+
+@router.patch(
+    "/employees/{profile_id}/employee-id",
+    response_model=ProfileResponse,
+    summary="Assign an employee ID",
+    description="Management-only assignment of a validated employee ID to an employee profile.",
+)
+def assign_employee_id(
+    profile_id: str,
+    body: EmployeeIdUpdateRequest,
+    current_user: ProfileResponse = Depends(require_management),
+) -> ProfileResponse:
+    """Assign an HR-issued ID; never let employees edit their own ID or roles."""
+    repository = ProfileRepository(get_supabase_client())
+    target = repository.get_by_id(profile_id)
+    if target is None:
+        raise NotFoundError("The employee profile was not found.")
+    if target.role != UserRole.EMPLOYEE:
+        raise AuthorizationError("Employee IDs can only be assigned to employee profiles.")
+    updated = repository.update(profile_id, {"employee_id": body.employee_id})
+    return ProfileResponse.from_model(updated)
+
+
 def update_profile(
     body: ProfileUpdateRequest,
     current_user: ProfileResponse = Depends(get_current_user),
