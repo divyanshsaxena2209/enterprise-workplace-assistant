@@ -60,24 +60,6 @@ def get_profile(
 
 
 
-@router.patch(
-    "",
-    response_model=ProfileResponse,
-    summary="Update the authenticated user's profile",
-    description=(
-        "Partially update the authenticated user's profile. "
-        "Only fields included in the request body are updated. "
-        "Note: email and role cannot be changed via this endpoint."
-    ),
-    responses={
-        200: {"description": "Updated profile.", "model": ProfileResponse},
-        401: {"description": "Not authenticated.", "model": ErrorResponse},
-        404: {"description": "Profile not found.", "model": ErrorResponse},
-        422: {"description": "Validation error.", "model": ErrorResponse},
-    },
-)
-
-
 # Employee IDs are managed by administrators, not by self-service profile edits.
 # The database trigger remains responsible for generated EMP-/MGR- IDs; this route
 # supports the legacy HR-assigned SS-12345 format only.
@@ -112,6 +94,22 @@ def assign_employee_id(
 
 
 
+@router.patch(
+    "",
+    response_model=ProfileResponse,
+    summary="Update the authenticated user's profile",
+    description=(
+        "Partially update the authenticated user's profile. "
+        "Only fields included in the request body are updated. "
+        "Note: email and role cannot be changed via this endpoint."
+    ),
+    responses={
+        200: {"description": "Updated profile.", "model": ProfileResponse},
+        401: {"description": "Not authenticated.", "model": ErrorResponse},
+        404: {"description": "Profile not found.", "model": ErrorResponse},
+        422: {"description": "Validation error.", "model": ErrorResponse},
+    },
+)
 def update_profile(
     body: ProfileUpdateRequest,
     current_user: ProfileResponse = Depends(get_current_user),
