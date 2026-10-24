@@ -2,6 +2,20 @@
 
 **Purpose:** Current source of truth to paste into a new ChatGPT conversation. Verify live branch/resource state before making changes. This replaces the older October 21 snapshot where it conflicts with this document.
 
+
+> **CURRENT SCOPE OVERRIDE — 25 October 2026 (read this first; supersedes older migration plans below).**
+>
+> The user has explicitly reduced scope due to time constraints. The deliverable is **Cognito authentication + IAM/access control only**, with the existing Lambda/backend reused if it is confirmed to be the intended staging runtime. **S3 storage migration and new CloudWatch work are out of scope.** Do not create an S3 bucket, migrate files, change `STORAGE_PROVIDER` from `supabase`, add S3 permissions, build dashboards/alarms, or undertake unrelated storage/logging work. Lambda is believed to already be integrated; verify the existing resource before deciding any update is necessary.
+>
+> The user reports that CloudFormation stack `ewa-cognito-staging-api` **exists**, but has not inspected its details. Treat existence as user-reported, not yet technically verified. Inspect that stack and its existing Lambda before any changes. Never create a duplicate stack/function. Confirm the current image tag/digest, stack status, Cognito and staging Supabase environment, execution role and Function URL. If configuration is already correct, do not redeploy. If an update is genuinely required, update the existing staging stack only, use the immutable image tag built by the successful current-branch workflow, preserve existing secret parameters through CloudFormation previous-value/NoEcho handling, and do not expose secrets in chat.
+>
+> **Current successful image build:** user-confirmed manual workflow run **#17**, branch `cognito-staging-integration`, commit `7d881ef`, completed successfully in 51 seconds. Expected immutable image tag for that SHA is `cognito-staging-7d881efbfb623e9b2f7d9f1f55b6257ff76922ea`; verify the workflow summary/ECR before using it. A successful ECR build alone does not prove Lambda is running that image.
+>
+> **Application role vs AWS IAM:** Employee/Management are application roles stored in `public.profiles.role` and enforced by FastAPI. Do not give browser users AWS IAM credentials. IAM work in this scope means ensuring the existing Lambda execution role and deployment/publishing role have least-privilege permissions needed for Cognito/backend operation. Cognito User Pools handle app sign-up/sign-in; Cognito does not automatically grant application Management access. The trusted Management allowlist/request/approval flow remains subject to the current implementation described below.
+>
+> **Fastest safe completion path:** (1) inspect existing stack and Lambda in AWS Console, (2) compare current stack parameters/environment and deployed image to the successful build, (3) change only what is demonstrably missing, (4) run one end-to-end staging check for signup/sign-in, callback/session, `/api/v1/auth/me`, Employee authorization, Management grant/request, refresh and logout, (5) update this handoff with the exact observed results. Keep PR #3 draft until those tests pass. Do not touch Production, the protected `busted` project, S3, or unrelated CloudWatch work.
+
+
 **Snapshot:** 24 October 2026 (Asia/Kolkata)  
 **Repository:** https://github.com/divyanshsaxena2209/enterprise-workplace-assistant  
 **Working branch:** cognito-staging-integration  
