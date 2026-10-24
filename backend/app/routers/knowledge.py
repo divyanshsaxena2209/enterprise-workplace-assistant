@@ -2,7 +2,6 @@ import os
 import shutil
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from pydantic import BaseModel
-from app.services.knowledge_rag import process_and_store_document, retrieve_and_answer
 
 router = APIRouter()
 
@@ -42,6 +41,7 @@ async def upload_document(
         buffer.write(file_bytes)
 
     try:
+        from app.services.knowledge_rag import process_and_store_document
         import asyncio
         import functools
         loop = asyncio.get_event_loop()
@@ -163,6 +163,7 @@ def query_documents(
                 query.session_id, "user", query.question
             )
 
+        from app.services.knowledge_rag import retrieve_and_answer
         result = retrieve_and_answer(
             query.question, k=15, chat_history=chat_history
         )
