@@ -13,7 +13,6 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     full_name: "",
-    department: "",
     job_title: "",
     phone: "",
     location: "",
@@ -24,7 +23,6 @@ export default function ProfilePage() {
     if (profile) {
       setFormData({
         full_name: profile.full_name || "",
-        department: profile.department || "",
         job_title: profile.job_title || "",
         phone: profile.phone || "",
         location: profile.location || "",
@@ -60,7 +58,6 @@ export default function ProfilePage() {
         method: "PATCH",
         body: JSON.stringify({
           full_name: formData.full_name,
-          department: formData.department,
           job_title: formData.job_title,
           phone: formData.phone.trim() || null,
           location: formData.location,
@@ -177,20 +174,11 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Department</label>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    name="department"
-                    value={formData.department}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring"
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Briefcase className="w-4 h-4 text-muted-foreground" />
-                    {profile.department || "Not specified"}
-                  </div>
-                )}
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Briefcase className="w-4 h-4 text-muted-foreground" />
+                  {profile.department || "Not specified"}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">Assigned by Management</p>
               </div>
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Job Title</label>

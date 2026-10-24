@@ -6,7 +6,7 @@ Errors are handled centrally by the error middleware.
 """
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.enums import UserRole
 from app.core.exceptions import AuthorizationError, NotFoundError
@@ -94,6 +94,51 @@ def assign_employee_id(
 
 
 
+
+
+
+class DepartmentUpdateRequest(BaseModel):
+    """Department assignment controlled by Management, never self-service."""
+
+    department: str | None = Field(
+        description="Authoritative employee department; null removes the assignment.",
+        max_length=100,
+    )
+    model_config = {"extra": "forbid"}
+
+    @field_validator("department")
+    @classmethod
+    def normalize_department(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Department must be non-empty; send null to remove assignment.")
+        return cleaned
+
+
+@router.patch(
+    "/employees/{profile_id}/department",
+    response_model=ProfileResponse,
+    summary="Assign an employee department",
+    description="Management-only change of the authoritative department used for access scoping.",
+)
+def assign_employee_department(
+    profile_id: str,
+    body: DepartmentUpdateRequest,
+    current_user: ProfileResponse = Depends(require_management),
+) -> ProfileResponse:
+    """Only Management may change a user's department-based access scope."""
+    repository = ProfileRepository(get_supabase_client())
+    target = repository.get_by_id(profile_id)
+    if target is None:
+        raise NotFoundError("The employee profile was not found.")
+    if target.role != UserRole.EMPLOYEE:
+        raise AuthorizationError("Department assignment is restricted to employee profiles.")
+    updated = repository.update(profile_id, {"department": body.department})
+    return ProfileResponse.from_model(updated)
+
+
 @router.patch(
     "",
     response_model=ProfileResponse,
@@ -123,7 +168,7 @@ def update_profile(
     Updatable fields:
     - `full_name`
     - `phone` (E.164 format, e.g. +14155552671)
-    - `department`
+    - Department is assigned by Management through the dedicated department endpoint.
     - `job_title`
     - `location`
     - `bio`

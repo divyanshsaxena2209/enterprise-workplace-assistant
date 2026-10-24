@@ -11,7 +11,7 @@ from app.services import auth_service as auth_service_module
 from app.services.auth_service import AuthService
 from app.models.profile import ProfileModel
 from app.routers import profile as profile_router
-from app.schemas.profile import ProfileResponse
+from app.schemas.profile import ProfileResponse, ProfileUpdateRequest
 
 
 PROFILE_ID = "11111111-1111-4111-8111-111111111111"
@@ -175,6 +175,61 @@ def test_profile_patch_and_employee_id_routes_are_registered_to_their_handlers()
     }
 
     assert route_handlers[("/profile", "PATCH")] == "update_profile"
+    assert route_handlers[("/profile/employees/{profile_id}/department", "PATCH")] == "assign_employee_department"
     assert route_handlers[
         ("/profile/employees/{profile_id}/employee-id", "PATCH")
     ] == "assign_employee_id"
+
+
+
+def test_self_service_profile_patch_cannot_set_department():
+    with pytest.raises(ValidationError):
+        ProfileUpdateRequest.model_validate(
+            {"full_name": "Test Employee", "department": "Human Resources"}
+        )
+
+
+def test_management_can_assign_employee_department(monkeypatch, manager):
+    employee = make_profile(PROFILE_ID, UserRole.EMPLOYEE)
+    repository = FakeProfileRepository(employee)
+    monkeypatch.setattr(profile_router, "get_supabase_client", lambda: object())
+    monkeypatch.setattr(profile_router, "ProfileRepository", lambda _client: repository)
+
+    result = profile_router.assign_employee_department(
+        PROFILE_ID,
+        profile_router.DepartmentUpdateRequest(department=" Human Resources "),
+        manager,
+    )
+
+    assert result.department == "Human Resources"
+    assert repository.updates == [(PROFILE_ID, {"department": "Human Resources"})]
+
+
+def test_management_cannot_assign_department_to_another_manager(monkeypatch, manager):
+    target_manager = make_profile(PROFILE_ID, UserRole.MANAGEMENT)
+    repository = FakeProfileRepository(target_manager)
+    monkeypatch.setattr(profile_router, "get_supabase_client", lambda: object())
+    monkeypatch.setattr(profile_router, "ProfileRepository", lambda _client: repository)
+
+    with pytest.raises(AuthorizationError):
+        profile_router.assign_employee_department(
+            PROFILE_ID,
+            profile_router.DepartmentUpdateRequest(department="Engineering"),
+            manager,
+        )
+
+    assert repository.updates == []
+
+
+def test_department_assignment_endpoint_is_management_only():
+    from app.dependencies.auth import require_management
+
+    route = next(
+        route for route in profile_router.router.routes
+        if route.path == "/profile/employees/{profile_id}/department"
+        and "PATCH" in (route.methods or set())
+    )
+    assert any(
+        dependency.call is require_management
+        for dependency in route.dependant.dependencies
+    )
