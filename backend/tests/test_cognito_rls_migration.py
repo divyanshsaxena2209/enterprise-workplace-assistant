@@ -12,6 +12,7 @@ PROFILE_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / 
 JOBS_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024010000_grant_service_role_jobs_select.sql"
 EMPLOYEE_ID_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024020000_auto_assign_employee_ids.sql"
 PUBLIC_SIGNUP_ROLE_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024030000_harden_public_signup_roles.sql"
+BACKEND_TABLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024040000_grant_backend_service_role_table_privileges.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -144,6 +145,8 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute(employee_id_migration, prepare=False)
         public_signup_role_migration = PUBLIC_SIGNUP_ROLE_MIGRATION.read_text(encoding="utf-8")
         conn.execute(public_signup_role_migration, prepare=False)
+        backend_table_grants_migration = BACKEND_TABLE_GRANTS_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(backend_table_grants_migration, prepare=False)
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -300,7 +303,30 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
               has_table_privilege('anon', 'public.jobs', 'SELECT'),
               has_table_privilege('authenticated', 'public.jobs', 'SELECT')
             """
-        ).fetchone() == (True, False, False, False, False, False)
+        ).fetchone() == (True, True, True, False, False, False)
+        expected_privileges = {
+            "applications": (True, True, True, False),
+            "candidates": (True, True, True, False),
+            "resumes": (True, True, False, False),
+            "candidate_scores": (True, True, True, False),
+            "application_status_history": (True, True, False, False),
+            "recruiter_notes": (True, True, True, True),
+        }
+        for table_name, expected in expected_privileges.items():
+            assert conn.execute(
+                """
+                select
+                  has_table_privilege('service_role', %s, 'SELECT'),
+                  has_table_privilege('service_role', %s, 'INSERT'),
+                  has_table_privilege('service_role', %s, 'UPDATE'),
+                  has_table_privilege('service_role', %s, 'DELETE')
+                """,
+                (f"public.{table_name}",) * 4,
+            ).fetchone() == expected
+            assert conn.execute(
+                "select has_table_privilege('anon', %s, 'SELECT'), has_table_privilege('authenticated', %s, 'SELECT')",
+                (f"public.{table_name}", f"public.{table_name}"),
+            ).fetchone() == (False, False)
 
         # Existing profiles with no ID are backfilled, while subsequent signups
         # receive deterministic-format IDs and explicit administrative IDs survive.
