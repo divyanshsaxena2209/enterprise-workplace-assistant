@@ -223,7 +223,7 @@ export default function KnowledgeDashboard() {
                 {profile?.role === "MANAGEMENT" && (
                   <button 
                     className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
-                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider, doc.managed_by_api)
+                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider, doc.managed_by_api)}
                     title="Delete Document"
                   >
                     <Trash2 size={16} />
