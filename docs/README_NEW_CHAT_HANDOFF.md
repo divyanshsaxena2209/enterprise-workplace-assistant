@@ -1013,3 +1013,33 @@ This section supersedes older notes in this file that describe department/docume
 3. AWS console verification remains required to determine whether `ewa-cognito-staging-api` and its function already exist, confirm the deployed image digest and staging configuration, and inspect a real CloudWatch invocation. The connected tools in this session cannot perform those AWS-console checks.
 4. After the runtime is verifiably aligned, run one consolidated staging test: Cognito signup/login/callback/refresh/logout, role-bound API checks, resume upload/detail/screening, company-policy upload/index/retrieval/download/delete with `ALL` and department-specific documents, cross-department denial, and one correlated CloudWatch log.
 5. Existing Qdrant points without `metadata.department_scope_key` stay hidden from employee retrieval until management re-tags/re-indexes them. The registry count of 0 means this path has not been proven with a live document. Keep PR #3 draft and do not change Production or provision chargeable AWS resources.
+
+## Latest verified checkpoint — fail-closed scope default and CI green (24 October 2026)
+
+### Current branch and verification
+- Current source head at this checkpoint: `27ad53a2614469cf0d1d8bd6abd2c2a32f17cc12`.
+- [GitHub Actions run #168](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40120527091) passed on that exact SHA. Frontend build, backend compile, CloudFormation template lint, and the service-replacement tests succeeded: **97 passed, 10 warnings**.
+- [Run #167](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40120428488) passed on `339051022863cdf1f6bdf661c79e6fb1d9187eb8`: **97 passed, 10 warnings**. It covers candidate-detail signing for current and legacy Supabase resume locators and prefix-validated private resume downloads.
+- [Run #166](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40120400099) passed on documentation/setup commit `e5eee9cd0bd53785b8e273a652b4e247f00cf7bb`.
+- Vercel rate limiting remains on new branch commits. A green GitHub Actions run does not mean the latest code is deployed to a new Preview; the latest Preview environment and running application are still unverified.
+
+### Fail-closed database scope rule
+- Applied `20261024080000_knowledge_document_scope_fail_closed_default.sql` to the isolated staging project only. It changes the default for `knowledge_documents.department_scope` from `ALL` to `REVIEW_REQUIRED`, so a future writer that omits the scope cannot accidentally create a company-wide document.
+- A read-only live query confirms `department_scope TEXT NOT NULL DEFAULT 'REVIEW_REQUIRED'`. The application visibility helper denies `REVIEW_REQUIRED` documents to employees while Management can still see them for review/retagging.
+- This migration changes only the column default and does not rewrite existing rows. The staging registry currently has 0 documents.
+- The earlier `20261024070000_knowledge_document_department_scope.sql` migration remains applied and created the scope column/index. If any existing registered rows are later found, review their scopes explicitly rather than assuming department ownership.
+- Current staging security verification remains: RLS enabled on `knowledge_documents`; `anon` and `authenticated` have no SELECT privilege; `service_role` has SELECT; registry row count 0. The staging Storage bucket `resumes` is recorded as `public=false`.
+- Production Supabase `ybkfkdcdhrnjmjvavyhb`, protected project `busted` (`zkxpkjgprewurotifgeh`), Production Lambda, Production Vercel settings, and `main` were not changed.
+
+### Updated completion assessment
+- **Repository/source implementation: approximately 80%.** Cognito token/linking code, profile-backed app RBAC, IAM role template separation, opt-in S3 paths for resumes and Knowledge documents, scoped signed downloads for S3/Supabase, resume object cleanup, department-aware Qdrant filtering, fail-closed default, and regression tests are present.
+- **Staging infrastructure alignment: approximately 45%.** Database migrations and private staging bucket metadata are verified. Actual Lambda stack/function existence, deployed image digest/environment, current Vercel Preview variables, and real CloudWatch invocation logs remain unresolved.
+- **End-to-end/release readiness: approximately 25%.** CI is green, but the live Cognito callback, actual API runtime alignment, resume upload/detail/screening, Knowledge upload/index/query/download/delete, cross-department retrieval denial, and CloudWatch correlation are not proven.
+- **Overall migration estimate remains approximately 58%.** This is a planning estimate, not code coverage. Operational proof is still the bottleneck; do not merge or switch Production based on source CI alone.
+
+### Next steps (priority order)
+1. **AWS-console gate:** Inspect existing CloudFormation stack `ewa-cognito-staging-api` and function `ewa-cognito-staging-api-StagingApi-xlm7Nj337FcE` if present; confirm resolved image digest, staging environment variables, execution-role policy, and a health response. The current connected tools cannot inspect/update Lambda or read CloudWatch logs. Do not create a duplicate stack/function.
+2. **Preview gate:** Vercel currently reports deployment rate limiting for 24 hours. After it clears, confirm the latest branch Preview points only to staging Supabase and staging API. Do not bypass deployment protection or alter Production variables.
+3. **Consolidated staging test:** Once runtime alignment is verified, use one harmless company-wide policy, one department-scoped policy, and one synthetic resume. Test Cognito signup/sign-in/callback/refresh/logout, employee-versus-management route permissions, document upload/index/query/download/delete, cross-department denial, resume detail/screening, and one correlated sanitized CloudWatch event.
+4. **Legacy Qdrant data:** Points without `metadata.department_scope_key` are deliberately excluded from employee retrieval. Management must re-tag/re-index them with `ALL` or an explicit department before employee use. Do not loosen the filter.
+5. **Cost and guardrails:** S3 remains opt-in; no bucket was created. `STORAGE_PROVIDER` remains Supabase by default. Keep PR #3 draft and do not change Production or create chargeable AWS resources while AWS state and costs remain unverified.

@@ -30,3 +30,10 @@ These are application roles, not AWS account administrator roles. In the Cognito
 ## Review / limitations
 
 These rules are implemented/staged on `cognito-staging-integration` and are proposed for `aws-service-replacements` through draft PR #3 and PR #1. They are not production-cutover evidence. The S3 object provider defaults to `supabase` until a private bucket exists, the staging Lambda execution-role policy is applied, and resume plus knowledge-document smoke tests pass. Role-unit tests run in GitHub Actions, but application-role behavior still needs live staging E2E verification.
+
+## Department-scoped Knowledge/RAG — current branch policy
+
+- Application roles are independent of AWS IAM. Employees and managers do not receive AWS credentials; the Lambda execution role is the workload identity. Public Cognito signup can provision only an EMPLOYEE and cannot self-assign Management.
+- For Knowledge/RAG, `department_scope=ALL` means company-wide; otherwise the scope must match the employee's profile department (case-insensitive). The backend applies this policy to Qdrant retrieval, document listing, and signed downloads. Management can see all scopes and review records marked `REVIEW_REQUIRED`.
+- A missing scope is not implicitly public: the database default is `REVIEW_REQUIRED`, and employee visibility checks deny it. Unscoped legacy Qdrant points are excluded from employee retrieval until re-indexed with explicit scope metadata. Do not add public S3 URLs or rely on browser filtering for access control.
+- Current evidence: CI #168 passed (97 tests, 10 warnings) on `27ad53a2614469cf0d1d8bd6abd2c2a32f17cc12`; live staging confirmed the RLS/privilege posture. Runtime Cognito/RAG/S3/CloudWatch end-to-end checks remain pending.
