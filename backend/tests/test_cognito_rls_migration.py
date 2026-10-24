@@ -13,6 +13,7 @@ JOBS_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20
 EMPLOYEE_ID_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024020000_auto_assign_employee_ids.sql"
 PUBLIC_SIGNUP_ROLE_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024030000_harden_public_signup_roles.sql"
 BACKEND_TABLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024040000_grant_backend_service_role_table_privileges.sql"
+KNOWLEDGE_DOCUMENTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024050000_knowledge_document_registry.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -147,6 +148,8 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute(public_signup_role_migration, prepare=False)
         backend_table_grants_migration = BACKEND_TABLE_GRANTS_MIGRATION.read_text(encoding="utf-8")
         conn.execute(backend_table_grants_migration, prepare=False)
+        knowledge_documents_migration = KNOWLEDGE_DOCUMENTS_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(knowledge_documents_migration, prepare=False)
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -188,6 +191,30 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         ).fetchone()
         assert mapping_privileges == (False, False, False, False, True, True)
 
+        knowledge_document_security = conn.execute(
+            """
+            select
+              c.relrowsecurity,
+              has_table_privilege('service_role', 'public.knowledge_documents', 'SELECT'),
+              has_table_privilege('service_role', 'public.knowledge_documents', 'INSERT'),
+              has_table_privilege('service_role', 'public.knowledge_documents', 'UPDATE'),
+              has_table_privilege('service_role', 'public.knowledge_documents', 'DELETE'),
+              has_table_privilege('anon', 'public.knowledge_documents', 'SELECT'),
+              has_table_privilege('anon', 'public.knowledge_documents', 'INSERT'),
+              has_table_privilege('anon', 'public.knowledge_documents', 'UPDATE'),
+              has_table_privilege('anon', 'public.knowledge_documents', 'DELETE'),
+              has_table_privilege('authenticated', 'public.knowledge_documents', 'SELECT'),
+              has_table_privilege('authenticated', 'public.knowledge_documents', 'INSERT'),
+              has_table_privilege('authenticated', 'public.knowledge_documents', 'UPDATE'),
+              has_table_privilege('authenticated', 'public.knowledge_documents', 'DELETE')
+            from pg_class c
+            where c.oid = 'public.knowledge_documents'::regclass
+            """
+        ).fetchone()
+        assert knowledge_document_security == (
+            True, True, True, True, True,
+            False, False, False, False, False, False, False, False,
+        )
         # Policy rewriting must cover both application tables and Storage.
         remaining_uid_policies = conn.execute(
             """
