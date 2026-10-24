@@ -165,3 +165,16 @@ def test_public_signup_ignores_caller_supplied_employee_id(monkeypatch):
     assert "employee_id" not in metadata
     assert "employee_id" not in repository.upsert_payload
     assert response.user.employee_id == "EMP-000123"
+
+
+def test_profile_patch_and_employee_id_routes_are_registered_to_their_handlers():
+    route_handlers = {
+        (route.path, method): route.endpoint.__name__
+        for route in profile_router.router.routes
+        for method in getattr(route, "methods", set())
+    }
+
+    assert route_handlers[("/profile", "PATCH")] == "update_profile"
+    assert route_handlers[
+        ("/profile/employees/{profile_id}/employee-id", "PATCH")
+    ] == "assign_employee_id"
