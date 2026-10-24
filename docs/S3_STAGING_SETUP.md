@@ -27,7 +27,7 @@ The staging Cognito backend template now supports optional S3 storage with a lea
 
 After the private bucket is created:
 
-1. Open the existing `ewa-cognito-staging-api` CloudFormation stack and choose **Update**.
+1. If `ewa-cognito-staging-api` already exists, open that CloudFormation stack and choose **Update**. If it does not exist yet, create it using `infra/aws/cognito-staging-backend.yml` and apply the parameters below during initial creation.
 2. Keep the current immutable `ImageUri` unless a newer CI-verified image is documented.
 3. Set `StorageProvider=s3` and `DocumentBucketName` to the exact staging bucket name.
 4. Leave Production variables and the Production Lambda untouched. Do not create or paste AWS access keys; the SDK uses the separate staging Lambda execution role.
