@@ -149,3 +149,44 @@ def test_resume_download_url_is_expiring_and_prefix_scoped(monkeypatch):
     assert url == "https://example.invalid/presigned"
     assert fake_s3.presign_calls[0][1]["Key"] == "resumes/resume-1.pdf"
     assert fake_s3.presign_calls[0][2] == 900
+
+
+def test_resume_delete_accepts_only_resume_prefix_for_s3(monkeypatch):
+    fake_s3 = FakeS3()
+    install_fake_boto3(monkeypatch, fake_s3)
+    monkeypatch.setattr(object_storage.settings, "AWS_REGION", "ap-south-1")
+    monkeypatch.setattr(object_storage.settings, "AWS_S3_BUCKET", "ewa-private-documents")
+
+    object_storage.delete_resume_object("s3", "resumes/resume-1.pdf")
+
+    assert [call["Key"] for call in fake_s3.delete_calls] == ["resumes/resume-1.pdf"]
+
+
+@pytest.mark.parametrize("key", ["knowledge/policy.pdf", "../resume.pdf", "resumes/../policy.pdf", "resumes\\\\resume.pdf", ""])
+def test_resume_delete_rejects_keys_outside_resume_prefix(monkeypatch, key):
+    fake_s3 = FakeS3()
+    install_fake_boto3(monkeypatch, fake_s3)
+    monkeypatch.setattr(object_storage.settings, "AWS_REGION", "ap-south-1")
+    monkeypatch.setattr(object_storage.settings, "AWS_S3_BUCKET", "ewa-private-documents")
+
+    with pytest.raises(ValueError):
+        object_storage.delete_resume_object("s3", key)
+
+    assert fake_s3.delete_calls == []
+
+
+def test_resume_delete_removes_only_resumes_bucket_object_in_supabase(monkeypatch):
+    class FakeStorageBucket:
+        def __init__(self):
+            self.remove_calls = []
+
+        def remove(self, keys):
+            self.remove_calls.append(keys)
+
+    bucket = FakeStorageBucket()
+    fake_client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _name: bucket))
+    monkeypatch.setattr("app.db.supabase.get_supabase_client", lambda: fake_client)
+
+    object_storage.delete_resume_object("supabase", "resumes_uuid_resume.pdf")
+
+    assert bucket.remove_calls == [["resumes_uuid_resume.pdf"]]
