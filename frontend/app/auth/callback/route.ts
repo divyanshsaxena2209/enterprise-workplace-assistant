@@ -130,11 +130,59 @@ export async function GET(request: NextRequest) {
       cache: "no-store",
     });
     if (!linkResponse.ok) {
-      // Log only the HTTP status: never log response bodies, user attributes, or tokens.
+      // Backend error responses use a stable error_code. Allow-list it before logging;
+      // never log response bodies, user attributes, token data, or arbitrary server text.
+      const LINK_ERROR_CODES = new Set([
+        "AUTHENTICATION_FAILED",
+        "AUTHORIZATION_FAILED",
+        "CONFLICT",
+        "DATABASE_ERROR",
+        "INTERNAL_ERROR",
+        "NOT_FOUND",
+        "SERVICE_UNAVAILABLE",
+        "VALIDATION_ERROR",
+      ]);
+      let errorCode: string | undefined;
+      try {
+        const errorBody: unknown = await linkResponse.clone().json();
+        if (
+          errorBody &&
+          typeof errorBody === "object" &&
+          "error_code" in errorBody &&
+          typeof errorBody.error_code === "string" &&
+          LINK_ERROR_CODES.has(errorBody.error_code)
+        ) {
+          errorCode = errorBody.error_code;
+        }
+      } catch {
+        // Non-JSON errors (for example a platform 502) are classified by status only.
+      }
+
       console.error("[cognito-staging] account-link endpoint returned a non-success status", {
         status: linkResponse.status,
+        ...(errorCode ? { errorCode } : {}),
       });
-      const response = loginError(request, linkResponse.status === 404 ? "profile_not_found" : "cognito_account_link_failed");
+
+      let errorKey = "cognito_account_link_failed";
+      if (linkResponse.status === 404 && errorCode === "NOT_FOUND") {
+        errorKey = "profile_not_found";
+      } else if (errorCode === "AUTHENTICATION_FAILED") {
+        errorKey = "cognito_link_token_rejected";
+      } else if (errorCode === "AUTHORIZATION_FAILED") {
+        errorKey = "cognito_link_identity_mismatch";
+      } else if (errorCode === "CONFLICT") {
+        errorKey = "cognito_link_conflict";
+      } else if (errorCode === "VALIDATION_ERROR") {
+        errorKey = "cognito_link_invalid_profile";
+      } else if (errorCode === "DATABASE_ERROR") {
+        errorKey = "cognito_link_database_error";
+      } else if (errorCode === "SERVICE_UNAVAILABLE") {
+        errorKey = "cognito_link_service_unavailable";
+      } else if (errorCode === "INTERNAL_ERROR" || linkResponse.status >= 500) {
+        errorKey = "cognito_link_backend_error";
+      }
+
+      const response = loginError(request, errorKey);
       clearTemporaryCookies(response);
       return response;
     }
