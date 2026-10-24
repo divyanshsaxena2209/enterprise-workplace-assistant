@@ -551,3 +551,18 @@ The broader staging callback diagnostics remain in place: frontend logs an allow
 - This single workflow run passed the Cognito pre-token test, frontend dependency install/build, backend and test compile, CloudFormation lint, and the isolated service replacement tests including the new `test_cognito_provisioning_errors.py` regression test.
 - GitHub's Vercel status for the code commit `b5c745afcbf587dc180b7307b57b8d570b66800f` reported success at https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/CpwfB4wD7SbHLo2TUxfP6sHDG49i. The current branch tip at the time of this note is a subsequent handoff-only commit and its Vercel status was still pending; verify the branch alias points to a Ready deployment before the next sign-in.
 - The repo source fix is validated by CI, but the live AWS staging Lambda still uses the previous container image. Applying the backend fix requires a new ECR image plus Lambda image update. Do not do that until the user explicitly accepts any nonzero ECR/AWS costs. No Production service or staging database was modified during this code work.
+
+---
+
+## 16. Staging backend image build milestone — 24 October 2026
+
+- GitHub Actions build workflow run **#12 succeeded** on commit `d0d33cb4b4ac379e6bdd32378de817f7560c5dfe` (7/7 minutes? recorded total run duration 2m47s): https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40084892406
+- The Docker build logs confirm the image was pushed to ECR with tag:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-d0d33cb4b4ac379e6bdd32378de817f7560c5dfe`
+- Exact single-platform linux/amd64 image digest from the successful push:
+  `sha256:fb2fe145a2821db094a0886927a7e80a2e617fb535ff61e7769bd8ba19039698`
+- Use immutable image URI for the staging Lambda code update (not an older tag):
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:fb2fe145a2821db094a0886927a7e80a2e617fb535ff61e7769bd8ba19039698`
+- Verified at that exact source commit: `backend/app/routers/auth.py` contains the new safe failure-classification/logging behavior, and `backend/tests/test_cognito_provisioning_errors.py` contains the regression test.
+- **Not yet deployed:** existing staging Lambda still runs the prior resolved digest until its code is explicitly updated. Next step is update only function `ewa-cognito-staging-api-StagingApi-xlm7Nj337FcE` using the immutable URI above, preserving its existing environment/config and permissions. Do not change the CloudFormation stack parameters or any Production Lambda/config. After image update completes, inspect sanitized logs and do one app-originated staging signup flow. If the backend returns a more specific error, diagnose that rather than repeating generic queries.
+- Cost note: ECR image push/in-region ECR-to-Lambda transfer has no ingress/transfer charge; private image storage is billed over time. Image size shown by the build output is not the billed storage amount, and the user's remaining credits/eligibility cannot be independently verified here. Preserve all existing tags for rollback; do not delete old ECR images as part of this deployment.
