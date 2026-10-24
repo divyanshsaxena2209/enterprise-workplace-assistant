@@ -11,6 +11,21 @@ Parameters:
     Default: 745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-5f67a3ec61e09b8dab1181f8b134a1894bb4b4ae
     Description: Newly built isolated Cognito staging ECR image from the successful build workflow.
 
+  StorageProvider:
+    Type: String
+    Default: supabase
+    AllowedValues:
+      - supabase
+      - s3
+    Description: Keep supabase by default; select s3 only after a private staging bucket is created.
+
+  DocumentBucketName:
+    Type: String
+    Default: ""
+    MaxLength: 63
+    AllowedPattern: "^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    ConstraintDescription: Leave blank for Supabase storage or provide a valid lowercase staging S3 bucket name.
+
   SupabaseProjectUrl:
     Type: String
     Default: https://wxulxcsdpwsyhtpkbazi.supabase.co
@@ -50,6 +65,23 @@ Parameters:
     Default: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
     Description: Exact HTTPS Vercel preview branch alias. Update if that alias changes.
 
+Rules:
+  S3StorageRequiresBucketName:
+    RuleCondition:
+      Fn::Equals:
+        - !Ref StorageProvider
+        - s3
+    Assertions:
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - !Ref DocumentBucketName
+                - ""
+        AssertDescription: DocumentBucketName is required when StorageProvider is s3.
+
+Conditions:
+  UseS3DocumentStorage: !Equals [!Ref StorageProvider, "s3"]
+
 Resources:
   StagingApiLogGroup:
     Type: AWS::Logs::LogGroup
@@ -78,6 +110,25 @@ Resources:
                   - logs:PutLogEvents
                 Resource: !Sub "${StagingApiLogGroup.Arn}:*"
 
+  StagingApiS3ObjectPolicy:
+    Type: AWS::IAM::Policy
+    Condition: UseS3DocumentStorage
+    Properties:
+      PolicyName: StagingApiPrivateDocumentObjects
+      Roles:
+        - !Ref StagingApiExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${DocumentBucketName}/knowledge/*"
+              - !Sub "arn:${AWS::Partition}:s3:::${DocumentBucketName}/resumes/*"
+
   StagingApi:
     Type: AWS::Lambda::Function
     DependsOn:
@@ -105,7 +156,10 @@ Resources:
           COGNITO_REGION: !Ref CognitoRegion
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           COGNITO_APP_CLIENT_ID: !Ref CognitoAppClientId
-          STORAGE_PROVIDER: supabase
+          STORAGE_PROVIDER: !Ref StorageProvider
+          AWS_REGION: !Ref AWS::Region
+          AWS_S3_BUCKET: !Ref DocumentBucketName
+          S3_PRESIGNED_URL_TTL_SECONDS: "900"
           FRONTEND_URLS: !Ref PreviewOrigin
       EphemeralStorage:
         Size: 512
