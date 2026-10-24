@@ -4,6 +4,7 @@ Handles business logic for candidate applications.
 """
 
 from typing import List, Optional
+import secrets
 from uuid import UUID
 from supabase import Client
 
@@ -254,7 +255,7 @@ class ApplicationService:
                 emp_id_str = f"EMP-{str(candidate_id)[:8].upper()}"
                 new_user = self.client.auth.admin.create_user({
                     "email": candidate_email,
-                    "password": "Password123!",
+                    "password": secrets.token_urlsafe(48),
                     "email_confirm": True,
                     "user_metadata": {
                         "full_name": candidate_name,
