@@ -1,10 +1,10 @@
+from importlib import import_module
 from types import ModuleType, SimpleNamespace
 import sys
 
 import pytest
 from fastapi import HTTPException
 
-from app.routers import knowledge
 
 
 @pytest.mark.parametrize("owns_session", [True, False])
@@ -30,6 +30,10 @@ def test_query_checks_session_ownership_before_writing_any_messages(
     rag_module.retrieve_and_answer = retrieve_and_answer
     rag_module.process_and_store_document = lambda *_args, **_kwargs: {}
     monkeypatch.setitem(sys.modules, "app.services.knowledge_rag", rag_module)
+    # Import only after the stub is installed; otherwise importing the router
+    # loads the full document/LLM dependency graph in this lightweight test job.
+    sys.modules.pop("app.routers.knowledge", None)
+    knowledge = import_module("app.routers.knowledge")
 
     monkeypatch.setattr(
         knowledge.knowledge_chat_service, "get_session_messages", get_session_messages
