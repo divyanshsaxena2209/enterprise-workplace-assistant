@@ -39,11 +39,10 @@ The stack update automatically attaches a policy granting only `s3:PutObject`, `
 The template sets these values for the staging Lambda when the stack is updated:
 
 - `STORAGE_PROVIDER=s3`
-- `AWS_REGION=ap-south-1`
 - `AWS_S3_BUCKET=<the staging bucket name>`
 - `S3_PRESIGNED_URL_TTL_SECONDS=900`
 
-Do not add AWS access keys. The AWS SDK must obtain credentials from the staging Lambda execution role.
+The Lambda runtime supplies `AWS_REGION` automatically. Do not try to override that reserved runtime variable, and do not add AWS access keys. The AWS SDK must obtain credentials from the staging Lambda execution role.
 
 ## Before switching the staging provider
 
