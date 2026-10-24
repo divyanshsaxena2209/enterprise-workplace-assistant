@@ -211,53 +211,6 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             """
         ).fetchone() == (True, False, False)
 
-        manager_id = "88888888-8888-4888-8888-888888888888"
-        target_id = "99999999-9999-4999-8999-999999999999"
-        conn.execute(
-            "insert into public.profiles (id, email, full_name, role, is_active, is_management_verified) values (%s, %s, %s, 'MANAGEMENT', true, true)",
-            (manager_id, "manager@example.test", "Trusted Manager"),
-        )
-        conn.execute(
-            "insert into public.profiles (id, email, full_name, role, is_active, is_management_verified) values (%s, %s, %s, 'EMPLOYEE', true, false)",
-            (target_id, "requester@example.test", "Requesting Employee"),
-        )
-        conn.execute(
-            "insert into public.management_access_requests (profile_id) values (%s)",
-            (target_id,),
-        )
-        # The database independently rejects a review attributed to a non-manager.
-        with pytest.raises(psycopg.Error):
-            conn.execute(
-                "select public.review_management_access_request(%s, 'APPROVE', %s, null)",
-                (target_id, PROFILE_ID),
-            )
-        # Rejecting a request leaves the application role unchanged.
-        assert conn.execute(
-            "select public.review_management_access_request(%s, 'REJECT', %s, %s)",
-            (target_id, manager_id, "Access needs confirmation"),
-        ).fetchone() == ("REJECTED",)
-        assert conn.execute(
-            "select role, is_management_verified from public.profiles where id = %s",
-            (target_id,),
-        ).fetchone() == ("EMPLOYEE", False)
-        # Re-submitted requests may be approved later. Promotion and request
-        # status update occur atomically in the database function.
-        conn.execute(
-            "update public.management_access_requests set status = 'PENDING', reviewer_id = null, reviewed_at = null where profile_id = %s",
-            (target_id,),
-        )
-        assert conn.execute(
-            "select public.review_management_access_request(%s, 'APPROVE', %s, %s)",
-            (target_id, manager_id, "Verified by an administrator"),
-        ).fetchone() == ("APPROVED",)
-        assert conn.execute(
-            "select role, is_management_verified from public.profiles where id = %s",
-            (target_id,),
-        ).fetchone() == ("MANAGEMENT", True)
-        assert conn.execute(
-            "select status, reviewer_id::text, reviewer_note from public.management_access_requests where profile_id = %s",
-            (target_id,),
-        ).fetchone() == ("APPROVED", manager_id, "Verified by an administrator")
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -536,6 +489,55 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         assert trusted_signup[1].startswith("MGR-")
         assert trusted_signup[1] != "SPOOF-2"
         assert trusted_signup[2] is True
+
+        manager_id = "88888888-8888-4888-8888-888888888888"
+        target_id = "99999999-9999-4999-8999-999999999999"
+        conn.execute(
+            "insert into public.profiles (id, email, full_name, role, is_active, is_management_verified) values (%s, %s, %s, 'MANAGEMENT', true, true)",
+            (manager_id, "manager@example.test", "Trusted Manager"),
+        )
+        conn.execute(
+            "insert into public.profiles (id, email, full_name, role, is_active, is_management_verified) values (%s, %s, %s, 'EMPLOYEE', true, false)",
+            (target_id, "requester@example.test", "Requesting Employee"),
+        )
+        conn.execute(
+            "insert into public.management_access_requests (profile_id) values (%s)",
+            (target_id,),
+        )
+        # The database independently rejects a review attributed to a non-manager.
+        with pytest.raises(psycopg.Error):
+            conn.execute(
+                "select public.review_management_access_request(%s, 'APPROVE', %s, null)",
+                (target_id, PROFILE_ID),
+            )
+        # Rejecting a request leaves the application role unchanged.
+        assert conn.execute(
+            "select public.review_management_access_request(%s, 'REJECT', %s, %s)",
+            (target_id, manager_id, "Access needs confirmation"),
+        ).fetchone() == ("REJECTED",)
+        assert conn.execute(
+            "select role, is_management_verified from public.profiles where id = %s",
+            (target_id,),
+        ).fetchone() == ("EMPLOYEE", False)
+        # Re-submitted requests may be approved later. Promotion and request
+        # status update occur atomically in the database function.
+        conn.execute(
+            "update public.management_access_requests set status = 'PENDING', reviewer_id = null, reviewed_at = null where profile_id = %s",
+            (target_id,),
+        )
+        assert conn.execute(
+            "select public.review_management_access_request(%s, 'APPROVE', %s, %s)",
+            (target_id, manager_id, "Verified by an administrator"),
+        ).fetchone() == ("APPROVED",)
+        assert conn.execute(
+            "select role, is_management_verified from public.profiles where id = %s",
+            (target_id,),
+        ).fetchone() == ("MANAGEMENT", True)
+        assert conn.execute(
+            "select status, reviewer_id::text, reviewer_note from public.management_access_requests where profile_id = %s",
+            (target_id,),
+        ).fetchone() == ("APPROVED", manager_id, "Verified by an administrator")
+
 
         conn.execute(
             "insert into public.cognito_identity_mappings (cognito_sub, profile_id) values (%s, %s)",
