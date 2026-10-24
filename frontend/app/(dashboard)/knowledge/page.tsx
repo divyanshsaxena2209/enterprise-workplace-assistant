@@ -27,10 +27,13 @@ export default function KnowledgeDashboard() {
     } catch {
       savedDocs = [];
     }
-    setDocuments(savedDocs);
+    const isManagementProfile = ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "");
+    // Browser localStorage is not a trusted source of access-scope metadata.
+    // Employees initially see no legacy entries while the server registry loads.
+    setDocuments(isManagementProfile ? savedDocs : []);
 
-    // The API registry is the shared source of truth. Keep legacy local-only
-    // entries visible until removed, while de-duplicating objects already registered.
+    // The API registry is the shared source of truth. Legacy local-only entries are
+    // retained only for Management to review and re-upload into the server registry.
     async function loadRegisteredDocuments() {
       try {
         const result = await listKnowledgeDocuments();
@@ -51,27 +54,20 @@ export default function KnowledgeDashboard() {
         const registeredKeys = new Set(
           registered.map((doc: any) => doc.file_key ? `${doc.storage_provider}:${doc.file_key}` : ""),
         );
-        const isManagementProfile = ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "");
-        const legacy = savedDocs.filter((doc: any) => {
-          const key = doc.file_key ? `${doc.storage_provider || "supabase"}:${doc.file_key}` : "";
-          const rawScope = typeof doc.department_scope === "string" ? doc.department_scope.trim() : "";
-          const scopeAllowed =
-            isManagementProfile ||
-            rawScope.toUpperCase() === "ALL" ||
-            Boolean(rawScope && profile?.department &&
-              rawScope.toLocaleLowerCase() === profile.department.trim().toLocaleLowerCase());
-          // Old browser-local documents have no trustworthy server-side scope.
-          // Keep them for management to review/re-upload; employees only retain
-          // explicitly scoped legacy entries so localStorage cannot bypass API RBAC.
-          return scopeAllowed && (!key || !registeredKeys.has(key));
-        }).map((doc: any) => ({ ...doc, managed_by_api: false }));
+        const legacy = isManagementProfile
+          ? savedDocs.filter((doc: any) => {
+              const key = doc.file_key ? `${doc.storage_provider || "supabase"}:${doc.file_key}` : "";
+              return !key || !registeredKeys.has(key);
+            }).map((doc: any) => ({ ...doc, managed_by_api: false }))
+          : [];
         const merged = [...registered, ...legacy];
         if (!cancelled) {
           setDocuments(merged);
           localStorage.setItem("knowledge_documents", JSON.stringify(merged));
         }
       } catch {
-        // Preserve local documents while the backend is temporarily unavailable.
+        // Never fall back to untrusted browser-local document entries for employees.
+        if (!cancelled) setDocuments(isManagementProfile ? savedDocs : []);
       }
     }
 
