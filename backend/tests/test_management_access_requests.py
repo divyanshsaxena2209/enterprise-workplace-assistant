@@ -186,6 +186,14 @@ def test_review_rejects_unknown_decision_before_rpc():
 def test_allowlisted_approval_does_not_report_a_pending_row_as_approved(monkeypatch):
     from app.repositories.management_access_request_repository import ManagementAccessRequestRepository
 
+    class FakeClientWithState:
+        def __init__(self, state):
+            self.state = state
+        def table(self, _name):
+            return FakeQuery(self.state)
+        def rpc(self, _name, _args):
+            raise AssertionError("RPC is not used for the allowlist audit write.")
+
     state = FakeTableState()
     state.records.append({
         "profile_id": "profile-pending",
