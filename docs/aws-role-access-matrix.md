@@ -1,6 +1,6 @@
 # Manager and Employee Access Matrix
 
-These are application roles, not AWS account administrator roles. Today, role identity is resolved from the existing Supabase profile record. Cognito migration is still pending. The Lambda execution role is a workload identity and must not be assigned separately to ordinary employees.
+These are application roles, not AWS account administrator roles. In the Cognito migration branch, the FastAPI backend validates Supabase or Cognito tokens and resolves the user's application role and active state from the existing Supabase profile record. Cognito identities map to profile IDs through the server-only identity mapping table. The live Cognito browser flow remains an end-to-end gate. The Lambda execution role is a workload identity and must not be assigned separately to ordinary employees.
 
 | Capability | Management | Employee | Guest demo |
 |---|---:|---:|---:|
@@ -29,4 +29,4 @@ These are application roles, not AWS account administrator roles. Today, role id
 
 ## Review / limitations
 
-These rules are staged on the `aws-service-replacements` branch. The existing production branch has not been merged or deployed. The S3 object provider defaults to `supabase` until the private bucket and Lambda execution-role policy are configured. The role-unit tests run in GitHub Actions before any merge.
+These rules are implemented/staged on `cognito-staging-integration` and are proposed for `aws-service-replacements` through draft PR #3 and PR #1. They are not production-cutover evidence. The S3 object provider defaults to `supabase` until a private bucket exists, the staging Lambda execution-role policy is applied, and resume plus knowledge-document smoke tests pass. Role-unit tests run in GitHub Actions, but application-role behavior still needs live staging E2E verification.
