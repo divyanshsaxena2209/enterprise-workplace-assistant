@@ -143,7 +143,7 @@ def test_employee_can_get_signed_url_for_company_wide_document(monkeypatch):
     monkeypatch.setattr(router, "_document_repository", lambda: FakeRepository())
     monkeypatch.setattr(
         "app.services.object_storage.create_knowledge_document_download_url",
-        lambda key: f"https://signed.invalid/{key}",
+        lambda key, storage_provider="s3": f"https://signed.invalid/{storage_provider}/{key}",
     )
     employee = SimpleNamespace(
         id="employee-1",
@@ -152,7 +152,7 @@ def test_employee_can_get_signed_url_for_company_wide_document(monkeypatch):
     )
 
     assert router.get_document_download_url("knowledge/company-policy.pdf", employee) == {
-        "file_url": "https://signed.invalid/knowledge/company-policy.pdf"
+        "file_url": "https://signed.invalid/s3/knowledge/company-policy.pdf"
     }
 
 
@@ -202,3 +202,33 @@ def test_management_query_uses_all_document_scopes(monkeypatch):
     )
 
     assert calls[0]["department_scope"] is None
+
+
+def test_employee_can_get_scoped_supabase_signed_url(monkeypatch):
+    router = load_knowledge_router(monkeypatch)
+    record = {
+        "id": "global-doc",
+        "filename": "company-policy.pdf",
+        "storage_provider": "supabase",
+        "file_key": "knowledge_company-policy.pdf",
+        "file_url": None,
+        "department_scope": "ALL",
+    }
+
+    class FakeRepository:
+        def get_by_file_key(self, _key):
+            return record
+
+    monkeypatch.setattr(router, "_document_repository", lambda: FakeRepository())
+    calls = []
+    monkeypatch.setattr(
+        "app.services.object_storage.create_knowledge_document_download_url",
+        lambda key, storage_provider="s3": (
+            calls.append((key, storage_provider)) or "https://signed.invalid/private-policy"
+        ),
+    )
+    employee = SimpleNamespace(id="employee-1", role=UserRole.EMPLOYEE, department="Engineering")
+    assert router.get_document_download_url("knowledge_company-policy.pdf", employee) == {
+        "file_url": "https://signed.invalid/private-policy"
+    }
+    assert calls == [("knowledge_company-policy.pdf", "supabase")]

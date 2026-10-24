@@ -87,8 +87,8 @@ def upload_resume(
         )
         # Persist a stable S3 object key rather than an expiring presigned URL.
         # CandidateRepository signs it when an authorised user requests details.
-        if stored["storage_provider"] == "s3":
-            file_url = f"s3://{stored['file_key']}"
+        if stored["storage_provider"] in {"s3", "supabase"}:
+            file_url = f"{stored['storage_provider']}://{stored['file_key']}"
         else:
             file_url = stored["file_url"]
     except Exception as exc:

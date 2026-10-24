@@ -113,3 +113,35 @@ def test_resume_persists_s3_locator_not_expiring_url(monkeypatch):
 
     assert result.candidate_id == "candidate-1"
     assert result.resume_id == "resume-1"
+
+
+def test_supabase_resume_persists_stable_provider_key(monkeypatch):
+    router = load_resume_router(monkeypatch)
+    monkeypatch.setattr(router, "get_supabase_client", lambda: object())
+    monkeypatch.setattr(
+        object_storage,
+        "upload_knowledge_document",
+        lambda *_args, **_kwargs: {
+            "storage_provider": "supabase",
+            "file_key": "resumes_uuid_resume.pdf",
+            "file_url": None,
+        },
+    )
+    monkeypatch.setattr(
+        object_storage,
+        "delete_resume_object",
+        lambda *_args, **_kwargs: pytest.fail("successful persistence must not delete the resume"),
+    )
+
+    class SuccessfulRepository:
+        def __init__(self, _client):
+            pass
+
+        def create_candidate_with_resume(self, *, candidate_data, resume_data):
+            assert resume_data["file_url"] == "supabase://resumes_uuid_resume.pdf"
+            return "candidate-2", "resume-2"
+
+    monkeypatch.setattr(router, "CandidateRepository", SuccessfulRepository)
+    result = router.upload_resume(make_upload(), SimpleNamespace(id="employee-2"))
+    assert result.candidate_id == "candidate-2"
+    assert result.resume_id == "resume-2"

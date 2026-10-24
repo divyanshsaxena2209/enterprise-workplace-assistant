@@ -73,7 +73,7 @@ def upload_knowledge_document(
         return {
             "storage_provider": "supabase",
             "file_key": object_name,
-            "file_url": client.storage.from_("resumes").get_public_url(object_name),
+            "file_url": None,
         }
 
     raise RuntimeError(
@@ -162,6 +162,50 @@ def delete_resume_object(
 
     raise RuntimeError("Unsupported resume storage provider.")
 
+
+def _validate_supabase_object_key(file_key: str, prefix: str) -> None:
+    expected_prefix = f"{prefix}_"
+    if (
+        not file_key
+        or not file_key.startswith(expected_prefix)
+        or "/" in file_key
+        or "\\" in file_key
+        or ".." in file_key
+    ):
+        raise ValueError("Invalid Supabase document object key.")
+
+
+def _create_supabase_signed_url(file_key: str, prefix: str) -> str:
+    """Mint a short-lived URL from the backend-only Supabase client."""
+    _validate_supabase_object_key(file_key, prefix)
+    from app.db.supabase import get_supabase_client
+
+    response = (
+        get_supabase_client()
+        .storage.from_("resumes")
+        .create_signed_url(file_key, settings.S3_PRESIGNED_URL_TTL_SECONDS)
+    )
+    signed_url = None
+    if isinstance(response, dict):
+        signed_url = response.get("signedURL") or response.get("signedUrl") or response.get("signed_url")
+    if not isinstance(signed_url, str) or not signed_url.strip():
+        raise RuntimeError("Supabase Storage did not return a signed URL.")
+    if signed_url.startswith("/"):
+        return f"{settings.SUPABASE_URL.rstrip('/')}/storage/v1{signed_url}"
+    return signed_url
+
+
+def download_supabase_object_bytes(file_key: str, *, prefix: str = "resumes") -> bytes:
+    """Download a private Supabase Storage object through the backend client."""
+    if prefix not in {"knowledge", "resumes"}:
+        raise ValueError("Unsupported Supabase object prefix.")
+    _validate_supabase_object_key(file_key, prefix)
+    from app.db.supabase import get_supabase_client
+
+    data = get_supabase_client().storage.from_("resumes").download(file_key)
+    return bytes(data)
+
+
 def download_s3_object_bytes(file_key: str, *, prefix: str = "resumes") -> bytes:
     """Download a private object through the Lambda execution role."""
     if prefix not in {"knowledge", "resumes"} or not file_key.startswith(f"{prefix}/") or ".." in file_key:
@@ -185,11 +229,21 @@ def _create_presigned_download_url(file_key: str, prefix: str) -> str:
     )
 
 
-def create_knowledge_document_download_url(file_key: str) -> str:
+def create_knowledge_document_download_url(file_key: str, storage_provider: str = "s3") -> str:
     # Knowledge route is deliberately scoped to knowledge objects only.
-    return _create_presigned_download_url(file_key, "knowledge")
+    provider = storage_provider.strip().lower()
+    if provider == "s3":
+        return _create_presigned_download_url(file_key, "knowledge")
+    if provider == "supabase":
+        return _create_supabase_signed_url(file_key, "knowledge")
+    raise RuntimeError("Unsupported knowledge storage provider.")
 
 
-def create_resume_download_url(file_key: str) -> str:
+def create_resume_download_url(file_key: str, storage_provider: str = "s3") -> str:
     # Resume URLs are generated only by authenticated candidate-detail routes.
-    return _create_presigned_download_url(file_key, "resumes")
+    provider = storage_provider.strip().lower()
+    if provider == "s3":
+        return _create_presigned_download_url(file_key, "resumes")
+    if provider == "supabase":
+        return _create_supabase_signed_url(file_key, "resumes")
+    raise RuntimeError("Unsupported resume storage provider.")

@@ -190,3 +190,75 @@ def test_resume_delete_removes_only_resumes_bucket_object_in_supabase(monkeypatc
     object_storage.delete_resume_object("supabase", "resumes_uuid_resume.pdf")
 
     assert bucket.remove_calls == [["resumes_uuid_resume.pdf"]]
+
+
+def test_supabase_upload_persists_key_without_public_url_and_signs_only_on_demand(monkeypatch):
+    from app.db import supabase as supabase_module
+
+    class FakeStorageBucket:
+        def __init__(self):
+            self.upload_calls = []
+            self.signed_calls = []
+            self.public_url_calls = 0
+
+        def upload(self, **kwargs):
+            self.upload_calls.append(kwargs)
+
+        def get_public_url(self, _path):
+            self.public_url_calls += 1
+            raise AssertionError("New document uploads must not request a public URL")
+
+        def create_signed_url(self, path, ttl):
+            self.signed_calls.append((path, ttl))
+            return {"signedURL": "https://staging.supabase.co/storage/v1/object/sign/resumes/file?token=test"}
+
+    bucket = FakeStorageBucket()
+    client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _name: bucket))
+    monkeypatch.setattr(supabase_module, "get_supabase_client", lambda: client)
+    monkeypatch.setattr(object_storage.settings, "STORAGE_PROVIDER", "supabase")
+    monkeypatch.setattr(object_storage.settings, "S3_PRESIGNED_URL_TTL_SECONDS", 900)
+
+    stored = object_storage.upload_knowledge_document(
+        "policy.pdf", b"%PDF-bytes", "application/pdf", prefix="knowledge"
+    )
+    assert stored["storage_provider"] == "supabase"
+    assert stored["file_key"].startswith("knowledge_")
+    assert stored["file_url"] is None
+    assert bucket.public_url_calls == 0
+    assert bucket.upload_calls[0]["path"] == stored["file_key"]
+
+    url = object_storage.create_knowledge_document_download_url(
+        stored["file_key"], storage_provider="supabase"
+    )
+    assert url == "https://staging.supabase.co/storage/v1/object/sign/resumes/file?token=test"
+    assert bucket.signed_calls == [(stored["file_key"], 900)]
+
+
+@pytest.mark.parametrize("key", ["resumes/other.pdf", "../knowledge_policy.pdf", "knowledge\\\\policy.pdf", ""])
+def test_supabase_knowledge_signed_url_rejects_out_of_scope_keys(monkeypatch, key):
+    with pytest.raises(ValueError):
+        object_storage.create_knowledge_document_download_url(key, storage_provider="supabase")
+
+
+def test_supabase_resume_signed_url_requires_resume_prefix(monkeypatch):
+    from app.db import supabase as supabase_module
+
+    class FakeBucket:
+        def __init__(self):
+            self.signed = []
+
+        def create_signed_url(self, path, ttl):
+            self.signed.append((path, ttl))
+            return {"signedURL": "https://signed.invalid/resume"}
+
+    bucket = FakeBucket()
+    client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _name: bucket))
+    monkeypatch.setattr(supabase_module, "get_supabase_client", lambda: client)
+    monkeypatch.setattr(object_storage.settings, "S3_PRESIGNED_URL_TTL_SECONDS", 900)
+
+    assert object_storage.create_resume_download_url(
+        "resumes_abc_resume.pdf", storage_provider="supabase"
+    ) == "https://signed.invalid/resume"
+    assert bucket.signed == [("resumes_abc_resume.pdf", 900)]
+    with pytest.raises(ValueError):
+        object_storage.create_resume_download_url("knowledge_policy.pdf", storage_provider="supabase")

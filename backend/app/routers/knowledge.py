@@ -54,13 +54,17 @@ def _document_repository() -> KnowledgeDocumentRepository:
 
 def _public_document(row: dict) -> dict:
     """Avoid returning the internal Qdrant source path to the browser."""
-    return {
+    response = {
         key: row.get(key)
         for key in (
             "id", "filename", "storage_provider", "file_key", "file_url", "department_scope",
             "pages", "chunks", "uploaded_by", "created_at", "updated_at",
         )
     }
+    # Storage URLs are bearer credentials; mint a fresh scoped URL on demand.
+    if response.get("storage_provider") in {"s3", "supabase"}:
+        response["file_url"] = None
+    return response
 
 
 def _remove_temp_file(path: str) -> None:
@@ -302,7 +306,7 @@ def get_document_download_url(file_key: str, current_user: ProfileResponse = Dep
     from app.services.object_storage import create_knowledge_document_download_url
     try:
         record = _document_repository().get_by_file_key(file_key)
-        if not record or record.get("storage_provider") != "s3":
+        if not record or record.get("storage_provider") not in {"s3", "supabase"}:
             raise HTTPException(status_code=404, detail="Knowledge document not found.")
         is_management = current_user.role in UserRole.management_roles()
         if not document_scope_visible(
@@ -311,7 +315,9 @@ def get_document_download_url(file_key: str, current_user: ProfileResponse = Dep
             is_management=is_management,
         ):
             raise HTTPException(status_code=404, detail="Knowledge document not found.")
-        return {"file_url": create_knowledge_document_download_url(file_key)}
+        return {"file_url": create_knowledge_document_download_url(
+            file_key, storage_provider=record["storage_provider"]
+        )}
     except HTTPException:
         raise
     except ValueError as exc:

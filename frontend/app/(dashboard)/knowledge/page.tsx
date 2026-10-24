@@ -214,9 +214,9 @@ export default function KnowledgeDashboard() {
           {documents.map(doc => (
             <div 
               key={doc.id} 
-              className={`p-5 flex items-center justify-between transition-colors group ${doc.file_url ? 'hover:bg-secondary/30 cursor-pointer' : ''}`}
+              className={`p-5 flex items-center justify-between transition-colors group ${(doc.file_url || (doc.managed_by_api && doc.storage_provider && doc.file_key)) ? 'hover:bg-secondary/30 cursor-pointer' : ''}`}
               onClick={async () => {
-                if (doc.storage_provider === "s3" && doc.file_key) {
+                if (doc.managed_by_api && ["s3", "supabase"].includes(doc.storage_provider) && doc.file_key) {
                   try {
                     const result = await getKnowledgeDocumentDownloadUrl(doc.file_key);
                     if (!result?.file_url) throw new Error("No download URL was returned.");

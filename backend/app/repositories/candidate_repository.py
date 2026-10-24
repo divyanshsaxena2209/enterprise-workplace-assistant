@@ -78,10 +78,12 @@ class CandidateRepository:
             if resume_res.data:
                 resume_row = dict(resume_res.data[0])
                 file_url = resume_row.get("file_url") or ""
-                if file_url.startswith("s3://"):
+                if file_url.startswith(("s3://", "supabase://")):
                     from app.services.object_storage import create_resume_download_url
-                    resume_key = file_url.removeprefix("s3://")
-                    resume_row["file_url"] = create_resume_download_url(resume_key)
+                    storage_provider, resume_key = file_url.split("://", 1)
+                    resume_row["file_url"] = create_resume_download_url(
+                        resume_key, storage_provider=storage_provider
+                    )
                 resume = ResumeResponse.model_validate(resume_row)
 
             return CandidateDetailResponse(
