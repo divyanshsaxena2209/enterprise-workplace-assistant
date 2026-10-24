@@ -157,7 +157,6 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           COGNITO_APP_CLIENT_ID: !Ref CognitoAppClientId
           STORAGE_PROVIDER: !Ref StorageProvider
-          AWS_REGION: !Ref AWS::Region
           AWS_S3_BUCKET: !Ref DocumentBucketName
           S3_PRESIGNED_URL_TTL_SECONDS: "900"
           FRONTEND_URLS: !Ref PreviewOrigin
