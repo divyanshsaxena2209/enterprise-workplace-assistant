@@ -823,3 +823,12 @@ The repository workflow `.github/workflows/build-cognito-staging-ecr.yml` runs o
 - Added `ReservedConcurrentExecutions: 2` to `StagingApi` in `infra/aws/cognito-staging-backend.yml`. This is a concurrency guard against accidental or abusive simultaneous compute; it is **not** a cap on total requests and does not replace application authentication/authorization.
 - Updated `docs/COGNITO_STAGING_DEPLOYMENT.md` to explain the concurrency guard and its limits. The CloudFormation validation workflow is expected to validate the new property along with the full template.
 - No live Lambda or CloudFormation stack was created/changed in response to these edits. Production remains untouched; staging deploy still requires a direct CloudFormation action with the staging Supabase service-role secret.
+
+
+## Continuation update — 2026-10-24: corrected staging image rebuilt
+
+- The first newly built image (`cognito-staging-ba091b53ed2d3f6b71e4b54128c894b55da3a35b`) was superseded because the source still had a global outbound TLS verification override. That older image must not be used for deployment.
+- Rebuilt and pushed corrected staging image successfully using [GitHub Actions run #14](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40114757021). Current image URI: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-5f67a3ec61e09b8dab1181f8b134a1894bb4b4ae`. Digest: `sha256:45d84e98aa8554bae82b8fcd46c500c1d931b736c4da0ac04af7083edf12092a`.
+- Confirmed the exact build source commit `5f67a3ec61e09b8dab1181f8b134a1894bb4b4ae` has no `verify=False` override and includes `ReservedConcurrentExecutions: 2` in the staging template present at build time. The live CloudFormation template and deployment guide now point at the corrected tag.
+- The ECR workflow has been restored to manual-only and the one-time marker removed again. No image is auto-built on future pushes.
+- The final template/doc commits are later than the image's source commit but do not change the backend runtime; a CI run is validating the final CloudFormation default/tag, concurrency setting, backend compile, and regression test suite.
