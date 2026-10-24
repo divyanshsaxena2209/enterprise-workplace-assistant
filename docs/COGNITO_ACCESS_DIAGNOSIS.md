@@ -48,3 +48,34 @@ After a staging API and Preview config are confirmed:
 7. Confirm the test hit only the staging API and staging Supabase project.
 
 Never test against Production or expose access/refresh tokens, OAuth codes, secrets, or presigned URLs in screenshots/logs.
+
+
+## Migration continuation checkpoint — 25 October 2026
+
+### Verified completed
+- Branch `cognito-staging-integration` includes the Employee/Management signup choice, safe requested-role validation, management access request workflow, server-only approval table/function, management-only review endpoints, Settings access inbox, and a trusted-email allowlist for the initial Management account.
+- On branch SHA `0b611348e6798fc5f79872f2b63dab7562228c07`, GitHub Actions run [#40124001477](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40124001477) passed: the backend/frontend build and compile checks, CloudFormation lint, Cognito trigger tests, and service-replacement test suite succeeded (109 tests, 10 warnings).
+- Applied the additive migration `20261025000000_management_access_requests.sql` to the **staging** Supabase project `wxulxcsdpwsyhtpkbazi` only. The migration history now records version `20261024191143`, name `management_access_requests`.
+- Read-only SQL verification confirms `public.management_access_requests` exists with RLS enabled; `anon` and `authenticated` cannot SELECT the table or execute `review_management_access_request`; `service_role` can SELECT/INSERT and execute the database review function; request count is currently zero. The Security Advisor reports the expected INFO finding for a private RLS table with no client policies, alongside the pre-existing Cognito identity-table INFO and pre-existing SECURITY DEFINER warnings for `current_profile_id()` and `get_current_user_role()`. No new public execution warning was reported for the request-review function.
+- Read-only Vercel inspection shows the Preview branch environment is set to Cognito, the staging Supabase project, the branch `/auth/callback` and `/login` URLs, and a staging Lambda Function URL for API/link calls. The latest inspected Ready Preview is SHA `d7c4765113c1259e20c1fd7a52c229e2a39690a0` (the frontend source commit); the subsequent `0b611348...` change only moved a backend migration-test fixture.
+- The staging database still has one Cognito-linked active profile with role `EMPLOYEE`; it has not yet received Management privileges. This accurately explains the prior “Cognito created the account but app access was missing” symptom: identity proof/linking is not the same as the profile's application role.
+
+### Current unverified items
+- A follow-up hardening commit (`5c143e8...` plus the test-fixture fix at `9c091bbb...`) requires a fresh green CI run before the branch is considered validated. At the last check, GitHub was still running the frontend build for those commits. The preceding full suite passed, but do not describe the newest commits as green until their own run completes.
+- AWS stack/image/environment state could not be inspected from the connected tools. A read-only health request to the configured Lambda URL could not be reached from this environment, so the current backend runtime is **not verified to include these source changes**.
+- No ECR image was built or pushed for the newest source. The ECR workflow is deliberately manual-only.
+- No end-to-end browser test has yet confirmed Cognito callback → PKCE/code exchange → identity link → `/api/v1/auth/me` → protected route authorization with the currently deployed Lambda.
+
+### Management access model and initial admin
+- The signup page now asks **Employee** or **Management**.
+- Employee self-signup is assigned `EMPLOYEE`.
+- Management is assigned immediately only if Cognito's **verified email** is on the server-side `COGNITO_MANAGEMENT_EMAIL_ALLOWLIST` (a comma-separated CloudFormation parameter on the isolated staging Lambda template). Otherwise the request is saved and an already active Management profile must approve it.
+- The allowlist is the safe bootstrap path for the first manager because an empty system has no existing Management user to approve the first request. Set this only to the intended verified manager email in the staging stack. Do not commit the email or any secrets into GitHub. The profile database role is authoritative; Cognito user attributes and browser form fields cannot elevate roles.
+- AWS IAM remains for Lambda execution (logs and the scoped private S3 prefixes) and GitHub OIDC/ECR publishing. Employees and Managers do not get AWS access keys or direct S3 IAM permissions.
+
+### Remaining release gate
+1. Confirm the latest CI run is green for the current branch head.
+2. Manually dispatch `.github/workflows/build-cognito-staging-ecr.yml` from the verified current branch. This produces a new immutable staging ECR tag; it may incur small ECR storage/request charges, so retain the existing cost guard.
+3. In AWS, update **only** the existing isolated staging CloudFormation stack with the image tag from that successful run and set `ManagementEmailAllowlist` to the intended verified first-manager email. Preserve the existing staging Supabase secret using CloudFormation's previous-value path or enter it directly as a `NoEcho` parameter. Do not change Production.
+4. Redeploy/verify the Cognito branch Preview against the updated staging API, then run the consolidated sign-in/callback/profile/role test. Test an Employee-only action and a Management-only action with an allowlisted Manager; also verify that a non-allowlisted Management request remains Employee until approval.
+5. Once staging E2E passes, proceed with the S3 opt-in storage cutover and CloudWatch runtime/alarms review. S3 still defaults to Supabase; no bucket was created and no Production resources were changed.
