@@ -934,7 +934,7 @@ This section explicitly maps the requested migration requirements to implementat
 
 ### Progress estimate
 
-- **Source implementation for requested migration:** roughly **75%**. Cognito flow, token verification, server-side app RBAC, storage-provider abstractions, resume and knowledge-storage paths, CloudFormation templates, OIDC/ECR build workflow, schema migrations, and focused CI tests are present.
+- **Source implementation for requested migration:** roughly **78%**. Cognito flow, token verification, server-side app RBAC, storage-provider abstractions, resume and knowledge-storage paths, CloudFormation templates, OIDC/ECR build workflow, schema migrations, and focused CI tests are present.
 - **Staging infrastructure/configuration alignment:** roughly **45%**. Staging Cognito and Supabase integration pieces are documented and some live database work is verified, but Lambda deployment state conflicts between handoff entries and Vercel branch environment inspection is blocked.
 - **End-to-end verification/release readiness:** roughly **25%**. The consolidated application-originated Cognito test, live resume-to-S3 test, knowledge upload/download/delete test, real CloudWatch correlation, and cross-department retrieval test remain unproven.
 - **Overall migration completion estimate: about 58%.** This is a weighted planning estimate, not a measured percentage of code. Core implementation is ahead of operational proof; do not merge/cut over based on the estimate alone.
@@ -979,8 +979,37 @@ This section supersedes older notes in this file that describe department/docume
 - **Overall migration estimate: ~58%.** This estimate moved up from 55% because meaningful source/security work and the additive staging schema migration have landed. It is still not release-ready: operational verification is the main remaining gap.
 
 ### Next steps — continue from here
-1. Check Run #163 for `9affd666aa93011d007d1cedacd43ce69d78bb2b`; fix any remaining failures, and record the tested SHA/result before updating this status again.
+1. Run #163 passed on `9affd666aa93011d007d1cedacd43ce69d78bb2b`; later milestones and the latest exact CI checkpoint are recorded in the continuation section below.
 2. Once CI passes, review/apply any required staging-only code/schema alignment and prepare a single consolidated staging test. The live `knowledge_documents` count is 0, so use harmless sample documents only when the current deployed API/runtime and Qdrant target can be verified.
 3. Re-tag/re-index legacy/unscoped Qdrant documents with `ALL` or an explicit department. The fail-closed policy means legacy points without `metadata.department_scope_key` must not be served to employees until this is done.
 4. External manual gates only: Vercel Preview build is rate-limited for 24 hours; AWS console access is needed to verify existing stack/function/image digest, S3 bucket state, environment and CloudWatch logs. No manual test or approval is needed for further repository-only work.
 5. Keep PR #3 draft and do not merge. Do not create a bucket, create a second Lambda stack/function, incur avoidable AWS charges, or change Production while infrastructure state remains unverified.
+
+## Continuation milestone — private storage URLs and legacy resume compatibility (24 October 2026)
+
+### Source changes and verified test results
+- [CI run #163](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40119796132) passed on `9affd666aa93011d007d1cedacd43ce69d78bb2b`; it validates fail-closed filtering of unscoped Qdrant points and the frontend legacy-document scope filter.
+- [CI run #164](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40120123342) passed on `61945ef29fb36de2a89d19423e7cba956d2c1e16`: **93 tests passed, 10 warnings**, frontend build passed, backend compilation passed, and both CloudFormation templates passed `cfn-lint`.
+- [CI run #165](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40120198772) passed on `154c4cb64970b799cee1fc303157a54a4e5bbb73`: **94 tests passed, 10 warnings**, frontend build passed, backend compilation passed, and CloudFormation lint passed.
+- Supabase storage provider now persists stable keys for newly uploaded knowledge documents and resumes; it no longer emits a public URL during upload. Signed URLs use the official Supabase Storage `create_signed_url(path, expires_in)` API and are generated after server-side access checks.
+- The knowledge download route now supports the S3 and Supabase providers using the trusted `knowledge_documents` registry and the same department visibility check. The API no longer returns stored storage URLs in registry responses.
+- Resume rows created by new code store `s3://...` or `supabase://...` stable locators. Authorized candidate-detail retrieval creates a short-lived provider-specific signed URL. The hiring pipeline downloads Supabase-stored files through the backend storage client.
+- Compatibility is preserved for legacy resume rows with recognized Supabase Storage URL paths: the backend extracts only the known bucket-relative key, validates the `resumes_` prefix, and creates a signed URL or downloads through the backend. The supplied URL is never fetched directly.
+
+### Live staging checks
+- Supabase project `wxulxcsdpwsyhtpkbazi`: the `resumes` Storage bucket exists with `public=false`. This is a read-only metadata check; no file was uploaded, read or deleted.
+- The additive `knowledge_documents.department_scope` migration is applied and verified. RLS is enabled; `anon` and `authenticated` have no direct SELECT on the registry, while `service_role` retains SELECT. Registry row count remains 0.
+- No S3 bucket has been created; `STORAGE_PROVIDER` remains `supabase` by default. No Lambda stack/function was created or changed, and no Production resources were modified.
+
+### Completion estimate and what is not yet proven
+- **Source implementation: ~78%** — Cognito auth paths, database-backed application roles, role checks, object-storage adapter for S3/Supabase, private signed downloads, resume object cleanup, department-scoped Qdrant ingestion/retrieval, schema migrations, and regression tests are present.
+- **Staging infrastructure alignment: ~45%** — schema and staging bucket privacy are verified, but actual Lambda stack/image/environment and CloudWatch event/log correlation remain unknown. S3 cutover remains unconfigured.
+- **End-to-end/release verification: ~25%** — CI passing does not prove a deployed browser flow, actual Qdrant retrieval isolation, live upload/download/delete, or CloudWatch runtime health.
+- **Overall migration estimate: ~58%**. The source implementation is stronger, but the unresolved operational state is still the limiting factor. Do not merge or cut over based on CI alone.
+
+### Next gates
+1. The latest green source checkpoint is run #165, SHA `154c4cb64970b799cee1fc303157a54a4e5bbb73`. Any further source change must be followed by CI and a handoff update.
+2. Vercel says Preview deployment is rate-limited for 24 hours. Do not keep pushing cosmetic/document-only commits merely to force a Preview. After the limit clears, confirm the current Preview uses the staging API and staging Supabase variables before testing login.
+3. AWS console verification remains required to determine whether `ewa-cognito-staging-api` and its function already exist, confirm the deployed image digest and staging configuration, and inspect a real CloudWatch invocation. The connected tools in this session cannot perform those AWS-console checks.
+4. After the runtime is verifiably aligned, run one consolidated staging test: Cognito signup/login/callback/refresh/logout, role-bound API checks, resume upload/detail/screening, company-policy upload/index/retrieval/download/delete with `ALL` and department-specific documents, cross-department denial, and one correlated CloudWatch log.
+5. Existing Qdrant points without `metadata.department_scope_key` stay hidden from employee retrieval until management re-tags/re-indexes them. The registry count of 0 means this path has not been proven with a live document. Keep PR #3 draft and do not change Production or provision chargeable AWS resources.

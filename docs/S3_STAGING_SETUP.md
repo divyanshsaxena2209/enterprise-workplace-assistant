@@ -51,3 +51,9 @@ The Lambda runtime supplies `AWS_REGION` automatically. Do not try to override t
 3. Test knowledge-document upload, RAG ingestion, resume upload/download, and deletion using non-sensitive test files.
 4. Verify that persisted records use `storage_provider=s3` and preserve the object key; presigned URLs expire and must not be treated as permanent file URLs.
 5. Keep Production on Supabase Storage until all tests pass and there is an explicitly approved migration/rollback plan. Existing Supabase objects are not copied by this change.
+
+## Private Supabase fallback while S3 remains opt-in
+
+The backend's storage provider still defaults to `supabase`, and the staging project's existing `resumes` bucket is private (`public=false`). New Supabase-backed knowledge and resume uploads now persist stable object keys instead of exposing `get_public_url()` links. The API generates short-lived signed URLs only after the request has passed the role and, for knowledge documents, department-scope checks. See the [Supabase Python signed-URL reference](https://supabase.com/docs/reference/python/storage-from-createsignedurl).
+
+This fallback does not enable S3 or alter bucket visibility. S3 remains an opt-in cutover requiring a private staging bucket and the least-privilege Lambda execution-role policy. Existing resume rows with Supabase public-URL-shaped values are parsed into a safe object key and converted to a short-lived signed URL without fetching the supplied URL. Legacy documents absent from the trusted knowledge registry must be re-uploaded/registered before employees can retrieve them; unscoped Qdrant records are fail-closed for employees.
