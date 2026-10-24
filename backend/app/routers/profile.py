@@ -110,6 +110,8 @@ def assign_employee_id(
     return ProfileResponse.from_model(updated)
 
 
+
+
 def update_profile(
     body: ProfileUpdateRequest,
     current_user: ProfileResponse = Depends(get_current_user),
