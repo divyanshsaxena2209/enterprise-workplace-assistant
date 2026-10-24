@@ -53,15 +53,12 @@ def upload_knowledge_document(
             ContentType=content_type,
             ServerSideEncryption="AES256",
         )
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=settings.S3_PRESIGNED_URL_TTL_SECONDS,
-        )
+        # Signed URLs are minted on demand by the authenticated download endpoint.
+        # Persisting one would leave the registry with an expiring bearer credential.
         return {
             "storage_provider": "s3",
             "file_key": key,
-            "file_url": url,
+            "file_url": None,
         }
 
     if provider == "supabase":
