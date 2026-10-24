@@ -8,7 +8,7 @@ This CloudFormation template is **opt-in**. It creates no resources until you de
 
 ## Cost gate
 
-Lambda invocations, compute, ECR storage, CloudWatch logs, and data transfer are usage-based. The CloudFormation stack is **not guaranteed to cost $0**. Before creating it, check AWS Billing / Free Tier and do not deploy if your available free allowance is unclear or if even a small charge is unacceptable.
+Lambda invocations, compute, ECR storage, CloudWatch logs, and data transfer are usage-based. The CloudFormation stack is **not guaranteed to cost $0**. Before creating it, check AWS Billing / Free Tier and do not deploy if your available free allowance is unclear or if even a small charge is unacceptable. The proposed staging Lambda is limited to **two concurrent executions** to reduce parallel compute spend. This is not a hard cap on total requests or a substitute for authenticated route checks; the public Function URL must remain staging-only.
 
 ## Deploy
 
