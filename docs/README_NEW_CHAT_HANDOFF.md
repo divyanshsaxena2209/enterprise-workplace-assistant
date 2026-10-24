@@ -532,7 +532,7 @@ The broader staging callback diagnostics remain in place: frontend logs an allow
 ### Validation / deployment gates
 
 - Previous service-replacement CI run `40084027344` passed frontend build, Python compilation, CloudFormation lint and isolated tests for the frontend-only diagnostic commits.
-- New CI run for the backend provisioning fix is pending/underway at the latest snapshot; confirm its full success before calling the source change validated.
+- CI run `40084393987` completed **success** after the backend provisioning fix. It passed frontend build, backend/test compilation, CloudFormation template validation and the isolated service replacement tests; the test logs report `54 passed, 10 warnings` (warnings are recorded in the run and are not test failures).
 - Vercel's check status for the latest handoff source previously showed success; Vercel connector read APIs have returned not-found/forbidden, so deployment details must be confirmed from the GitHub Vercel status and/or user dashboard if necessary.
 - The running staging Lambda still uses its existing ECR image, which does not include the new backend source changes. To apply the backend fix, a new staging backend image must be built/pushed to ECR and the staging Lambda/CloudFormation stack updated. This can cause ECR storage/build costs. Because the user has no budget, do not trigger that build/deployment without explicit acceptance of any nonzero cost. Do not touch Production, `main`, Production Supabase, or `busted`.
 
