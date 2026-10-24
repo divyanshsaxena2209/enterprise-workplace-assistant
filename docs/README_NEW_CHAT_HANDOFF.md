@@ -542,3 +542,12 @@ The broader staging callback diagnostics remain in place: frontend logs an allow
 2. Before a new staging Lambda image can be deployed, the user must explicitly confirm whether any nonzero ECR/AWS cost is acceptable. If not, keep the backend fix committed but undeployed; do not pretend the live API uses it.
 3. If cost is approved and the image is deployed, do one app-originated `/signup` staging run and inspect the specific displayed error category plus the corresponding sanitized CloudWatch event. Avoid extra accounts and broad repeated queries.
 4. Keep PR #3 draft until full staging end-to-end validation and rollback requirements pass.
+
+---
+
+## 15. CI validation checkpoint — 24 October 2026
+
+- GitHub Actions run `40084393987` completed **success** on code commit `b5c745afcbf587dc180b7307b57b8d570b66800f`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40084393987
+- This single workflow run passed the Cognito pre-token test, frontend dependency install/build, backend and test compile, CloudFormation lint, and the isolated service replacement tests including the new `test_cognito_provisioning_errors.py` regression test.
+- GitHub's Vercel status for the code commit `b5c745afcbf587dc180b7307b57b8d570b66800f` reported success at https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/CpwfB4wD7SbHLo2TUxfP6sHDG49i. The current branch tip at the time of this note is a subsequent handoff-only commit and its Vercel status was still pending; verify the branch alias points to a Ready deployment before the next sign-in.
+- The repo source fix is validated by CI, but the live AWS staging Lambda still uses the previous container image. Applying the backend fix requires a new ECR image plus Lambda image update. Do not do that until the user explicitly accepts any nonzero ECR/AWS costs. No Production service or staging database was modified during this code work.
