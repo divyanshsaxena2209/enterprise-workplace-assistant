@@ -101,7 +101,19 @@ export default function CognitoSignupForm() {
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Bio (optional)</span>
             <textarea className={inputClass + " min-h-20 resize-y"} value={bio} onChange={(event) => setBio(event.target.value)} maxLength={500} placeholder="A short introduction" />
           </label>
-          <p className="text-xs text-muted-foreground">New self-service accounts receive employee access. Management access is assigned only through the existing trusted administrative process.</p>
+          <div className="rounded-xl border border-border bg-secondary/30 p-4">
+            <p className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Access level</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-foreground bg-foreground px-3 py-3 text-background">
+                <p className="text-sm font-bold">Employee</p>
+                <p className="mt-1 text-[11px] opacity-80">Available for self-service signup</p>
+              </div>
+              <div className="rounded-lg border border-border bg-card px-3 py-3 text-muted-foreground">
+                <p className="text-sm font-bold">Management</p>
+                <p className="mt-1 text-[11px]">Assigned by an administrator</p>
+              </div>
+            </div>
+          </div>
           <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg border border-foreground bg-foreground px-4 py-3 text-xs font-bold uppercase tracking-wider text-background transition-opacity hover:opacity-90 disabled:opacity-50">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Connecting to Cognito…</> : "Continue to secure signup"}
           </button>

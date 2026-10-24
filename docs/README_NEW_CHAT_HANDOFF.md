@@ -617,3 +617,12 @@ The broader staging callback diagnostics remain in place: frontend logs an allow
 - The Cognito public signup flow intentionally remains employee-only. Management role assignment must continue to come from a trusted administrative workflow, never a public signup dropdown.
 - Added test coverage for the grants and employee-ID trigger. CI must be checked before the staging database receives the employee-ID migration. After CI passes, apply that migration to staging and verify the newly signed-up profile is assigned an ID. Do not merge the draft PR until the live Cognito staging flow is verified.
 - Existing production/legacy Supabase profiles must not be bulk-copied or recreated. They continue to belong to the existing profile/auth rows; any Cognito identity should be linked by verified email and the existing identity-mapping route, preserving that profile's role and data.
+
+
+## Follow-up update — 2026-10-24 (signup role hardening)
+
+- CI run 106 for commit `b0aa75b19ec5a0db23c10af90581639d2f48a916` passed, including the frontend build and isolated service-replacement test.
+- The staging-only `20261024020000_auto_assign_employee_ids.sql` migration was applied successfully to project `wxulxcsdpwsyhtpkbazi`. The existing staging profile is now `EMPLOYEE` with generated ID `EMP-000001`; all staging profiles have a nonblank ID.
+- `/jobs` now has the missing service-role SELECT grant in staging. `anon` and `authenticated` still cannot directly SELECT from `public.jobs`; the API service layer continues to force Employee results to Published jobs.
+- A public-signup role escalation path was found in the legacy Supabase `handle_new_user` trigger. A follow-up migration `20261024030000_harden_public_signup_roles.sql` now takes the role only from trusted `raw_app_meta_data` (Management if explicitly admin-assigned; otherwise Employee), ignores public `raw_user_meta_data.role` and `raw_user_meta_data.employee_id`, and retains the secure employee-ID generator. The legacy signup UI also labels Management as administrator-assigned and removes the manual employee-ID input. The Cognito signup UI now visibly presents Employee self-service versus administrator-assigned Management.
+- Regression tests exercise spoofed public metadata and trusted app-metadata provisioning. Re-check CI after this follow-up commit, then apply the signup-role migration to staging. Do not change Production or merge the draft PR until the preview flow is manually verified.

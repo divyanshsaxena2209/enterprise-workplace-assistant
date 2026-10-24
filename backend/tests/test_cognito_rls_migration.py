@@ -11,6 +11,7 @@ ROLE_SCOPED_POLICY_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022
 PROFILE_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024000000_grant_service_role_profile_privileges.sql"
 JOBS_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024010000_grant_service_role_jobs_select.sql"
 EMPLOYEE_ID_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024020000_auto_assign_employee_ids.sql"
+PUBLIC_SIGNUP_ROLE_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024030000_harden_public_signup_roles.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -25,6 +26,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute("drop schema if exists auth cascade")
         conn.execute("create schema auth")
         conn.execute("create schema storage")
+        conn.execute("create table auth.users (id uuid primary key, email text not null, raw_user_meta_data jsonb, raw_app_meta_data jsonb)")
         conn.execute("create role anon nologin")
         conn.execute("create role authenticated nologin")
         conn.execute("create role service_role nologin bypassrls")
@@ -43,7 +45,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             as $$ select nullif(auth.jwt() ->> 'sub', '')::uuid $$;
             """
         )
-        conn.execute("create table public.profiles (id uuid primary key, role text not null, employee_id text)")
+        conn.execute("create table public.profiles (id uuid primary key, email text, full_name text, role text not null, employee_id text, department text, job_title text, phone text, location text, bio text, avatar_url text, is_management_verified boolean default false, is_active boolean default true, created_at timestamptz default now(), updated_at timestamptz default now())")
         # Stand-ins for tables whose baseline migrations include legacy broad
         # service-role policies. These let this single isolated test validate
         # the full role-scoped policy hardening migration.
@@ -140,6 +142,8 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute(jobs_service_role_grants, prepare=False)
         employee_id_migration = EMPLOYEE_ID_MIGRATION.read_text(encoding="utf-8")
         conn.execute(employee_id_migration, prepare=False)
+        public_signup_role_migration = PUBLIC_SIGNUP_ROLE_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(public_signup_role_migration, prepare=False)
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -319,6 +323,53 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             ("55555555-5555-4555-8555-555555555555",),
         ).fetchone()[0]
         assert explicit_id == "EXT-7788"
+
+        # Direct Supabase signup metadata is user-controlled: it cannot grant
+        # MANAGEMENT or select a custom employee ID. Trusted app metadata can.
+        conn.execute(
+            "create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user()"
+        )
+        conn.execute(
+            """
+            insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
+            values (%s, %s, %s::jsonb, %s::jsonb)
+            """,
+            (
+                "66666666-6666-4666-8666-666666666666",
+                "public-signup@example.test",
+                '{"full_name":"Public Signup","role":"MANAGEMENT","employee_id":"SPOOF-1","is_management_verified":true}',
+                '{}',
+            ),
+        )
+        public_signup = conn.execute(
+            "select role, employee_id, is_management_verified from public.profiles where id = %s",
+            ("66666666-6666-4666-8666-666666666666",),
+        ).fetchone()
+        assert public_signup[0] == "EMPLOYEE"
+        assert public_signup[1].startswith("EMP-")
+        assert public_signup[1] != "SPOOF-1"
+        assert public_signup[2] is False
+
+        conn.execute(
+            """
+            insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
+            values (%s, %s, %s::jsonb, %s::jsonb)
+            """,
+            (
+                "77777777-7777-4777-8777-777777777777",
+                "admin-provisioned@example.test",
+                '{"full_name":"Admin Provisioned","role":"EMPLOYEE","employee_id":"SPOOF-2"}',
+                '{"role":"MANAGEMENT","is_management_verified":true}',
+            ),
+        )
+        trusted_signup = conn.execute(
+            "select role, employee_id, is_management_verified from public.profiles where id = %s",
+            ("77777777-7777-4777-8777-777777777777",),
+        ).fetchone()
+        assert trusted_signup[0] == "MANAGEMENT"
+        assert trusted_signup[1].startswith("MGR-")
+        assert trusted_signup[1] != "SPOOF-2"
+        assert trusted_signup[2] is True
 
         conn.execute(
             "insert into public.cognito_identity_mappings (cognito_sub, profile_id) values (%s, %s)",
