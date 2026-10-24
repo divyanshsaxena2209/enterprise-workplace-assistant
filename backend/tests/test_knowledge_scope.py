@@ -33,9 +33,9 @@ def test_qdrant_filter_includes_global_matching_department_and_legacy_documents(
     assert isinstance(filter_value, models.Filter)
     assert filter_value.should is not None
     assert len(filter_value.should) == 3
-    assert filter_value.should[0].field.key == "metadata.department_scope_key"
-    assert filter_value.should[0].field.match.value == "all"
-    assert filter_value.should[1].field.match.value == "engineering"
+    assert filter_value.should[0].key == "metadata.department_scope_key"
+    assert filter_value.should[0].match.value == "all"
+    assert filter_value.should[1].match.value == "engineering"
     assert filter_value.should[2].is_null.key == "metadata.department_scope_key"
 
 
@@ -137,3 +137,51 @@ def test_employee_can_get_signed_url_for_company_wide_document(monkeypatch):
     assert router.get_document_download_url("knowledge/company-policy.pdf", employee) == {
         "file_url": "https://signed.invalid/knowledge/company-policy.pdf"
     }
+
+
+def test_employee_query_passes_own_department_to_rag(monkeypatch):
+    router = load_knowledge_router(monkeypatch)
+    calls = []
+    rag_module = sys.modules["app.services.knowledge_rag"]
+    rag_module.retrieve_and_answer = lambda question, **kwargs: (
+        calls.append((question, kwargs)) or {"answer": "ok", "sources": []}
+    )
+    employee = SimpleNamespace(
+        id="employee-1",
+        role=UserRole.EMPLOYEE,
+        department="Engineering",
+    )
+
+    result = router.query_documents(
+        router.QueryRequest(question="How do I request access?", session_id=None),
+        employee,
+    )
+
+    assert result == {"answer": "ok", "sources": []}
+    assert calls == [
+        (
+            "How do I request access?",
+            {"k": 15, "chat_history": [], "department_scope": "Engineering"},
+        )
+    ]
+
+
+def test_management_query_uses_all_document_scopes(monkeypatch):
+    router = load_knowledge_router(monkeypatch)
+    calls = []
+    rag_module = sys.modules["app.services.knowledge_rag"]
+    rag_module.retrieve_and_answer = lambda question, **kwargs: (
+        calls.append(kwargs) or {"answer": "ok", "sources": []}
+    )
+    manager = SimpleNamespace(
+        id="manager-1",
+        role=UserRole.MANAGEMENT,
+        department=None,
+    )
+
+    router.query_documents(
+        router.QueryRequest(question="Show all policy areas", session_id=None),
+        manager,
+    )
+
+    assert calls[0]["department_scope"] is None
