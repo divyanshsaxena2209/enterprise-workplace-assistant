@@ -9,6 +9,8 @@ MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261021000000_cognito_thir
 SECURITY_HARDENING_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022000000_harden_trigger_functions.sql"
 ROLE_SCOPED_POLICY_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022000001_restrict_role_scoped_rls_policies.sql"
 PROFILE_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024000000_grant_service_role_profile_privileges.sql"
+JOBS_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024010000_grant_service_role_jobs_select.sql"
+EMPLOYEE_ID_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024020000_auto_assign_employee_ids.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -41,7 +43,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             as $$ select nullif(auth.jwt() ->> 'sub', '')::uuid $$;
             """
         )
-        conn.execute("create table public.profiles (id uuid primary key, role text not null)")
+        conn.execute("create table public.profiles (id uuid primary key, role text not null, employee_id text)")
         # Stand-ins for tables whose baseline migrations include legacy broad
         # service-role policies. These let this single isolated test validate
         # the full role-scoped policy hardening migration.
@@ -134,6 +136,10 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute(role_scoped_policies, prepare=False)
         profile_service_role_grants = PROFILE_SERVICE_ROLE_GRANTS_MIGRATION.read_text(encoding="utf-8")
         conn.execute(profile_service_role_grants, prepare=False)
+        jobs_service_role_grants = JOBS_SERVICE_ROLE_GRANTS_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(jobs_service_role_grants, prepare=False)
+        employee_id_migration = EMPLOYEE_ID_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(employee_id_migration, prepare=False)
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -214,7 +220,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
 
         # Trigger-only functions must use a fixed search_path and not be
         # executable as browser-callable PostgREST RPCs.
-        for function_name in ("handle_new_user", "set_updated_at", "log_onboarding_history"):
+        for function_name in ("handle_new_user", "set_updated_at", "log_onboarding_history", "assign_employee_id"):
             function_config = conn.execute(
                 "select proconfig from pg_proc where oid = %s::regprocedure",
                 (f"public.{function_name}()",),
@@ -280,6 +286,39 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         assert conn.execute(
             "select has_table_privilege('service_role', 'public.interviews', 'SELECT'), has_table_privilege('service_role', 'public.interviews', 'INSERT'), has_table_privilege('service_role', 'public.interviews', 'UPDATE'), has_table_privilege('service_role', 'public.interviews', 'DELETE')"
         ).fetchone() == (True, True, True, True)
+        assert conn.execute(
+            """
+            select
+              has_table_privilege('service_role', 'public.jobs', 'SELECT'),
+              has_table_privilege('service_role', 'public.jobs', 'INSERT'),
+              has_table_privilege('service_role', 'public.jobs', 'UPDATE'),
+              has_table_privilege('service_role', 'public.jobs', 'DELETE'),
+              has_table_privilege('anon', 'public.jobs', 'SELECT'),
+              has_table_privilege('authenticated', 'public.jobs', 'SELECT')
+            """
+        ).fetchone() == (True, False, False, False, False, False)
+
+        # Existing profiles with no ID are backfilled, while subsequent signups
+        # receive deterministic-format IDs and explicit administrative IDs survive.
+        assert conn.execute(
+            "select employee_id from public.profiles where id = %s",
+            (PROFILE_ID,),
+        ).fetchone() == ("EMP-000001",)
+        new_employee_id = conn.execute(
+            "insert into public.profiles (id, role) values (%s, 'EMPLOYEE') returning employee_id",
+            ("33333333-3333-4333-8333-333333333333",),
+        ).fetchone()[0]
+        assert new_employee_id == "EMP-000002"
+        new_manager_id = conn.execute(
+            "insert into public.profiles (id, role) values (%s, 'MANAGEMENT') returning employee_id",
+            ("44444444-4444-4444-8444-444444444444",),
+        ).fetchone()[0]
+        assert new_manager_id == "MGR-000003"
+        explicit_id = conn.execute(
+            "insert into public.profiles (id, role, employee_id) values (%s, 'EMPLOYEE', 'EXT-7788') returning employee_id",
+            ("55555555-5555-4555-8555-555555555555",),
+        ).fetchone()[0]
+        assert explicit_id == "EXT-7788"
 
         conn.execute(
             "insert into public.cognito_identity_mappings (cognito_sub, profile_id) values (%s, %s)",

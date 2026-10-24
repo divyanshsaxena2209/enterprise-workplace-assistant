@@ -603,3 +603,17 @@ The broader staging callback diagnostics remain in place: frontend logs an allow
 - `6c41a352adc5f3d62c74ed90fdbcdde90ebb3cbc`: regression assertion in `backend/tests/test_cognito_rls_migration.py` that checks backend role privileges and browser-role denial.
 
 **Next:** wait for CI on branch head `6c41a352adc5f3d62c74ed90fdbcdde90ebb3cbc`; then do one end-to-end staging signup/login. Verify staging counts for auth users, profiles and Cognito mappings, and dashboard success. Do not run more broad log queries. Production, `main`, and protected `busted` were not modified. S3 replacement has not started; Supabase Storage remains active. PR #3 stays draft until end-to-end auth and authorization checks pass.
+
+
+## Follow-up update — 2026-10-24 (staging-only profile/jobs corrections)
+
+- Confirmed staging Supabase project `wxulxcsdpwsyhtpkbazi` is the target; Production and the protected `busted` project remain untouched.
+- The existing staging profile grants migration is `20261024000000_grant_service_role_profile_privileges.sql`.
+- Applied staging-only `GRANT SELECT ON public.jobs TO service_role` after the staging `/jobs` request explicitly returned PostgreSQL `42501`. No browser role was granted direct table access.
+- Next source migrations added in `cognito-staging-integration`:
+  - `20261024010000_grant_service_role_jobs_select.sql`: mirrors the narrow staging grant for repeatable environments.
+  - `20261024020000_auto_assign_employee_ids.sql`: generates employee IDs for newly created profiles and backfills existing profiles whose ID is blank, without changing profile roles or overwriting nonblank IDs. Employee roles receive `EMP-######`; management roles receive `MGR-######`.
+- `TopNavbar.tsx` now uses the same Dicebear `7.x/adventurer` fallback as the profile page, because the profile page is where the user confirmed the cartoon avatar already renders.
+- The Cognito public signup flow intentionally remains employee-only. Management role assignment must continue to come from a trusted administrative workflow, never a public signup dropdown.
+- Added test coverage for the grants and employee-ID trigger. CI must be checked before the staging database receives the employee-ID migration. After CI passes, apply that migration to staging and verify the newly signed-up profile is assigned an ID. Do not merge the draft PR until the live Cognito staging flow is verified.
+- Existing production/legacy Supabase profiles must not be bulk-copied or recreated. They continue to belong to the existing profile/auth rows; any Cognito identity should be linked by verified email and the existing identity-mapping route, preserving that profile's role and data.

@@ -20,7 +20,7 @@ export default function TopNavbar() {
   }, [profile?.avatar_url, profile?.full_name]);
 
   const fallbackAvatarUrl = profile
-    ? `https://api.dicebear.com/10.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name || profile.email || "user")}`
+    ? `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name || profile.email || "user")}`
     : "";
   const avatarSrc = !profile
     ? null
