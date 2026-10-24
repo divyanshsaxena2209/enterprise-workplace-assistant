@@ -691,3 +691,12 @@ For now, existing users should continue signing in through the current Productio
 3. Do not create resources simply to advance the flow: the user has no budget and the staging CloudFormation Lambda/Function URL, S3, ECR storage, logs and transfer can incur charges. No new chargeable AWS resource should be created without a confirmed acceptable cost and explicit approval.
 4. Keep `COGNITO_ENABLED` opt-in and `STORAGE_PROVIDER=supabase` as defaults. No production cutover, main-branch change, RDS migration, or changes to the protected `busted` project.
 5. Consolidated live staging E2E is still outstanding: begin sign-in from the actual branch preview `/signup` route (so state/nonce/PKCE cookies are made), confirm callback and profile mapping/provisioning, verify employee-vs-management denial boundaries, test profile edit/employee ID, published-only jobs, dashboard/onboarding routes, refresh/logout and legacy Supabase behavior. Do not use Production credentials/data or create more test identities without need.
+
+
+## CI result follow-up — 24 October 2026
+
+- Confirmed successful CI run **#109 / run ID `40108599409`** for commit `2681bdcbe75a8d4b19189d9d497dae47306145d7`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108599409. Frontend build, backend compilation, CloudFormation lint, and the complete service-replacement test step passed.
+- That successful run verifies the employee-ID route restoration at commit `2681bdc...`; it ran before the final route-decorator ordering cleanup described below.
+- Follow-up commit `3e294c8314f06c5cb2d01be9caaa8b9fe8a79dbb` reorders the existing profile PATCH decorator and the employee-ID route so each decorator is immediately followed by its intended function (the previous attempt had caused a syntax error caught at compile time).
+- CI run for `3e294c...`, run ID `40108723010`, was still **in progress** when last checked: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108723010. Re-check before treating the latest source head as validated.
+- Current PR #3 stays open and draft. Passing automated checks do not prove the running AWS staging Lambda, Cognito callback/provisioning, live database mappings, Preview UI or role boundaries are end-to-end tested.
