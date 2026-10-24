@@ -1043,3 +1043,33 @@ This section supersedes older notes in this file that describe department/docume
 3. **Consolidated staging test:** Once runtime alignment is verified, use one harmless company-wide policy, one department-scoped policy, and one synthetic resume. Test Cognito signup/sign-in/callback/refresh/logout, employee-versus-management route permissions, document upload/index/query/download/delete, cross-department denial, resume detail/screening, and one correlated sanitized CloudWatch event.
 4. **Legacy Qdrant data:** Points without `metadata.department_scope_key` are deliberately excluded from employee retrieval. Management must re-tag/re-index them with `ALL` or an explicit department before employee use. Do not loosen the filter.
 5. **Cost and guardrails:** S3 remains opt-in; no bucket was created. `STORAGE_PROVIDER` remains Supabase by default. Keep PR #3 draft and do not change Production or create chargeable AWS resources while AWS state and costs remain unverified.
+
+
+## Continuation — explicit Employee / Management selection and access diagnosis (25 October 2026)
+
+### Product role flow clarified
+The account-creation UX must explicitly ask whether the person needs **Employee** or **Management** access. This is an application-role decision, not a request to give the browser user AWS IAM credentials. Cognito verifies identity; the relational `profiles.role` remains the source of truth for application authorization; FastAPI enforces it on every protected operation. AWS IAM belongs to Lambda's execution role, GitHub Actions' ECR publishing role, and tightly scoped resource permissions. Do not map public user choice directly to unrestricted AWS IAM permissions.
+
+### Root-cause boundary for the reported “Cognito signup worked, but app access didn't”
+The previous hosted Cognito test authenticated successfully but redirected to the old CloudFront root instead of the Next.js `/auth/callback`. That bypassed OAuth state/nonce/PKCE completion and the `COGNITO_LINK_API_URL` identity-link/provision endpoint. The last audit also found the branch Vercel Preview pointed `NEXT_PUBLIC_API_URL` at `https://example.invalid`, while Cognito mode was still off. A valid Cognito user can exist without an app session/profile mapping or a working backend route. The successful hosted login alone does not prove API access.
+
+### Source changes added in this continuation
+- Cognito signup now presents explicit Employee and Management access choices.
+- A selected Management level is safely handled as a request, never as a role supplied by a browser. New identities are first provisioned as EMPLOYEE; Management elevation can only be approved by an already-active Management profile. This prevents public self-registration from granting privileged access to every caller.
+- Added server-only `management_access_requests` schema/table and a database function that atomically approves/rejects a pending request. Approval independently checks the reviewer's active database role and only promotes an active EMPLOYEE; it sets `is_management_verified=true`.
+- Added backend endpoints to check/submit/resubmit the caller's request and a Management-only pending-request inbox/review route.
+- Added a Settings access-request status/inbox UI and exposed Settings & Access in the profile dropdown.
+- Added regression tests for role-claim rejection, request idempotency, rejected-request resubmission, atomic DB promotion/role checks and Cognito link behavior.
+- CI failed on the first test iteration due to a missing `pytest` import and a migration file not yet present at the time that intermediate commit's workflow was checked out. The import is fixed and migration is now on the branch; verify the newest CI run against the current head before treating it as green.
+
+### Application role vs AWS IAM
+- `EMPLOYEE` / `MANAGEMENT` is the application role in `public.profiles.role`; route dependencies and data-scope filters enforce these permissions.
+- Cognito user-pool groups/token claims are not by themselves authoritative for application privileges in this design. Only the database profile role is used after validating the token and mapping the Cognito `sub`.
+- Lambda's execution IAM role may access only the explicitly configured private storage prefixes and CloudWatch Logs; GitHub OIDC roles build/push ECR images. Do not give employees/management AWS access keys or general S3 IAM credentials.
+- If the product later requires instant, self-service selection of Management at signup, that requires a separate trust mechanism (for example an administrator-issued invitation or verified organization provisioning). Plain public self-selection is a privilege-escalation path and must not directly write the Management role.
+
+### Remaining manual/infra gates
+- Inspect the current head and wait for CI to complete; no merge until all tests pass.
+- The current branch-specific Preview/API configuration and Cognito redirect must be confirmed. The last handoff says a Vercel build rate limit prevented a fresh Preview and the Cognito staging backend CloudFormation stack is not deployed. Do not use Production variables or point this Preview at the Production API.
+- After the appropriate AWS cost/billing guard, deploy or update only the isolated `ewa-cognito-staging-api` stack using the staging Supabase key supplied directly in CloudFormation `NoEcho`. Then set exact Preview `/auth/callback` and `/login` URLs and the staging API/link URL, redeploy Preview, and test sign-in, profile mapping, Employee access, a Management-only denial, request approval and logout.
+- S3 remains opt-in. Do not create the bucket or set `STORAGE_PROVIDER=s3` until costs, current stack state and private-bucket permissions are checked.
