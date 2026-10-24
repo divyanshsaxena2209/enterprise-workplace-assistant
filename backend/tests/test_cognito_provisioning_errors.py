@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.exceptions import ConflictError, DatabaseError
+from app.core.exceptions import DatabaseError
 from app.routers import auth
 from app.schemas.auth import CognitoLinkRequest, CognitoSignupProfile
 
