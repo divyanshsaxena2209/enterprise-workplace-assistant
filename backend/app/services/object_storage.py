@@ -123,6 +123,45 @@ def delete_knowledge_document_object(
     )
 
 
+
+def delete_resume_object(
+    storage_provider: str | None,
+    file_key: str | None,
+    file_url: str | None = None,
+) -> None:
+    """Delete one uploaded resume during rollback of a failed database write.
+
+    This helper is intentionally separate from knowledge-document deletion:
+    knowledge routes must never be able to delete private resume objects.
+    """
+    provider = (storage_provider or "").strip().lower()
+
+    if provider == "s3":
+        if (
+            not file_key
+            or not file_key.startswith("resumes/")
+            or ".." in file_key
+            or "\\" in file_key
+        ):
+            raise ValueError("Invalid resume object key.")
+        _s3_client().delete_object(Bucket=settings.AWS_S3_BUCKET, Key=file_key)
+        return
+
+    if provider == "supabase":
+        if (
+            not file_key
+            or not file_key.startswith("resumes_")
+            or ".." in file_key
+            or "\\" in file_key
+        ):
+            raise ValueError("Invalid resume object key.")
+        from app.db.supabase import get_supabase_client
+
+        get_supabase_client().storage.from_("resumes").remove([file_key])
+        return
+
+    raise RuntimeError("Unsupported resume storage provider.")
+
 def download_s3_object_bytes(file_key: str, *, prefix: str = "resumes") -> bytes:
     """Download a private object through the Lambda execution role."""
     if prefix not in {"knowledge", "resumes"} or not file_key.startswith(f"{prefix}/") or ".." in file_key:
