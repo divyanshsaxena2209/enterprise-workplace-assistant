@@ -660,3 +660,34 @@ For now, existing users should continue signing in through the current Productio
 - **Do not call end-to-end complete yet.** The Vercel status is successful, but direct preview inspection from this session returned HTTP 403 from the Vercel connection; visual and interactive browser testing still needs the user. Keep PR #3 open and draft.
 - A source audit found `frontend/components/dashboard/ManagementDashboard.tsx` and `frontend/components/onboarding/ManagementOnboardingDashboard.tsx` still query backend-only Supabase tables/profiles directly from the browser. Those screens need management-protected API endpoints before management dashboard/onboarding can be declared Cognito-compatible. Do not grant browser access to those tables as a workaround.
 - When resuming, start by converting those two Management UI data paths to protected backend endpoints (or record the scope decision), run CI, then have the user verify the preview: employee avatar/name, generated ID, profile edits, published-only Jobs results, employee/management denial boundaries, and Management routes under a trusted Management account. Do not merge PR #3 before those checks; do not modify Production or protected project `busted`.
+
+
+## Continuation update — 24 October 2026 (employee-ID CI regression)
+
+**Active branch and PR**
+- Repository: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant
+- Continue on `cognito-staging-integration`; PR #3 remains **open and draft** against `aws-service-replacements`.
+- Latest code commits in this continuation:
+  - `38086e305f78a86c8d9c92feae761f973e4577c2`: restored the management-only employee-ID endpoint and schema in `backend/app/routers/profile.py`.
+  - `2681bdcbe75a8d4b19189d9d497dae47306145d7`: cleaned up imports for that endpoint.
+- CI runs for those commits were queued/in progress at the time this note was written:
+  - https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108589567
+  - https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108599409
+  Re-check both runs before relying on this change as tested.
+
+**Why this code follow-up was necessary**
+- The previous run, https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108374461 (head `53585e9bed348c4d1674b88e4e7db9b6a16e4201`), failed the service-replacement test step after the frontend build, backend compile and CloudFormation lint succeeded. Result: **46 passed, 8 failed**. All 8 failures were in `backend/tests/test_profile_employee_id.py`: the test contract expected `ProfileRepository`, `EmployeeIdUpdateRequest`, and `assign_employee_id` in `backend/app/routers/profile.py`, but the route had disappeared from that module.
+- The route is now restored as `PATCH /api/v1/profile/employees/{profile_id}/employee-id`, guarded with `require_management`. It accepts only `SS-12345` format, returns 404 when the target profile is missing, rejects non-EMPLOYEE targets, and writes only the `employee_id` field through `ProfileRepository`. Database-generated `EMP-######` / `MGR-######` assignment remains the signup default. This endpoint does not grant/alter roles.
+- The new commits require a fresh CI result; this tool session cannot run the repository tests locally. Do not describe the CI as passing until one of the new runs completes successfully.
+
+**Correction to the prior source-audit note**
+- The earlier note saying management dashboard components still read Supabase backend-only tables directly is stale for the current branch. Source inspection confirms `frontend/components/dashboard/ManagementDashboard.tsx` calls `/dashboard/management-summary`, backed by `backend/app/routers/dashboard.py` with `require_management`.
+- `frontend/components/onboarding/ManagementOnboardingDashboard.tsx` calls `/onboarding/management/progress`, backed by `backend/app/routers/onboarding_portal.py` with management authorization. Do not add browser-facing table grants to fix either screen.
+- These source checks do **not** replace a live browser/Preview test. The Vercel deployment could not be inspected from the connector (403); visual and interactive checks remain unverified.
+
+**Migration status / next gates**
+1. Re-check CI for the two commits above; fix any actual remaining test failures and keep PR #3 in draft.
+2. The staging backend image / Cognito flow must be checked against the live staging Lambda and its resolved immutable ECR image before testing. The handoff's prior runtime note describes a `cognito_link_database_error` with zero staged `auth.users`, `profiles`, and Cognito mappings. A later note says missing staging `service_role` SQL grants were corrected; do not repeat signup blindly. Use the specific sanitized Lambda warning and read-only privilege/migration checks to confirm the present state.
+3. Do not create resources simply to advance the flow: the user has no budget and the staging CloudFormation Lambda/Function URL, S3, ECR storage, logs and transfer can incur charges. No new chargeable AWS resource should be created without a confirmed acceptable cost and explicit approval.
+4. Keep `COGNITO_ENABLED` opt-in and `STORAGE_PROVIDER=supabase` as defaults. No production cutover, main-branch change, RDS migration, or changes to the protected `busted` project.
+5. Consolidated live staging E2E is still outstanding: begin sign-in from the actual branch preview `/signup` route (so state/nonce/PKCE cookies are made), confirm callback and profile mapping/provisioning, verify employee-vs-management denial boundaries, test profile edit/employee ID, published-only jobs, dashboard/onboarding routes, refresh/logout and legacy Supabase behavior. Do not use Production credentials/data or create more test identities without need.
