@@ -255,7 +255,7 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             (target_id,),
         ).fetchone() == ("MANAGEMENT", True)
         assert conn.execute(
-            "select status, reviewer_id, reviewer_note from public.management_access_requests where profile_id = %s",
+            "select status, reviewer_id::text, reviewer_note from public.management_access_requests where profile_id = %s",
             (target_id,),
         ).fetchone() == ("APPROVED", manager_id, "Verified by an administrator")
 
