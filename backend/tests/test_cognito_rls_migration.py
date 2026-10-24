@@ -8,6 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261021000000_cognito_third_party_auth.sql"
 SECURITY_HARDENING_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022000000_harden_trigger_functions.sql"
 ROLE_SCOPED_POLICY_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261022000001_restrict_role_scoped_rls_policies.sql"
+PROFILE_SERVICE_ROLE_GRANTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024000000_grant_service_role_profile_privileges.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -131,6 +132,8 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         conn.execute(security_hardening, prepare=False)
         role_scoped_policies = ROLE_SCOPED_POLICY_MIGRATION.read_text(encoding="utf-8")
         conn.execute(role_scoped_policies, prepare=False)
+        profile_service_role_grants = PROFILE_SERVICE_ROLE_GRANTS_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(profile_service_role_grants, prepare=False)
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
@@ -257,6 +260,20 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
             "select roles from pg_policies where schemaname='public' and tablename='profiles' and policyname='Allow service role to insert profiles'"
         ).fetchone()
         assert profile_insert_roles == (["service_role"],)
+        # Policies do not grant SQL privileges. The trusted backend role must
+        # have exactly the profile operations used by the link/provision route,
+        # while browser roles must not gain profile access from this migration.
+        assert conn.execute(
+            """
+            select
+              has_table_privilege('service_role', 'public.profiles', 'SELECT'),
+              has_table_privilege('service_role', 'public.profiles', 'INSERT'),
+              has_table_privilege('service_role', 'public.profiles', 'UPDATE'),
+              has_table_privilege('service_role', 'public.profiles', 'DELETE'),
+              has_table_privilege('anon', 'public.profiles', 'SELECT'),
+              has_table_privilege('authenticated', 'public.profiles', 'SELECT')
+            """
+        ).fetchone() == (True, True, True, False, False, False)
         assert conn.execute(
             "select has_table_privilege('authenticated', 'public.interviews', 'SELECT'), has_table_privilege('authenticated', 'public.interviews', 'INSERT'), has_table_privilege('authenticated', 'public.interviews', 'UPDATE'), has_table_privilege('authenticated', 'public.interviews', 'DELETE')"
         ).fetchone() == (False, False, False, False)
