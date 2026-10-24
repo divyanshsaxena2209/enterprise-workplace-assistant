@@ -14,36 +14,35 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit & { t
     });
   }
   const isGuest = typeof document !== "undefined" && document.cookie.includes("guest_mode=true");
+  const hasAuthorizationHeader = Object.keys(headers).some((key) => key.toLowerCase() === "authorization");
   console.log(`[fetchWithAuth] Starting request to ${endpoint}`);
   if (isGuest) {
-    headers["Authorization"] = "Bearer guest";
-  } else {
-    if (typeof window !== "undefined") {
-      if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
-        headers["Authorization"] = `Bearer ${await getCognitoAccessToken()}`;
-      } else {
-        if (!cachedAccessToken) {
-          if (!tokenRefreshPromise) {
-            tokenRefreshPromise = (async () => {
-              const supabase = createClient();
-              const { data, error } = await supabase.auth.getSession();
-              if (error || !data?.session?.access_token) {
-                throw new Error(error?.message || "User is not authenticated");
-              }
-              return data.session.access_token;
-            })();
-          }
-          try {
-            cachedAccessToken = await tokenRefreshPromise;
-          } catch (err) {
-            tokenRefreshPromise = null;
-            throw err;
-          } finally {
-            tokenRefreshPromise = null;
-          }
+    if (!hasAuthorizationHeader) headers["Authorization"] = "Bearer guest";
+  } else if (typeof window !== "undefined" && !hasAuthorizationHeader) {
+    if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+      headers["Authorization"] = `Bearer ${await getCognitoAccessToken()}`;
+    } else {
+      if (!cachedAccessToken) {
+        if (!tokenRefreshPromise) {
+          tokenRefreshPromise = (async () => {
+            const supabase = createClient();
+            const { data, error } = await supabase.auth.getSession();
+            if (error || !data?.session?.access_token) {
+              throw new Error(error?.message || "User is not authenticated");
+            }
+            return data.session.access_token;
+          })();
         }
-        headers["Authorization"] = `Bearer ${cachedAccessToken}`;
+        try {
+          cachedAccessToken = await tokenRefreshPromise;
+        } catch (err) {
+          tokenRefreshPromise = null;
+          throw err;
+        } finally {
+          tokenRefreshPromise = null;
+        }
       }
+      headers["Authorization"] = `Bearer ${cachedAccessToken}`;
     }
   }
   const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type');

@@ -62,9 +62,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         ]);
         setProfile(profileData);
         setAccessToken(token);
-        if (profileData.role === "EMPLOYEE" && !profileData.employee_id) {
+        if (profileData.role === "EMPLOYEE") {
           setIsHired(await checkIsHired());
-        } else if (profileData.role === "MANAGEMENT" || profileData.employee_id) {
+        } else if (profileData.role === "MANAGEMENT") {
           setIsHired(true);
         } else {
           setIsHired(false);
@@ -90,23 +90,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       setAccessToken(session.access_token || null);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      if (error) {
-        console.error("Error fetching user profile:", error);
-        setProfile(null);
-        setIsHired(false);
+      const data = await fetchWithAuth("/auth/me", {
+        headers: session.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+      });
+      setProfile(data);
+      if (data.role === "EMPLOYEE") {
+        setIsHired(await checkIsHired());
+      } else if (data.role === "MANAGEMENT") {
+        setIsHired(true);
       } else {
-        setProfile(data);
-        if (data.role === "EMPLOYEE" && !data.employee_id) {
-          const hiredStatus = await checkIsHired();
-          setIsHired(hiredStatus);
-        } else if (data.role === "MANAGEMENT" || data.employee_id) {
-          setIsHired(true);
-        }
+        setIsHired(false);
       }
     } catch (err) {
       console.error("Failed to fetch session/profile", err);
