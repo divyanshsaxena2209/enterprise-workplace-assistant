@@ -5,6 +5,8 @@ Both routes require authentication. PATCH supports partial updates.
 Errors are handled centrally by the error middleware.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field, field_validator
 from typing import Literal
@@ -26,6 +28,8 @@ router = APIRouter(
     prefix="/profile",
     tags=["Profile"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _get_profile_service() -> ProfileService:
@@ -188,9 +192,23 @@ def submit_management_access_request(
             str(current_user.id),
             {"role": UserRole.MANAGEMENT.value, "is_management_verified": True},
         )
-        request_record = ManagementAccessRequestRepository(client).mark_allowlisted_approved(
-            str(current_user.id)
-        )
+        try:
+            request_record = ManagementAccessRequestRepository(client).mark_allowlisted_approved(
+                str(current_user.id)
+            )
+        except Exception as exc:
+            # The profile role is authoritative and has already been updated. Keep the
+            # user signed in, but emit a sanitized warning so the audit row can be repaired.
+            logger.warning(
+                "Allowlisted Management role assigned but audit-row update failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            request_record = {
+                "profile_id": str(current_user.id),
+                "requested_role": "MANAGEMENT",
+                "status": "APPROVED",
+                "reviewer_note": "Trusted Management email allowlist (audit row needs reconciliation).",
+            }
         return {
             "request": request_record,
             "message": "Management access was assigned by the trusted administrator configuration.",

@@ -180,3 +180,26 @@ def test_review_rejects_unknown_decision_before_rpc():
         )
 
     assert client.rpc_calls == []
+
+
+
+def test_allowlisted_approval_does_not_report_a_pending_row_as_approved(monkeypatch):
+    from app.repositories.management_access_request_repository import ManagementAccessRequestRepository
+
+    state = FakeTableState()
+    state.records.append({
+        "profile_id": "profile-pending",
+        "requested_role": "MANAGEMENT",
+        "status": "PENDING",
+        "request_note": None,
+        "reviewer_note": None,
+        "requested_at": "2026-10-01T00:00:00+00:00",
+        "reviewed_at": None,
+        "updated_at": "2026-10-01T00:00:00+00:00",
+    })
+    repo = ManagementAccessRequestRepository(FakeClientWithState(state))
+
+    result = repo.mark_allowlisted_approved("profile-pending")
+
+    assert result["status"] == "APPROVED"
+    assert state.records[0]["status"] == "APPROVED"

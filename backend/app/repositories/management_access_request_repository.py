@@ -124,9 +124,9 @@ class ManagementAccessRequestRepository:
                 if response.data:
                     return response.data[0]
                 latest = self.get_for_profile(profile_id)
-                if latest:
+                if latest and latest.get("status") == "APPROVED":
                     return latest
-                raise ConflictError("The Management access record changed concurrently.")
+                raise DatabaseError("Could not confirm allowlisted Management access was recorded.")
 
             payload["profile_id"] = profile_id
             payload["request_note"] = None
@@ -142,9 +142,9 @@ class ManagementAccessRequestRepository:
                 return latest
             raise DatabaseError("Could not record allowlisted Management access.") from exc
         latest = self.get_for_profile(profile_id)
-        if latest:
+        if latest and latest.get("status") == "APPROVED":
             return latest
-        raise DatabaseError("Allowlisted Management access record returned no data.")
+        raise DatabaseError("Could not confirm allowlisted Management access was recorded.")
 
     def review(
         self,
