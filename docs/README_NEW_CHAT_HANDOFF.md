@@ -510,3 +510,35 @@ The new behavior is frontend-only and does not modify AWS resources, the staging
 - If a generic failure remains, use the newly logged Vercel entry to record the safe HTTP status/error code and correlate with the same staging Lambda invocation in CloudWatch. Do not run broad repetitive log queries.
 - Do not change the Cognito refresh-token lifetime based only on Vercel's Needs Attention warning. It is a configuration-exposure warning for a numeric value, not evidence of this profile-link failure.
 - Keep PR #3 draft. Do not deploy a new backend image or alter CloudFormation unless the diagnosis shows it is necessary and the user accepts any possible cost. Keep Supabase Auth/Storage as fallback and do not perform a Production cutover.
+
+---
+
+## 14. Backend provisioning error classification fix — 24 October 2026
+
+### Root defect identified in source
+
+Review of `backend/app/routers/auth.py` found that failures from `client.auth.admin.create_user(...)` were caught, followed by one profile lookup. If that lookup returned no profile, the backend raised `ConflictError` (HTTP 409) for every exception, including Auth API/configuration failures, trigger/database failures, or transient service failures. This falsely labeled provisioning failures as account conflicts and obscured the original cause. The Supabase staging database currently has 0 Auth users, 0 profiles, and 0 Cognito mappings, so successful provisioning has not occurred.
+
+### Code fix committed on `cognito-staging-integration`
+
+- `713a63c35fd143cb5e0ed8ca92dc7144611480ad`: change failed shadow-user provisioning without a profile into `DatabaseError` instead of `ConflictError` and log only exception class (no email, tokens, or exception text).
+- `153529a28098bd9f8f7d83e399e3091764f4cccd`: add `backend/tests/test_cognito_provisioning_errors.py`, a regression test that verifies an Auth admin creation failure without a profile is not mislabeled as a conflict.
+- `20c2009140cab30179a4f03923d12b56432e1f00`: include the new regression test in the isolated service-replacement CI suite.
+- `b5c745afcbf587dc180b7307b57b8d570b66800f`: log only the upstream numeric HTTP status (when present) alongside exception class, to aid diagnosis without logging user data, response text, credentials, tokens, or email.
+- `b472156059f51bb79bbf900722e586968d66f6ad`: change the frontend message for `CONFLICT` to a neutral warning because the currently deployed backend may still emit this legacy code for a provisioning failure.
+
+The broader staging callback diagnostics remain in place: frontend logs an allow-listed backend error code and HTTP status, and shows targeted messages for authentication, identity mismatch, conflict, validation, database, service-unavailable, and backend-error categories. The account-link failure still is **not considered fixed in the live environment** until the new backend image is built/deployed and the complete sign-in succeeds.
+
+### Validation / deployment gates
+
+- Previous service-replacement CI run `40084027344` passed frontend build, Python compilation, CloudFormation lint and isolated tests for the frontend-only diagnostic commits.
+- New CI run for the backend provisioning fix is pending/underway at the latest snapshot; confirm its full success before calling the source change validated.
+- Vercel's check status for the latest handoff source previously showed success; Vercel connector read APIs have returned not-found/forbidden, so deployment details must be confirmed from the GitHub Vercel status and/or user dashboard if necessary.
+- The running staging Lambda still uses its existing ECR image, which does not include the new backend source changes. To apply the backend fix, a new staging backend image must be built/pushed to ECR and the staging Lambda/CloudFormation stack updated. This can cause ECR storage/build costs. Because the user has no budget, do not trigger that build/deployment without explicit acceptance of any nonzero cost. Do not touch Production, `main`, Production Supabase, or `busted`.
+
+### Next action
+
+1. Confirm the current CI run passed; do not start another redundant test suite.
+2. Before a new staging Lambda image can be deployed, the user must explicitly confirm whether any nonzero ECR/AWS cost is acceptable. If not, keep the backend fix committed but undeployed; do not pretend the live API uses it.
+3. If cost is approved and the image is deployed, do one app-originated `/signup` staging run and inspect the specific displayed error category plus the corresponding sanitized CloudWatch event. Avoid extra accounts and broad repeated queries.
+4. Keep PR #3 draft until full staging end-to-end validation and rollback requirements pass.
