@@ -438,3 +438,44 @@ Read docs/README_NEW_CHAT_HANDOFF.md first. Continue the Enterprise Workplace As
 - IAM: least-privilege review and real role-denial behavior still pending.
 - CloudWatch: 7-day retention configured; inspect one correlated invocation during the consolidated staging pass.
 - Next: resolve Vercel project access/identifier, add the seven branch-only Preview variables, ensure Cognito callback/sign-out allowlists, create a fresh Preview deployment, then run one consolidated app-originated login/authorization/refresh/logout test. Update this handoff again after the milestone.
+
+---
+
+## 12. Cognito staging sign-in investigation update — 24 October 2026
+
+**Current branch:** `cognito-staging-integration`  
+**Latest diagnostic commit:** `b807e5996d71d6f264d5ab0f6d00333cd403c6d1` — `Add safe diagnostics for Cognito staging account-link failures`.
+
+### Observed failure and evidence
+
+- A manual Cognito Preview login reached the application callback but displayed `cognito_account_link_failed`; a subsequent request to the Vercel route `/api/auth/cognito/access-token` returned HTTP 401 with `Your Cognito session has expired. Please sign in again.`
+- Code inspection shows the 401 is likely a **secondary symptom**: the callback only sets the session cookies after the staging backend account-link endpoint succeeds. When linking fails, it clears the temporary OAuth cookies and redirects to login, leaving no application access/refresh cookies.
+- The callback POSTs to `COGNITO_LINK_API_URL` (expected staging Lambda Function URL path `/api/v1/auth/cognito/link`) with the Cognito ID token, OAuth nonce, and optional signup profile.
+- The callback intentionally hides backend response bodies from the browser. Before this update, it also emitted no diagnostic for a non-2xx link response or a fetch exception.
+- CloudWatch Logs Insights on 24 October searched the last seven days across four log groups. Staging API invocations on 23 October included a 26.75-second request at 20:18:24 UTC and shorter requests around 20:21 and 20:32 UTC, but the visible log rows did not expose the HTTP response or application exception. An older 22 October startup failure showed Google `DefaultCredentialsError`; this is historical evidence and not proven to be the current account-link failure.
+- The staging API log stream showed Python/Starlette warnings. These warnings alone do not establish the account-link root cause.
+
+### Code change just made
+
+- Updated `frontend/app/auth/callback/route.ts` to log only the staging account-link HTTP status for non-success responses, or the exception class for fetch/parsing failures.
+- This deliberately does **not** log ID tokens, nonce, signup profile, response bodies, or other user data.
+- Commit: `b807e5996d71d6f264d5ab0f6d00333cd403c6d1`.
+- The change is committed on the staging branch only. It does not change Production, Cognito, Lambda configuration, Supabase schema/data, or role logic.
+- CI and a new Vercel Preview deployment must be confirmed before the next attempt. Do not assume this diagnostic commit is deployed until the Vercel Preview shows the matching commit and Ready status.
+
+### Next high-value action
+
+1. Confirm the GitHub CI run for commit `b807e5996d71d6f264d5ab0f6d00333cd403c6d1` passes and the corresponding Vercel Preview deployment is Ready.
+2. Make one new sign-in attempt using the existing staging Cognito test user (do not create more accounts).
+3. Inspect Vercel Runtime Logs for `[cognito-staging] account-link endpoint returned a non-success status` or `[cognito-staging] account-link request failed before a successful response`. Use the logged status or exception class to select the actual fix. Do not treat the downstream `/api/auth/cognito/access-token` 401 as the root cause unless new evidence supports that.
+4. If status is 404, inspect whether the verified Cognito email has an existing profile or the signup profile cookie was provided. If 401/403, investigate ID-token verification/configuration; if 409/500, investigate Supabase staging user/profile/mapping provisioning; if no response/exception class is logged, investigate endpoint URL/network/CORS and Lambda invocation. These are decision branches, not confirmed diagnoses.
+5. Keep PR #3 draft. Do not touch Production, `main`, the protected `busted` project, or provision additional resources. Preserve Supabase Auth/Storage as fallback until the full staging flow passes.
+
+### Migration status snapshot
+
+- **Implemented:** Cognito staging pool/app client, pre-token trigger, isolated staging API/Lambda Function URL, branch-scoped Vercel environment setup, callback/token routes, Cognito identity-link endpoint, IAM role-based authorization groundwork and CloudWatch log groups.
+- **Partially validated:** staging image build and deployment, Cognito hosted sign-in, pre-token mock test, CI/build checks and Lambda invocations.
+- **Not yet end-to-end verified:** successful callback/token exchange, profile provisioning/linking, Cognito-to-Supabase token acceptance, employee/manager authorization checks, refresh/logout, legacy Supabase-auth fallback after Cognito opt-in, S3 private storage replacement and production cutover.
+- **S3:** still not migrated; Supabase Storage remains the active/default provider. Do not deploy S3 resources without explicit cost approval.
+- **IAM:** dedicated staging execution/OIDC roles and least-privilege groundwork exist; final policy audit and end-to-end role checks remain.
+- **CloudWatch:** log groups are present and basic Lambda events are visible; useful application-level account-link diagnostics were missing and are now being added.
