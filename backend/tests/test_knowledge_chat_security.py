@@ -77,3 +77,49 @@ def test_query_checks_session_ownership_before_writing_any_messages(
         "safe answer",
         [],
     )
+
+
+def test_guest_identity_is_denied_from_company_knowledge_routes(monkeypatch):
+    from app.core.enums import UserRole
+    from app.core.exceptions import AuthorizationError
+    from app.dependencies.auth import require_management_or_employee
+
+    guest = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000000",
+        role=UserRole.EMPLOYEE,
+    )
+    with pytest.raises(AuthorizationError):
+        require_management_or_employee(guest)
+
+    # Route-level regression: all knowledge reads, downloads, and session APIs
+    # must use the dependency that rejects the synthetic guest identity.
+    rag_module = ModuleType("app.services.knowledge_rag")
+    rag_module.retrieve_and_answer = lambda *_args, **_kwargs: {}
+    rag_module.process_and_store_document = lambda *_args, **_kwargs: {}
+    monkeypatch.setitem(sys.modules, "app.services.knowledge_rag", rag_module)
+    sys.modules.pop("app.routers.knowledge", None)
+    knowledge = import_module("app.routers.knowledge")
+
+    required_routes = {
+        ("GET", "/documents"),
+        ("GET", "/sessions"),
+        ("POST", "/sessions"),
+        ("GET", "/sessions/{session_id}/messages"),
+        ("PUT", "/sessions/{session_id}"),
+        ("DELETE", "/sessions/{session_id}"),
+        ("POST", "/query"),
+        ("GET", "/document/download"),
+    }
+    routes = {
+        (method, route.path): route
+        for route in knowledge.router.routes
+        for method in (route.methods or set())
+    }
+
+    for key in required_routes:
+        assert key in routes, f"Expected knowledge route {key} was not registered."
+        route = routes[key]
+        assert any(
+            dependency.call is require_management_or_employee
+            for dependency in route.dependant.dependencies
+        ), f"{key} must reject the synthetic guest identity."
