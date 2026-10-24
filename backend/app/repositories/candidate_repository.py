@@ -84,6 +84,20 @@ class CandidateRepository:
                     resume_row["file_url"] = create_resume_download_url(
                         resume_key, storage_provider=storage_provider
                     )
+                else:
+                    # Older rows stored Supabase public-URL-shaped values.
+                    # Convert recognized storage paths into a fresh signed URL.
+                    from app.services.object_storage import (
+                        create_resume_download_url,
+                        extract_supabase_object_key_from_url,
+                    )
+                    legacy_key = extract_supabase_object_key_from_url(
+                        file_url, prefix="resumes"
+                    )
+                    if legacy_key:
+                        resume_row["file_url"] = create_resume_download_url(
+                            legacy_key, storage_provider="supabase"
+                        )
                 resume = ResumeResponse.model_validate(resume_row)
 
             return CandidateDetailResponse(

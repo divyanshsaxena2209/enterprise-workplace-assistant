@@ -195,6 +195,36 @@ def _create_supabase_signed_url(file_key: str, prefix: str) -> str:
     return signed_url
 
 
+
+def extract_supabase_object_key_from_url(file_url: str, *, prefix: str) -> str | None:
+    """Extract and validate a legacy key from a known Supabase Storage URL path.
+
+    This never fetches the supplied URL. It only recognizes URLs shaped by the
+    Supabase Storage API and returns a bucket-relative key for server-side access.
+    """
+    from urllib.parse import unquote, urlparse
+
+    if prefix not in {"knowledge", "resumes"}:
+        raise ValueError("Unsupported Supabase object prefix.")
+    try:
+        parsed = urlparse(file_url)
+    except Exception:
+        return None
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    markers = (
+        f"/storage/v1/object/public/resumes/",
+        f"/storage/v1/object/sign/resumes/",
+        f"/storage/v1/object/authenticated/resumes/",
+    )
+    for marker in markers:
+        if marker in parsed.path:
+            key = unquote(parsed.path.split(marker, 1)[1])
+            _validate_supabase_object_key(key, prefix)
+            return key
+    return None
+
+
 def download_supabase_object_bytes(file_key: str, *, prefix: str = "resumes") -> bytes:
     """Download a private Supabase Storage object through the backend client."""
     if prefix not in {"knowledge", "resumes"}:

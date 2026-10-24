@@ -262,3 +262,24 @@ def test_supabase_resume_signed_url_requires_resume_prefix(monkeypatch):
     assert bucket.signed == [("resumes_abc_resume.pdf", 900)]
     with pytest.raises(ValueError):
         object_storage.create_resume_download_url("knowledge_policy.pdf", storage_provider="supabase")
+
+
+def test_extract_legacy_supabase_resume_urls_without_fetching_them():
+    url = (
+        "https://project.supabase.co/storage/v1/object/public/resumes/"
+        "resumes_uuid_resume%20one.pdf"
+    )
+    assert object_storage.extract_supabase_object_key_from_url(
+        url, prefix="resumes"
+    ) == "resumes_uuid_resume one.pdf"
+
+    assert object_storage.extract_supabase_object_key_from_url(
+        "https://example.invalid/storage/v1/object/public/other/file.pdf",
+        prefix="resumes",
+    ) is None
+
+    with pytest.raises(ValueError):
+        object_storage.extract_supabase_object_key_from_url(
+            "https://project.supabase.co/storage/v1/object/public/resumes/knowledge_policy.pdf",
+            prefix="resumes",
+        )
