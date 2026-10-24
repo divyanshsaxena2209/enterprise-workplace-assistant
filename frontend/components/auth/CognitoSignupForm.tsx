@@ -11,6 +11,7 @@ export default function CognitoSignupForm() {
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [bio, setBio] = useState("");
+  const [requestedAccessLevel, setRequestedAccessLevel] = useState<"EMPLOYEE" | "MANAGEMENT">("EMPLOYEE");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +33,7 @@ export default function CognitoSignupForm() {
             phone: phone || undefined,
             location: location || undefined,
             bio: bio || undefined,
+            requested_access_level: requestedAccessLevel,
           },
         }),
       });
@@ -101,19 +103,48 @@ export default function CognitoSignupForm() {
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Bio (optional)</span>
             <textarea className={inputClass + " min-h-20 resize-y"} value={bio} onChange={(event) => setBio(event.target.value)} maxLength={500} placeholder="A short introduction" />
           </label>
-          <div className="rounded-xl border border-border bg-secondary/30 p-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Access level</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-foreground bg-foreground px-3 py-3 text-background">
-                <p className="text-sm font-bold">Employee</p>
-                <p className="mt-1 text-[11px] opacity-80">Available for self-service signup</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card px-3 py-3 text-muted-foreground">
-                <p className="text-sm font-bold">Management</p>
-                <p className="mt-1 text-[11px]">Assigned by an administrator</p>
-              </div>
+          <fieldset className="rounded-xl border border-border bg-secondary/30 p-4">
+            <legend className="mb-3 px-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              What type of access do you need?
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3">
+                <input
+                  type="radio"
+                  name="requested_access_level"
+                  value="EMPLOYEE"
+                  checked={requestedAccessLevel === "EMPLOYEE"}
+                  onChange={() => setRequestedAccessLevel("EMPLOYEE")}
+                  className="mt-1 accent-foreground"
+                />
+                <span>
+                  <span className="block text-sm font-bold">Employee</span>
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    Standard access is enabled after signup.
+                  </span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3">
+                <input
+                  type="radio"
+                  name="requested_access_level"
+                  value="MANAGEMENT"
+                  checked={requestedAccessLevel === "MANAGEMENT"}
+                  onChange={() => setRequestedAccessLevel("MANAGEMENT")}
+                  className="mt-1 accent-foreground"
+                />
+                <span>
+                  <span className="block text-sm font-bold">Management</span>
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    Request management access; an existing manager must approve it.
+                  </span>
+                </span>
+              </label>
             </div>
-          </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Every new account starts with Employee permissions. Choosing Management submits a request only; it does not grant elevated access.
+            </p>
+          </fieldset>
           <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg border border-foreground bg-foreground px-4 py-3 text-xs font-bold uppercase tracking-wider text-background transition-opacity hover:opacity-90 disabled:opacity-50">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Connecting to Cognito…</> : "Continue to secure signup"}
           </button>
