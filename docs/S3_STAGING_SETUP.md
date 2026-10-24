@@ -21,36 +21,22 @@ Use a dedicated staging bucket and a separate staging Lambda execution role. Do 
 4. Enter a globally unique bucket name. Review the template and cost implications before creating the stack.
 5. Record the output bucket name. Keep Block Public Access enabled; do not add public-read ACLs or policies.
 
-## Least-privilege staging Lambda policy
+## Connect the bucket to the staging Lambda
 
-After the staging bucket exists, create a **new inline policy** and attach it only to the staging Lambda execution role. Replace `REPLACE_WITH_STAGING_BUCKET_NAME` with the exact bucket name output above:
+The staging Cognito backend template now supports optional S3 storage with a least-privilege role policy. It defaults to Supabase Storage and creates **no bucket** itself.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AccessOnlyStagingDocumentObjects",
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:DeleteObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::REPLACE_WITH_STAGING_BUCKET_NAME/knowledge/*",
-        "arn:aws:s3:::REPLACE_WITH_STAGING_BUCKET_NAME/resumes/*"
-      ]
-    }
-  ]
-}
-```
+After the private bucket is created:
 
-The policy deliberately grants no bucket listing, bucket administration, public access, or access to other prefixes.
+1. Open the existing `ewa-cognito-staging-api` CloudFormation stack and choose **Update**.
+2. Keep the current immutable `ImageUri` unless a newer CI-verified image is documented.
+3. Set `StorageProvider=s3` and `DocumentBucketName` to the exact staging bucket name.
+4. Leave Production variables and the Production Lambda untouched. Do not create or paste AWS access keys; the SDK uses the separate staging Lambda execution role.
+
+The stack update automatically attaches a policy granting only `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` for that bucket's `knowledge/*` and `resumes/*` prefixes. It does not grant bucket listing, bucket administration, public access, or access to other prefixes. CloudFormation rejects `StorageProvider=s3` if the bucket name is blank.
 
 ## Staging environment variables
 
-Set these only on a separate staging backend after the bucket and IAM role are verified:
+The template sets these values for the staging Lambda when the stack is updated:
 
 - `STORAGE_PROVIDER=s3`
 - `AWS_REGION=ap-south-1`
