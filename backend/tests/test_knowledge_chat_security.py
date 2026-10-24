@@ -41,7 +41,7 @@ def test_query_checks_session_ownership_before_writing_any_messages(
     monkeypatch.setattr(knowledge.knowledge_chat_service, "add_message", add_message)
 
     query = knowledge.QueryRequest(question="new question", session_id="session-123")
-    current_user = SimpleNamespace(id="employee-123")
+    current_user = SimpleNamespace(id="employee-123", role="EMPLOYEE", department="Engineering")
 
     if not owns_session:
         with pytest.raises(HTTPException) as error:
