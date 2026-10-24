@@ -761,3 +761,32 @@ The repository workflow `.github/workflows/build-cognito-staging-ecr.yml` runs o
 5. Check CloudWatch for any sanitized Lambda startup/runtime errors and verify the backend image/deployment version matches the exact SHA used by ECR.
 
 **Do not merge PR #3, change Production, or change `busted` until these manual staging E2E checks pass.** If the Vercel connection remains 403, inspect the preview using the user's own logged-in browser. Do not share passwords, authorization codes, bearer tokens or secrets in chat.
+
+
+## Continuation update — 24 October 2026 (shared knowledge-document registry)
+
+**Source and validation**
+- Working branch: `cognito-staging-integration`; PR #3 stays **open and draft**: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3.
+- Source head for the verified code: `485da1dd3e16e6e91509b51db73355e09c384200`.
+- CI run #127 passed: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40111103324. Results: **65 passed, 10 warnings**; frontend production build, backend compilation, CloudFormation lint, pre-token handler tests, Cognito/RLS/identity tests, employee-ID/profile route tests, object-storage tests, chat-session ownership tests and new knowledge-document registry tests passed.
+- This is an automated/isolated test pass. It is not a live Cognito browser E2E result and does not justify merging PR #3 or switching S3 on.
+
+**Changes in the branch**
+- Added migration `supabase/migrations/20261024050000_knowledge_document_registry.sql` and backend-only repository `backend/app/repositories/knowledge_document_repository.py`.
+- Knowledge documents now have a shared server-side metadata registry. Authenticated users can list the registered documents; uploads require management access and register filename, provider, durable key, pages/chunks, uploader and internal vector source. The internal Qdrant source path is not returned to the browser.
+- S3 upload records use stable keys and keep `file_url=NULL`; they do not persist expiring presigned URLs. The download endpoint can create an expiring URL when it is requested.
+- The UI loads the registry and merges legacy localStorage-only documents to avoid dropping old entries. Registered document delete requests use the registry's ID rather than trusting a client-supplied object key.
+- Added exact-source Qdrant deletion for registry-backed records and moved DOCX ingestion from Windows-only `pythoncom/docx2pdf` conversion to `Docx2txtLoader`, which works in the Linux Lambda container.
+- Knowledge upload validates PDF/DOCX extension and content type, limits upload size to 10 MB, stores the object before indexing, persists metadata, and performs best-effort cleanup of partial writes on failure.
+
+**Staging database migration applied and verified**
+- Applied only `knowledge_document_registry` to isolated Supabase project `wxulxcsdpwsyhtpkbazi` (workplace-assistant-staging); migration registry version `20261024162221`.
+- A combined read-only query confirmed `public.knowledge_documents` exists with RLS enabled.
+- Exact privileges: `service_role` has SELECT/INSERT/UPDATE/DELETE; both `anon` and `authenticated` have none of those privileges. The table is protected by the `knowledge_documents_service_role_only` policy.
+- Counts immediately after migration: 1 `auth.users` row, 1 `public.profiles` row, 1 Cognito identity mapping, and 0 registered knowledge documents. Existing staging identity/profile data is unchanged.
+- No AWS resources were created or modified for this registry work. `STORAGE_PROVIDER` remains `supabase`; no S3 bucket/cutover has occurred. Production and protected `busted` remain untouched.
+
+**Next gates**
+1. Verify the new branch Preview deployment visually and run one consolidated knowledge smoke test: manager uploads a harmless PDF, employee can see the registered document and request access as expected, S3 mode remains off, and management can delete exactly that document without affecting another same-named document.
+2. Then continue the isolated Cognito E2E flow (callback/profile link, employee-vs-management denial, profile editing/ID, Jobs, onboarding, refresh/logout) before any merge/cutover.
+3. Only consider S3 staging activation after a separate private staging bucket and least-privilege staging Lambda S3 permissions have been reviewed and the cost is explicitly acceptable. User has no budget; do not create new chargeable AWS resources or switch `STORAGE_PROVIDER=s3` by default.
