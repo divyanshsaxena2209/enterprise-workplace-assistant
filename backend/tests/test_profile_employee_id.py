@@ -1,10 +1,14 @@
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
 from app.core.enums import UserRole
 from app.core.exceptions import AuthorizationError, NotFoundError
+from app.schemas.auth import SignupRequest
+from app.services import auth_service as auth_service_module
+from app.services.auth_service import AuthService
 from app.models.profile import ProfileModel
 from app.routers import profile as profile_router
 from app.schemas.profile import ProfileResponse
@@ -102,3 +106,62 @@ def test_missing_target_profile_is_rejected(monkeypatch, manager):
 def test_employee_id_must_match_expected_format(value):
     with pytest.raises(ValidationError):
         profile_router.EmployeeIdUpdateRequest(employee_id=value)
+
+
+
+def test_public_signup_ignores_caller_supplied_employee_id(monkeypatch):
+    class FakeAuth:
+        def __init__(self):
+            self.signup_payload = None
+
+        def sign_up(self, payload):
+            self.signup_payload = payload
+            return SimpleNamespace(
+                session=SimpleNamespace(
+                    access_token="test-access-token",
+                    refresh_token="test-refresh-token",
+                    expires_in=3600,
+                ),
+                user=SimpleNamespace(id=PROFILE_ID),
+            )
+
+    class FakeClient:
+        def __init__(self):
+            self.auth = FakeAuth()
+
+    class FakeSignupRepository:
+        def __init__(self):
+            self.profile = make_profile(PROFILE_ID, UserRole.EMPLOYEE, "EMP-000123")
+            self.upsert_payload = None
+
+        def get_by_email(self, _email):
+            return None
+
+        def upsert(self, payload):
+            self.upsert_payload = payload
+            return self.profile
+
+    client = FakeClient()
+    repository = FakeSignupRepository()
+    monkeypatch.setattr(
+        auth_service_module,
+        "ProfileRepository",
+        lambda _client: repository,
+    )
+
+    # Pydantic ignores unknown extra fields; the service must also avoid copying
+    # that untrusted value into Auth metadata or the profile row.
+    request = SignupRequest.model_validate({
+        "full_name": "Test Employee",
+        "email": "test.employee@example.com",
+        "password": "Password123",
+        "employee_id": "SPOOF-1",
+    })
+    assert "employee_id" not in SignupRequest.model_fields
+
+    response = AuthService(client).signup(request)
+
+    metadata = client.auth.signup_payload["options"]["data"]
+    assert "employee_id" not in metadata
+    assert "employee_id" not in repository.upsert_payload
+    assert response.user.employee_id == "EMP-000123"
