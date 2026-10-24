@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase_client
-from app.dependencies.auth import require_authenticated_user, require_management
+from app.dependencies.auth import require_management, require_management_or_employee
 from app.repositories.knowledge_document_repository import KnowledgeDocumentRepository
 from app.schemas.knowledge_chat import ChatSessionCreate, ChatSessionUpdate
 from app.schemas.profile import ProfileResponse
@@ -71,7 +71,7 @@ def _remove_temp_file(path: str) -> None:
 
 @router.get("/documents")
 def list_knowledge_documents(
-    current_user: ProfileResponse = Depends(require_authenticated_user),
+    current_user: ProfileResponse = Depends(require_management_or_employee),
 ):
     """Return the shared registry without exposing internal vector paths."""
     try:
@@ -184,7 +184,7 @@ async def upload_document(
 
 
 @router.get("/sessions")
-def get_sessions(current_user: ProfileResponse = Depends(require_authenticated_user)):
+def get_sessions(current_user: ProfileResponse = Depends(require_management_or_employee)):
     try:
         return knowledge_chat_service.get_user_sessions(str(current_user.id))
     except Exception as exc:
@@ -192,7 +192,7 @@ def get_sessions(current_user: ProfileResponse = Depends(require_authenticated_u
 
 
 @router.post("/sessions")
-def create_session(body: ChatSessionCreate, current_user: ProfileResponse = Depends(require_authenticated_user)):
+def create_session(body: ChatSessionCreate, current_user: ProfileResponse = Depends(require_management_or_employee)):
     try:
         return knowledge_chat_service.create_session(str(current_user.id), body.title)
     except Exception as exc:
@@ -200,7 +200,7 @@ def create_session(body: ChatSessionCreate, current_user: ProfileResponse = Depe
 
 
 @router.get("/sessions/{session_id}/messages")
-def get_session_messages(session_id: str, current_user: ProfileResponse = Depends(require_authenticated_user)):
+def get_session_messages(session_id: str, current_user: ProfileResponse = Depends(require_management_or_employee)):
     try:
         return knowledge_chat_service.get_session_messages(session_id, str(current_user.id))
     except Exception as exc:
@@ -210,7 +210,7 @@ def get_session_messages(session_id: str, current_user: ProfileResponse = Depend
 
 
 @router.put("/sessions/{session_id}")
-def rename_session(session_id: str, body: ChatSessionUpdate, current_user: ProfileResponse = Depends(require_authenticated_user)):
+def rename_session(session_id: str, body: ChatSessionUpdate, current_user: ProfileResponse = Depends(require_management_or_employee)):
     try:
         knowledge_chat_service.rename_session(session_id, str(current_user.id), body.title)
         return {"success": True, "message": "Session renamed successfully"}
@@ -221,7 +221,7 @@ def rename_session(session_id: str, body: ChatSessionUpdate, current_user: Profi
 
 
 @router.delete("/sessions/{session_id}")
-def delete_session(session_id: str, current_user: ProfileResponse = Depends(require_authenticated_user)):
+def delete_session(session_id: str, current_user: ProfileResponse = Depends(require_management_or_employee)):
     try:
         return knowledge_chat_service.delete_session(session_id, str(current_user.id))
     except Exception as exc:
@@ -231,7 +231,7 @@ def delete_session(session_id: str, current_user: ProfileResponse = Depends(requ
 
 
 @router.post("/query")
-def query_documents(query: QueryRequest, current_user: ProfileResponse = Depends(require_authenticated_user)):
+def query_documents(query: QueryRequest, current_user: ProfileResponse = Depends(require_management_or_employee)):
     if not query.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
@@ -269,7 +269,7 @@ def query_documents(query: QueryRequest, current_user: ProfileResponse = Depends
 
 
 @router.get("/document/download")
-def get_document_download_url(file_key: str, current_user: ProfileResponse = Depends(require_authenticated_user)):
+def get_document_download_url(file_key: str, current_user: ProfileResponse = Depends(require_management_or_employee)):
     from app.services.object_storage import create_knowledge_document_download_url
     try:
         return {"file_url": create_knowledge_document_download_url(file_key)}
