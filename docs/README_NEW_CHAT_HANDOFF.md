@@ -589,3 +589,17 @@ The broader staging callback diagnostics remain in place: frontend logs an allow
 - The latest staging image includes a safe warning line from the `create_user` exception handler: `Cognito staging shadow-user provisioning failed (exception_type=<class> upstream_status=<numeric status or None>)`. It logs only exception class and validated numeric upstream HTTP status, not response bodies, email, token, or credentials.
 - **Next required evidence:** inspect the latest `/aws/lambda/ewa-cognito-staging-api-StagingApi-xlm7Nj337FcE` log event for that exact warning at the timestamp of this failed attempt. Use its `exception_type` and `upstream_status` to branch diagnosis: 401/403 likely service-role credential/authorization; 4xx likely request/provider validation or user state; 5xx or status missing likely Auth service/database trigger/transient connection. These are diagnostic directions, not confirmed causes. No need to rerun signup or execute another broad CloudWatch query.
 - No Production settings/data were modified. Do not use Supabase SQL to insert/repair a user manually. Keep PR #3 draft and update this handoff after the root cause and final successful flow are confirmed.
+
+---
+
+## 19. Staging profile GRANT fix — 24 October 2026
+
+**Root cause confirmed:** Supabase staging project `wxulxcsdpwsyhtpkbazi` logged HTTP 403 / PostgREST error 42501 for the backend's `GET /rest/v1/profiles` request during Cognito signup. The request JWT role was `service_role`. Catalog checks showed `service_role` had no SELECT, INSERT or UPDATE table privileges on `public.profiles`, even though the role-scoped service-role INSERT policy existed. RLS policies do not replace PostgreSQL GRANT privileges.
+
+**Fix applied to staging:** applied migration `grant_service_role_profile_privileges` with `GRANT SELECT, INSERT, UPDATE ON TABLE public.profiles TO service_role;`. This succeeded on staging only. Follow-up query confirms those three privileges are now true; DELETE remains false, and direct SELECT for anon/authenticated remains false. No rows were inserted or changed.
+
+**Repository commits:**
+- `5200da8497cee2719ac03ad772cebca7b1abfb27`: adds `supabase/migrations/20261024000000_grant_service_role_profile_privileges.sql`.
+- `6c41a352adc5f3d62c74ed90fdbcdde90ebb3cbc`: regression assertion in `backend/tests/test_cognito_rls_migration.py` that checks backend role privileges and browser-role denial.
+
+**Next:** wait for CI on branch head `6c41a352adc5f3d62c74ed90fdbcdde90ebb3cbc`; then do one end-to-end staging signup/login. Verify staging counts for auth users, profiles and Cognito mappings, and dashboard success. Do not run more broad log queries. Production, `main`, and protected `busted` were not modified. S3 replacement has not started; Supabase Storage remains active. PR #3 stays draft until end-to-end auth and authorization checks pass.
