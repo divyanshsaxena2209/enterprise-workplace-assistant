@@ -57,29 +57,12 @@ def process_and_store_document(file_path: str):
     if file_path.lower().endswith(".pdf"):
         loader = PyPDFLoader(file_path)
     elif file_path.lower().endswith(".docx"):
-        import pythoncom
-        from docx2pdf import convert
-        import traceback
-        
-        try:
-            pythoncom.CoInitialize()
-            pdf_path = file_path.rsplit('.', 1)[0] + '.pdf'
-            print(f"Converting {file_path} to {pdf_path}")
-            convert(file_path, pdf_path)
-            loader = PyPDFLoader(pdf_path)
-        except Exception as e:
-            print(f"Error converting docx to pdf: {e}")
-            traceback.print_exc()
-            raise e
-        finally:
-            pythoncom.CoUninitialize()
+        # docx2pdf/pythoncom require a Windows desktop; use direct text loading on
+        # Linux AWS Lambda where no desktop Office installation is available.
+        loader = Docx2txtLoader(file_path)
     else:
         raise ValueError("Unsupported file format. Only PDF and DOCX are allowed.")
     documents = loader.load()
-    
-    if file_path.lower().endswith(".docx"):
-        if os.path.exists(pdf_path):
-            os.remove(pdf_path)
     
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=4000,
@@ -106,7 +89,7 @@ def process_and_store_document(file_path: str):
         "chunks": len(chunks)
     }
 
-def delete_document(filename: str):
+def delete_document(filename: str, *, exact_source: bool = False):
     deleted_count = 0
     try:
         from qdrant_client import QdrantClient
@@ -137,7 +120,8 @@ def delete_document(filename: str):
             if not source:
                 source = point.payload.get("source", "")
                 
-            if filename in source:
+            matches = source == filename if exact_source else filename in source
+            if matches:
                 ids_to_delete.append(point.id)
                 
         if ids_to_delete:
@@ -148,8 +132,12 @@ def delete_document(filename: str):
             deleted_count = len(ids_to_delete)
             
     except Exception as e:
-        print(f"Error deleting document {filename}: {e}")
-        
+        # Registry-backed deletion uses a unique source identifier. Surface failures
+        # so the API keeps the document record/object available for a retry.
+        if exact_source:
+            raise
+        print(f"Error deleting document {filename}: {type(e).__name__}")
+
     return deleted_count
 
 def retrieve_and_answer(question: str, k: int = 15, chat_history: list = None):
