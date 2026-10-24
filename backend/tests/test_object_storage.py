@@ -44,15 +44,26 @@ def test_s3_upload_uses_private_prefix_and_server_side_encryption(monkeypatch):
 
     assert result["storage_provider"] == "s3"
     assert result["file_key"].startswith("resumes/resumes_")
-    assert result["file_url"] == "https://example.invalid/presigned"
+    assert result["file_url"] is None
+    assert fake_s3.presign_calls == []
     assert fake_s3.put_calls[0]["Bucket"] == "ewa-private-documents"
     assert fake_s3.put_calls[0]["Body"] == b"pdf-bytes"
     assert fake_s3.put_calls[0]["ServerSideEncryption"] == "AES256"
     assert fake_s3.put_calls[0]["Key"].startswith("resumes/")
 
 
-@pytest.mark.parametrize("key", ["../secret.txt", "other/private.txt", "", "knowledge/../secret.txt"])
-def test_delete_s3_object_rejects_keys_outside_allowed_prefixes(monkeypatch, key):
+@pytest.mark.parametrize(
+    "key",
+    [
+        "../secret.txt",
+        "other/private.txt",
+        "",
+        "knowledge/../secret.txt",
+        "resumes/private.pdf",
+        "knowledge\\\\private.pdf",
+    ],
+)
+def test_knowledge_delete_rejects_keys_outside_knowledge_prefix(monkeypatch, key):
     fake_s3 = FakeS3()
     install_fake_boto3(monkeypatch, fake_s3)
     monkeypatch.setattr(object_storage.settings, "AWS_REGION", "ap-south-1")
@@ -64,19 +75,54 @@ def test_delete_s3_object_rejects_keys_outside_allowed_prefixes(monkeypatch, key
     assert fake_s3.delete_calls == []
 
 
-def test_delete_s3_object_accepts_knowledge_and_resume_keys(monkeypatch):
+def test_knowledge_delete_accepts_only_knowledge_objects(monkeypatch):
     fake_s3 = FakeS3()
     install_fake_boto3(monkeypatch, fake_s3)
     monkeypatch.setattr(object_storage.settings, "AWS_REGION", "ap-south-1")
     monkeypatch.setattr(object_storage.settings, "AWS_S3_BUCKET", "ewa-private-documents")
 
     object_storage.delete_knowledge_document_object("s3", "knowledge/doc-1.pdf", None)
-    object_storage.delete_knowledge_document_object("s3", "resumes/resume-1.pdf", None)
 
-    assert [call["Key"] for call in fake_s3.delete_calls] == [
-        "knowledge/doc-1.pdf",
-        "resumes/resume-1.pdf",
-    ]
+    assert [call["Key"] for call in fake_s3.delete_calls] == ["knowledge/doc-1.pdf"]
+
+
+def test_supabase_knowledge_delete_refuses_resume_object_keys(monkeypatch):
+    class FakeStorageBucket:
+        def __init__(self):
+            self.remove_calls = []
+
+        def remove(self, keys):
+            self.remove_calls.append(keys)
+
+    bucket = FakeStorageBucket()
+    fake_client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _name: bucket))
+    monkeypatch.setattr("app.db.supabase.get_supabase_client", lambda: fake_client)
+
+    with pytest.raises(ValueError):
+        object_storage.delete_knowledge_document_object(
+            "supabase", "resumes_123456_resume.pdf", None
+        )
+
+    assert bucket.remove_calls == []
+
+
+def test_supabase_knowledge_delete_removes_legacy_knowledge_key(monkeypatch):
+    class FakeStorageBucket:
+        def __init__(self):
+            self.remove_calls = []
+
+        def remove(self, keys):
+            self.remove_calls.append(keys)
+
+    bucket = FakeStorageBucket()
+    fake_client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _name: bucket))
+    monkeypatch.setattr("app.db.supabase.get_supabase_client", lambda: fake_client)
+
+    object_storage.delete_knowledge_document_object(
+        "supabase", "knowledge_123456_policy.pdf", None
+    )
+
+    assert bucket.remove_calls == [["knowledge_123456_policy.pdf"]]
 
 
 def test_knowledge_download_url_does_not_allow_resume_keys(monkeypatch):

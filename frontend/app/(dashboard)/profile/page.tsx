@@ -1,14 +1,13 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useUser } from "@/lib/context/UserContext";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import { 
   User, Mail, Briefcase, Phone, MapPin, 
   FileText, Shield, Loader2, Edit3, Check
 } from "lucide-react";
 export default function ProfilePage() {
   const { profile, loading, refreshProfile } = useUser();
-  const supabase = createClient();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,19 +56,18 @@ export default function ProfilePage() {
     setSaving(true);
     setError(null);
     try {
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
+      await fetchWithAuth("/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
           full_name: formData.full_name,
           department: formData.department,
           job_title: formData.job_title,
-          phone: formData.phone,
+          phone: formData.phone.trim() || null,
           location: formData.location,
           bio: formData.bio,
           avatar_url: formData.avatar_url,
-        })
-        .eq("id", profile.id);
-      if (updateError) throw updateError;
+        }),
+      });
       await refreshProfile();
       setIsEditing(false);
     } catch (err) {

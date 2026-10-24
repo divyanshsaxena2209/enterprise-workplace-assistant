@@ -1,4 +1,15 @@
 import { fetchWithAuth } from "./candidates";
+import { getCognitoAccessToken } from "@/lib/auth/cognito";
+
+async function getCurrentAccessToken(): Promise<string | null> {
+  if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+    return getCognitoAccessToken();
+  }
+  const { createClient } = await import("@/lib/supabase/client");
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || null;
+}
 
 let jobsCache: any = null;
 let jobsPromise: Promise<any> | null = null;
@@ -30,10 +41,7 @@ export async function createJob(jobData: any, providedToken: string | null = nul
   clearJobsCache();
   let token = providedToken;
   if (!token) {
-    const { createClient } = await import("@/lib/supabase/client");
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    token = session?.access_token || null;
+    token = await getCurrentAccessToken();
   }
   if (!token) throw new Error("Authentication failed. No token found.");
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -57,10 +65,7 @@ export async function publishJob(jobId: string, providedToken: string | null = n
   clearJobsCache();
   let token = providedToken;
   if (!token) {
-    const { createClient } = await import("@/lib/supabase/client");
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    token = session?.access_token || null;
+    token = await getCurrentAccessToken();
   }
   if (!token) throw new Error("Authentication failed. No token found.");
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL;

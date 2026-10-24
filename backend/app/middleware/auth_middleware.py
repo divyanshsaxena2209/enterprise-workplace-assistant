@@ -14,9 +14,10 @@ Design decisions:
 import logging
 from starlette.types import ASGIApp, Scope, Receive, Send
 
-from app.core.security import decode_jwt, extract_user_id
 from app.db.supabase import get_supabase_client
+from app.repositories.cognito_identity_repository import CognitoIdentityRepository
 from app.repositories.profile_repository import ProfileRepository
+from app.services.identity_resolver import resolve_profile_from_bearer_token
 from app.schemas.profile import ProfileResponse
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class AuthMiddleware:
         self.app = app
         self._client = get_supabase_client()
         self._repo = ProfileRepository(self._client)
+        self._cognito_identity_repo = CognitoIdentityRepository(self._client)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -48,9 +50,6 @@ class AuthMiddleware:
 
         path = scope.get("path", "")
         
-        if path == "/api/v1/jobs" and scope["method"] == "POST":
-            logger.info(f"HEADERS FOR POST /api/v1/jobs: {scope.get('headers', [])}")
-
         if not any(path.startswith(prefix) for prefix in _SKIP_PREFIXES):
             
             auth_header = ""
@@ -80,15 +79,16 @@ class AuthMiddleware:
                     )
                 else:
                     try:
-                        payload = decode_jwt(token)
-                        user_id = extract_user_id(payload)
-                        profile = self._repo.get_by_id(user_id)
-                        if profile and profile.is_active:
+                        profile = resolve_profile_from_bearer_token(
+                            token,
+                            self._repo,
+                            self._cognito_identity_repo,
+                        )
+                        if profile is not None:
                             scope["state"]["user"] = ProfileResponse.from_model(profile)
                     except Exception:
-                        logger.debug(
-                            "AuthMiddleware: could not resolve user",
-                            exc_info=False,
-                        )
+                        # Do not log tokens, headers, or claims. Failed tokens remain
+                        # unauthenticated and are rejected by protected route dependencies.
+                        logger.debug("AuthMiddleware: could not resolve user", exc_info=False)
 
         await self.app(scope, receive, send)

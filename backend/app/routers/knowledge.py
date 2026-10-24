@@ -1,214 +1,333 @@
+"""Authenticated company knowledge base routes."""
+
+import asyncio
+import functools
+import logging
 import os
-import shutil
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
-from pydantic import BaseModel
-from app.services.knowledge_rag import process_and_store_document, retrieve_and_answer
-
-router = APIRouter()
-
 import tempfile
-UPLOAD_DIR = tempfile.gettempdir()
+import uuid
+from uuid import UUID
 
-from fastapi import Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+
+from app.db.supabase import get_supabase_client
 from app.dependencies.auth import require_authenticated_user, require_management
-from app.schemas.profile import ProfileResponse
+from app.repositories.knowledge_document_repository import KnowledgeDocumentRepository
 from app.schemas.knowledge_chat import ChatSessionCreate, ChatSessionUpdate
+from app.schemas.profile import ProfileResponse
 from app.services import knowledge_chat_service
 
+router = APIRouter()
+UPLOAD_DIR = tempfile.gettempdir()
+MAX_FILE_SIZE = 10 * 1024 * 1024
+_ALLOWED_TYPES = {
+    "pdf": {"application/pdf", "application/octet-stream"},
+    "docx": {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/octet-stream",
+    },
+}
+logger = logging.getLogger(__name__)
+
+
 class QueryRequest(BaseModel):
-    question: str
+    question: str = Field(min_length=1, max_length=8000)
     session_id: str | None = None
+
+
+class DeleteDocumentRequest(BaseModel):
+    # document_id selects a trusted database record. Legacy localStorage documents
+    # have no registry ID and continue through the strict key-prefix fallback.
+    document_id: UUID | None = None
+    filename: str | None = None
+    file_url: str | None = None
+    file_key: str | None = None
+    storage_provider: str | None = None
+
+
+def _document_repository() -> KnowledgeDocumentRepository:
+    return KnowledgeDocumentRepository(get_supabase_client())
+
+
+def _public_document(row: dict) -> dict:
+    """Avoid returning the internal Qdrant source path to the browser."""
+    return {
+        key: row.get(key)
+        for key in (
+            "id", "filename", "storage_provider", "file_key", "file_url",
+            "pages", "chunks", "uploaded_by", "created_at", "updated_at",
+        )
+    }
+
+
+def _remove_temp_file(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        logger.warning("Could not remove a temporary knowledge-upload file.")
+
+
+@router.get("/documents")
+def list_knowledge_documents(
+    current_user: ProfileResponse = Depends(require_authenticated_user),
+):
+    """Return the shared registry without exposing internal vector paths."""
+    try:
+        return _document_repository().list_documents()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail="Unable to load the knowledge-document list."
+        ) from exc
+
 
 @router.post("/upload")
 async def upload_document(
-    request: Request,
     file: UploadFile = File(...),
     current_user: ProfileResponse = Depends(require_management),
 ):
-    
-    ALLOWED_TYPES = [
-        "application/pdf", 
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ]
-    if file.content_type not in ALLOWED_TYPES:
+    original_name = (file.filename or "").replace("\\", "/")
+    safe_filename = os.path.basename(original_name)
+    if not safe_filename or safe_filename in {".", ".."}:
+        raise HTTPException(status_code=400, detail="A valid filename is required.")
+
+    extension = safe_filename.rsplit(".", 1)[-1].lower() if "." in safe_filename else ""
+    if extension not in _ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed.")
+    if file.content_type not in _ALLOWED_TYPES[extension]:
+        raise HTTPException(status_code=400, detail="The file type does not match its extension.")
 
-    import uuid
-    safe_filename = os.path.basename(file.filename or "document").replace("/", "_").replace("\\\\", "_")
+    file_bytes = await file.read(MAX_FILE_SIZE + 1)
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Documents must be 10 MB or smaller.")
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+
     file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{safe_filename}")
-    file_bytes = await file.read()
-
-    with open(file_path, "wb") as buffer:
-        buffer.write(file_bytes)
-
+    stored = None
+    indexing_attempted = False
+    registered = False
     try:
-        import asyncio
-        import functools
-        loop = asyncio.get_event_loop()
-        func = functools.partial(process_and_store_document, file_path)
-        result = await loop.run_in_executor(None, func)
-    except Exception as e:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        raise HTTPException(status_code=500, detail=str(e))
-        
-    storage_provider = None
-    file_key = None
-    file_url = None
-    try:
+        with open(file_path, "wb") as output:
+            output.write(file_bytes)
+
+        # Store bytes first, so storage failures never create RAG-only content.
         from app.services.object_storage import upload_knowledge_document
-        stored = upload_knowledge_document(safe_filename, file_bytes, file.content_type or "application/octet-stream")
-        storage_provider = stored["storage_provider"]
-        file_key = stored["file_key"]
-        file_url = stored["file_url"]
+        stored = upload_knowledge_document(
+            safe_filename,
+            file_bytes,
+            file.content_type or "application/octet-stream",
+            prefix="knowledge",
+        )
+
+        indexing_attempted = True
+        from app.services.knowledge_rag import process_and_store_document
+        loop = asyncio.get_running_loop()
+        index_result = await loop.run_in_executor(
+            None, functools.partial(process_and_store_document, file_path)
+        )
+
+        provider = str(stored["storage_provider"])
+        file_key = str(stored["file_key"])
+        # Presigned S3 URLs expire and are bearer credentials; store a stable key only.
+        durable_url = stored.get("file_url") if provider == "supabase" else None
+        row = _document_repository().create_document(
+            {
+                "filename": safe_filename,
+                "storage_provider": provider,
+                "file_key": file_key,
+                "file_url": durable_url,
+                "index_source": file_path,
+                "pages": int(index_result.get("pages", 0)),
+                "chunks": int(index_result.get("chunks", 0)),
+                "uploaded_by": str(current_user.id),
+            }
+        )
+        registered = True
+        return {
+            **_public_document(row),
+            "success": True,
+            "message": "Document uploaded and indexed successfully.",
+        }
+    except HTTPException:
+        raise
     except Exception as exc:
-        # Keep the historical best-effort behavior for Supabase mode. In S3 mode,
-        # fail loudly rather than claim a private document was stored when it was not.
-        print(f"Failed to upload to object storage: {type(exc).__name__}")
-        from app.core.config import settings
-        if settings.STORAGE_PROVIDER.strip().lower() == "s3":
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            raise HTTPException(status_code=500, detail="Document indexing finished, but storage upload failed. Check S3 bucket and Lambda IAM permissions.")
+        # Roll back partial cross-service writes; log exception classes only.
+        if indexing_attempted:
+            try:
+                from app.services.knowledge_rag import delete_document
+                await asyncio.get_running_loop().run_in_executor(
+                    None, functools.partial(delete_document, file_path, exact_source=True)
+                )
+            except Exception as cleanup_exc:
+                logger.warning("Knowledge-index cleanup failed (exception_type=%s).", type(cleanup_exc).__name__)
+        if stored and not registered:
+            try:
+                from app.services.object_storage import delete_knowledge_document_object
+                delete_knowledge_document_object(
+                    stored.get("storage_provider"), stored.get("file_key"), stored.get("file_url")
+                )
+            except Exception as cleanup_exc:
+                logger.warning("Knowledge-object cleanup failed (exception_type=%s).", type(cleanup_exc).__name__)
+        logger.error("Knowledge upload failed (exception_type=%s).", type(exc).__name__)
+        raise HTTPException(
+            status_code=500,
+            detail="The document could not be stored, indexed, and registered.",
+        ) from exc
+    finally:
+        _remove_temp_file(file_path)
+        try:
+            await file.close()
+        except Exception:
+            pass
 
-    if os.path.exists(file_path):
-        os.remove(file_path)
-
-    return {
-        "success": True,
-        "filename": file.filename,
-        "pages": result.get("pages", 0),
-        "chunks": result.get("chunks", 0),
-        "file_url": file_url,
-        "file_key": file_key,
-        "storage_provider": storage_provider,
-        "message": "Document uploaded and indexed successfully."
-    }
 
 @router.get("/sessions")
 def get_sessions(current_user: ProfileResponse = Depends(require_authenticated_user)):
     try:
         return knowledge_chat_service.get_user_sessions(str(current_user.id))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to load chat sessions.") from exc
+
 
 @router.post("/sessions")
 def create_session(body: ChatSessionCreate, current_user: ProfileResponse = Depends(require_authenticated_user)):
     try:
         return knowledge_chat_service.create_session(str(current_user.id), body.title)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to create the chat session.") from exc
+
 
 @router.get("/sessions/{session_id}/messages")
 def get_session_messages(session_id: str, current_user: ProfileResponse = Depends(require_authenticated_user)):
     try:
         return knowledge_chat_service.get_session_messages(session_id, str(current_user.id))
-    except Exception as e:
-        if "not found" in str(e).lower() or "unauthorized" in str(e).lower():
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        if "not found" in str(exc).lower() or "unauthorized" in str(exc).lower():
+            raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+        raise HTTPException(status_code=500, detail="Unable to load chat messages.") from exc
+
 
 @router.put("/sessions/{session_id}")
 def rename_session(session_id: str, body: ChatSessionUpdate, current_user: ProfileResponse = Depends(require_authenticated_user)):
     try:
         knowledge_chat_service.rename_session(session_id, str(current_user.id), body.title)
         return {"success": True, "message": "Session renamed successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        if "not found" in str(exc).lower() or "unauthorized" in str(exc).lower():
+            raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+        raise HTTPException(status_code=500, detail="Unable to rename chat session.") from exc
+
 
 @router.delete("/sessions/{session_id}")
 def delete_session(session_id: str, current_user: ProfileResponse = Depends(require_authenticated_user)):
     try:
         return knowledge_chat_service.delete_session(session_id, str(current_user.id))
-    except Exception as e:
-        if "not found" in str(e).lower() or "unauthorized" in str(e).lower():
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        if "not found" in str(exc).lower() or "unauthorized" in str(exc).lower():
+            raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+        raise HTTPException(status_code=500, detail="Unable to delete chat session.") from exc
+
 
 @router.post("/query")
-def query_documents(
-    request: Request, 
-    query: QueryRequest,
-    current_user: ProfileResponse = Depends(require_authenticated_user)
-):
-    print(f"[DEBUG] /query endpoint hit for user {current_user.id} with question: {query.question}")
-    if not query.question or not query.question.strip():
-        print("[DEBUG] /query aborted: Question is empty")
+def query_documents(query: QueryRequest, current_user: ProfileResponse = Depends(require_authenticated_user)):
+    if not query.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
-        
+
     try:
         chat_history = []
         if query.session_id:
-            print(f"[DEBUG] Adding user message to DB for session {query.session_id}")
-            knowledge_chat_service.add_message(query.session_id, "user", query.question)
-            print(f"[DEBUG] Fetching session messages for chat history")
-            history_rows = knowledge_chat_service.get_session_messages(query.session_id, str(current_user.id))
-            chat_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
-            print(f"[DEBUG] Chat history loaded. Length: {len(chat_history)}")
+            # The service-role client bypasses RLS, so ownership must be checked
+            # explicitly before any message write or model invocation.
+            try:
+                history_rows = knowledge_chat_service.get_session_messages(
+                    query.session_id, str(current_user.id)
+                )
+            except Exception as exc:
+                message = str(exc).lower()
+                if "not found" in message or "unauthorized" in message:
+                    raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+                raise HTTPException(status_code=500, detail="Unable to load chat history.") from exc
 
-        print("[DEBUG] Calling retrieve_and_answer...")
+            chat_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
+            knowledge_chat_service.add_message(query.session_id, "user", query.question)
+
+        from app.services.knowledge_rag import retrieve_and_answer
         result = retrieve_and_answer(query.question, k=15, chat_history=chat_history)
-        print("[DEBUG] retrieve_and_answer completed successfully")
-        
+
         if query.session_id:
-            print("[DEBUG] Adding assistant message to DB")
             answer = result.get("answer", "") if isinstance(result, dict) else str(result)
             sources = result.get("sources", []) if isinstance(result, dict) else []
             knowledge_chat_service.add_message(query.session_id, "assistant", answer, sources)
-            print("[DEBUG] Assistant message saved successfully")
-            
-        print("[DEBUG] /query request fully completed")
         return result
-    except Exception as e:
-        print(f"[ERROR] /query endpoint failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-class DeleteDocumentRequest(BaseModel):
-    filename: str
-    file_url: str | None = None
-    file_key: str | None = None
-    storage_provider: str | None = None
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Knowledge query failed (exception_type=%s).", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Unable to process the knowledge query.") from exc
 
 
 @router.get("/document/download")
-def get_document_download_url(
-    file_key: str,
-    current_user: ProfileResponse = Depends(require_authenticated_user),
-):
+def get_document_download_url(file_key: str, current_user: ProfileResponse = Depends(require_authenticated_user)):
     from app.services.object_storage import create_knowledge_document_download_url
     try:
         return {"file_url": create_knowledge_document_download_url(file_key)}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="Invalid knowledge document key.") from exc
     except Exception as exc:
-        print(f"Failed to create document download URL: {type(exc).__name__}")
+        logger.error("Knowledge download URL failed (exception_type=%s).", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Unable to create a temporary download URL.") from exc
 
 
 @router.delete("/document")
 async def delete_document_endpoint(
-    request: Request,
     body: DeleteDocumentRequest,
     current_user: ProfileResponse = Depends(require_management),
 ):
+    repository = _document_repository()
+    record = None
+    if body.document_id is not None:
+        try:
+            record = repository.get_by_id(str(body.document_id))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail="Unable to load the knowledge-document record.") from exc
+        if record is None:
+            raise HTTPException(status_code=404, detail="Knowledge document not found.")
+        filename = str(record["filename"])
+        file_key = record.get("file_key")
+        file_url = record.get("file_url")
+        storage_provider = record.get("storage_provider")
+        index_source = str(record["index_source"])
+    else:
+        supplied_name = (body.filename or "").replace("\\", "/")
+        filename = os.path.basename(supplied_name)
+        if not filename or filename in {".", ".."} or filename != supplied_name:
+            raise HTTPException(status_code=400, detail="A valid document filename is required.")
+        file_key = body.file_key
+        file_url = body.file_url
+        storage_provider = body.storage_provider
+        index_source = None
+
     try:
         from app.services.knowledge_rag import delete_document
-        import asyncio
-        import functools
-        loop = asyncio.get_event_loop()
-        func = functools.partial(delete_document, body.filename)
-        deleted_chunks = await loop.run_in_executor(None, func)
-        
-        
-        if body.file_url or body.file_key:
+        loop = asyncio.get_running_loop()
+        if index_source:
+            deleted_chunks = await loop.run_in_executor(
+                None, functools.partial(delete_document, index_source, exact_source=True)
+            )
+        else:
+            deleted_chunks = await loop.run_in_executor(None, functools.partial(delete_document, filename))
+
+        if file_key or file_url:
             from app.services.object_storage import delete_knowledge_document_object
-            try:
-                delete_knowledge_document_object(body.storage_provider, body.file_key, body.file_url)
-            except Exception as e:
-                print(f"Failed to remove document object: {type(e).__name__}")
-                
-        return {"success": True, "deleted_chunks": deleted_chunks, "message": f"Document '{body.filename}' deleted successfully."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            delete_knowledge_document_object(storage_provider, file_key, file_url)
+
+        if record is not None and not repository.delete_by_id(str(body.document_id)):
+            raise HTTPException(status_code=404, detail="Knowledge document not found.")
+        return {"success": True, "deleted_chunks": deleted_chunks, "message": f"Document '{filename}' deleted successfully."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Knowledge document deletion failed (exception_type=%s).", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Unable to delete the knowledge document.") from exc

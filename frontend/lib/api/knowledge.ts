@@ -36,14 +36,19 @@ export async function deleteKnowledgeDocument(
   file_url?: string,
   file_key?: string,
   storage_provider?: string,
+  document_id?: string,
 ) {
   return fetchWithAuth("/knowledge/document", {
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ filename, file_url, file_key, storage_provider }),
+    body: JSON.stringify({ filename, file_url, file_key, storage_provider, document_id }),
   });
+}
+
+export async function listKnowledgeDocuments() {
+  return fetchWithAuth("/knowledge/documents", { method: "GET" });
 }
 
 export async function getKnowledgeDocumentDownloadUrl(file_key: string) {

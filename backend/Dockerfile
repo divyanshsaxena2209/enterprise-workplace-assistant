@@ -2,11 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies including LibreOffice and Java
-# This is required for the DOCX -> PDF pipeline
+# Keep only build tools needed by native Python dependencies. DOCX ingestion uses
+# docx2txt directly, so the Lambda image does not need a desktop Office/JRE stack.
 RUN apt-get update && apt-get install -y \
-    libreoffice \
-    default-jre \
     build-essential \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*

@@ -6,10 +6,15 @@ Errors are handled centrally by the error middleware.
 """
 
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel, Field
+
+from app.core.enums import UserRole
+from app.core.exceptions import AuthorizationError, NotFoundError
+from app.dependencies.auth import get_current_user, require_management
+from app.repositories.profile_repository import ProfileRepository
 
 from app.db.supabase import get_supabase_client
-from app.dependencies.auth import get_current_user
-from app.schemas.common import ErrorResponse, SuccessResponse
+from app.schemas.common import ErrorResponse
 from app.schemas.profile import ProfileResponse, ProfileUpdateRequest
 from app.services.profile_service import ProfileService
 
@@ -22,11 +27,6 @@ router = APIRouter(
 def _get_profile_service() -> ProfileService:
     """Dependency factory — creates ProfileService with a fresh Supabase client."""
     return ProfileService(get_supabase_client())
-
-
-
-
-
 
 
 @router.get(
@@ -56,6 +56,40 @@ def get_profile(
 
 
 
+
+
+
+
+# Employee IDs are managed by administrators, not by self-service profile edits.
+# The database trigger remains responsible for generated EMP-/MGR- IDs; this route
+# supports the legacy HR-assigned SS-12345 format only.
+class EmployeeIdUpdateRequest(BaseModel):
+    employee_id: str = Field(
+        pattern=r"^SS-[0-9]{5}$",
+        description="Legacy HR-assigned employee identifier in SS-12345 format.",
+    )
+
+
+@router.patch(
+    "/employees/{profile_id}/employee-id",
+    response_model=ProfileResponse,
+    summary="Assign an employee ID",
+    description="Management-only assignment of a validated employee ID to an employee profile.",
+)
+def assign_employee_id(
+    profile_id: str,
+    body: EmployeeIdUpdateRequest,
+    current_user: ProfileResponse = Depends(require_management),
+) -> ProfileResponse:
+    """Assign an HR-issued ID; never let employees edit their own ID or roles."""
+    repository = ProfileRepository(get_supabase_client())
+    target = repository.get_by_id(profile_id)
+    if target is None:
+        raise NotFoundError("The employee profile was not found.")
+    if target.role != UserRole.EMPLOYEE:
+        raise AuthorizationError("Employee IDs can only be assigned to employee profiles.")
+    updated = repository.update(profile_id, {"employee_id": body.employee_id})
+    return ProfileResponse.from_model(updated)
 
 
 

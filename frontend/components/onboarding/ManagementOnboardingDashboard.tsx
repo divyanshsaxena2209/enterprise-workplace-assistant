@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import { CheckCircle, Clock, Search, ChevronRight, GripVertical, AlertTriangle, PlayCircle, Plus, Loader2, ArrowLeft, ArrowRight } from "lucide-react";
 import LockedFeature from "@/components/layout/LockedFeature";
 import EmployeeOnboardingEditor from "./EmployeeOnboardingEditor";
@@ -19,94 +19,78 @@ import { useSearchParams } from "next/navigation";
 export default function ManagementOnboardingDashboard() {
   const { profile, loading: profileLoading } = useUser();
   const searchParams = useSearchParams();
-  const supabase = createClient();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const fetchEmployees = React.useCallback(async () => {
     setLoading(true);
     try {
-      const { data: profData, error: profError } = await supabase
-        .from("profiles")
-        .select(`
-          id, full_name, email, department, job_title, employee_id,
-          employee_onboarding_progress (
-            id, step_id, status, notes, completion_date,
-            onboarding_steps ( id, step_name, description, step_order )
-          )
-        `);
-      if (profError) {
-        console.error("Error fetching employees:", profError.message || profError);
-        return;
-      }
-      if (profData) {
-        const activeEmployees = profData.filter((emp: any) => 
-          emp.employee_onboarding_progress && emp.employee_onboarding_progress.length > 0
-        );
-        const { data: appsData } = await supabase.from("applications").select(`id, jobs(title, department)`).in("status", ["Hired", "HIRED"]);
-        const appMap = new Map();
-        if (appsData) {
-          appsData.forEach((app: any) => {
-            appMap.set(app.id, app.jobs);
+      const response = await fetchWithAuth("/onboarding/management/progress");
+      const profData = Array.isArray(response.profiles) ? response.profiles : [];
+      const appsData = Array.isArray(response.applications) ? response.applications : [];
+      const activeEmployees = profData.filter((emp: any) =>
+        emp.employee_onboarding_progress && emp.employee_onboarding_progress.length > 0
+      );
+      const appMap = new Map();
+      appsData.forEach((app: any) => appMap.set(app.id, app.jobs));
+      const mapped: any[] = [];
+      activeEmployees.forEach((emp: any) => {
+        const appIds = new Set<string>();
+        emp.employee_onboarding_progress.forEach((p: any) => {
+          const match = p.notes?.match(/APP_ID:([a-f0-9-]+)/);
+          if (match) appIds.add(match[1]);
+        });
+        if (appIds.size === 0) {
+          mapped.push({
+            id: emp.id,
+            profile_id: emp.id,
+            full_name: emp.full_name,
+            email: emp.email,
+            department: emp.department,
+            job_title: emp.job_title,
+            employee_id: emp.employee_id,
+            progress: emp.employee_onboarding_progress
           });
-        }
-        const mapped: any[] = [];
-        activeEmployees.forEach((emp: any) => {
-          const appIds = new Set<string>();
-          emp.employee_onboarding_progress.forEach((p: any) => {
-            const match = p.notes?.match(/APP_ID:([a-f0-9-]+)/);
-            if (match) appIds.add(match[1]);
-          });
-          if (appIds.size === 0) {
+        } else {
+          appIds.forEach(appId => {
+            const filteredProgress = emp.employee_onboarding_progress.filter((p: any) => p.notes?.includes(`APP_ID:${appId}`));
+            const jobData = appMap.get(appId) || { title: emp.job_title, department: emp.department };
             mapped.push({
-              id: emp.id,
+              id: `${emp.id}_${appId}`,
+              profile_id: emp.id,
               full_name: emp.full_name,
               email: emp.email,
-              department: emp.department,
-              job_title: emp.job_title,
+              department: jobData.department || emp.department,
+              job_title: jobData.title || emp.job_title,
               employee_id: emp.employee_id,
-              progress: emp.employee_onboarding_progress
+              progress: filteredProgress
             });
-          } else {
-            appIds.forEach(appId => {
-              const filteredProgress = emp.employee_onboarding_progress.filter((p: any) => p.notes?.includes(`APP_ID:${appId}`));
-              const jobData = appMap.get(appId) || { title: emp.job_title, department: emp.department };
-              mapped.push({
-                id: `${emp.id}_${appId}`,
-                full_name: emp.full_name,
-                email: emp.email,
-                department: jobData.department || emp.department,
-                job_title: jobData.title || emp.job_title,
-                employee_id: emp.employee_id,
-                progress: filteredProgress
-              });
-            });
-          }
-        });
-        setEmployees(mapped);
-        const targetId = searchParams.get("employee_id");
-        const targetEmail = searchParams.get("employee_email");
-        if (targetEmail || targetId) {
-          const targetEmp = mapped.find((e: any) => 
-            (targetEmail && e.email === targetEmail) || 
-            (targetId && (e.id === targetId || e.employee_id === targetId))
-          );
-          if (targetEmp) {
-            setSelectedEmployee(targetEmp);
-            return;
-          }
+          });
         }
-        setSelectedEmployee(prev => {
-          if (!prev) return prev;
-          return mapped.find((e: any) => e.id === prev.id) || prev;
-        });
+      });
+      setEmployees(mapped);
+      const targetId = searchParams.get("employee_id");
+      const targetEmail = searchParams.get("employee_email");
+      if (targetEmail || targetId) {
+        const targetEmp = mapped.find((e: any) =>
+          (targetEmail && e.email === targetEmail) ||
+          (targetId && (e.id === targetId || e.profile_id === targetId || e.employee_id === targetId))
+        );
+        if (targetEmp) {
+          setSelectedEmployee(targetEmp);
+          return;
+        }
       }
+      setSelectedEmployee(prev => {
+        if (!prev) return prev;
+        return mapped.find((e: any) => e.id === prev.id) || prev;
+      });
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching management onboarding progress:", err);
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [searchParams]);
   useEffect(() => {
     fetchEmployees();
   }, [fetchEmployees]);

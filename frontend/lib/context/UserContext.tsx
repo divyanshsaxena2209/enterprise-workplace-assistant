@@ -2,6 +2,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { checkIsHired } from "@/lib/api/applications";
+import { fetchWithAuth } from "@/lib/api/candidates";
+import { getCognitoAccessToken } from "@/lib/auth/cognito";
 interface UserProfile {
   id: string;
   email: string;
@@ -46,12 +48,36 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const fetchProfile = React.useCallback(async (sessionArg?: any) => {
     try {
+      const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');
+      if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+        if (isGuestMode) {
+          setProfile(guestProfile);
+          setAccessToken("guest");
+          setLoading(false);
+          return;
+        }
+        const [profileData, token] = await Promise.all([
+          fetchWithAuth("/auth/me"),
+          getCognitoAccessToken(),
+        ]);
+        setProfile(profileData);
+        setAccessToken(token);
+        if (profileData.role === "EMPLOYEE") {
+          setIsHired(await checkIsHired());
+        } else if (profileData.role === "MANAGEMENT") {
+          setIsHired(true);
+        } else {
+          setIsHired(false);
+        }
+        setLoading(false);
+        return;
+      }
+
       let session = sessionArg;
       if (sessionArg === undefined) {
         const { data } = await supabase.auth.getSession();
         session = data?.session;
       }
-      const isGuestMode = typeof document !== 'undefined' && document.cookie.includes('guest_mode=true');
       if (!session?.user) {
         if (isGuestMode) {
           setProfile(guestProfile);
@@ -64,23 +90,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       setAccessToken(session.access_token || null);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      if (error) {
-        console.error("Error fetching user profile:", error);
-        setProfile(null);
-        setIsHired(false);
+      const data = await fetchWithAuth("/auth/me", {
+        headers: session.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+      });
+      setProfile(data);
+      if (data.role === "EMPLOYEE") {
+        setIsHired(await checkIsHired());
+      } else if (data.role === "MANAGEMENT") {
+        setIsHired(true);
       } else {
-        setProfile(data);
-        if (data.role === "EMPLOYEE" && !data.employee_id) {
-          const hiredStatus = await checkIsHired();
-          setIsHired(hiredStatus);
-        } else if (data.role === "MANAGEMENT" || data.employee_id) {
-          setIsHired(true);
-        }
+        setIsHired(false);
       }
     } catch (err) {
       console.error("Failed to fetch session/profile", err);
@@ -100,6 +119,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       // can deadlock Supabase auth's Web Lock when a session needs refreshing.
       await fetchProfile();
       if (!mounted) return;
+      if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") return;
 
       const { data } = supabase.auth.onAuthStateChange((event: any, session: any) => {
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {

@@ -1,257 +1,806 @@
-# Enterprise Workplace Assistant — AWS Deployment & Service-Replacement Handoff
+# Enterprise Workplace Assistant — Migration Continuation Handoff
 
-> **Purpose:** Paste this README into a fresh ChatGPT conversation so work can continue without reconstructing the deployment history.
->
-> **Snapshot date:** 21 October 2026  
-> **GitHub repository:** https://github.com/divyanshsaxena2209/enterprise-workplace-assistant  
-> **Working branch:** `aws-service-replacements`  
-> **Branch snapshot when this note was written:** `456044ce2486d5caec554ee0361f8a5b472e62d4`  
-> **Important:** The production `main` branch has NOT been changed by these service-replacement edits. Do not merge or deploy the replacement branch until the integration review, role tests, S3 setup and smoke tests are complete.
+**Purpose:** Current source of truth to paste into a new ChatGPT conversation. Verify live branch/resource state before making changes. This replaces the older October 21 snapshot where it conflicts with this document.
 
-## 1. What the user wants
+**Snapshot:** 22 October 2026 (Asia/Kolkata)  
+**Repository:** https://github.com/divyanshsaxena2209/enterprise-workplace-assistant  
+**Working branch:** cognito-staging-integration  
+**Draft PR:** https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3  
+**PR base:** aws-service-replacements  
+**Code head verified for this snapshot:** b3be0587d1bf910e2fe0086ac1be35266349e46b  
+**Latest passing CI for that code head:** run #84 — https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39723988185  
 
-Complete the AWS deployment and staged service replacements for the Enterprise Workplace Assistant. The application is a workforce / hiring portal with job listings, candidate applications and resume screening, a chatbot/knowledge base, and employee onboarding.
+Keep PR #3 in draft. The handoff-documentation commit may advance the branch SHA; check the current SHA before any build or deployment. Do not merge into main before real staging end-to-end tests pass.
 
-User preferences and constraints:
-- Give direct, actionable steps in larger chunks rather than dozens of tiny checks.
-- The user works in the AWS Console manually and uses Windows/PowerShell when commands are needed.
-- For AWS Console instructions, provide ordinary hyperlinks and numbered steps; do not use button-like links.
-- Prioritize low cost. Avoid creating cost-prone resources (especially RDS, NAT Gateway, EC2, reserved capacity) until need and monthly cost have been discussed. An AWS billing dashboard screenshot showed no cost data yet; that is not proof that usage is free.
-- Do not change the working production deployment casually. Use the isolated branch first.
-- Preserve Gemini and Qdrant Cloud unless the user explicitly asks to replace them.
-- Do not ask the user to paste credentials, API keys, JWT secrets, or other secrets into chat.
+---
 
-## 2. Current production architecture and known-good deployment
+## 1. Project aim and modules
 
-| Area | Current state |
+Enterprise Workplace Assistant is a workforce-operations and hiring platform with:
+- Employee/management profiles and role-based access control.
+- Job listing and publishing, candidate tracking, applications, resume screening, evaluations, recruiter notes and interview workflows.
+- Employee onboarding templates, assigned tasks, progress tracking and management oversight.
+- Company knowledge-document uploads, retrieval and department-sensitive RAG/chatbot features.
+- Separate management and employee dashboards.
+
+The frontend is Next.js App Router. The backend is FastAPI. The relational schema is PostgreSQL accessed through Supabase/PostgREST. Gemini powers LLM features and Qdrant Cloud supplies vector retrieval. These are the existing services to preserve while introducing Cognito and, later, private S3 storage.
+
+## 2. User preferences and non-negotiable guardrails
+
+- Work autonomously where tools permit; stop only when a genuine manual action or unavoidable decision is required.
+- Prefer one consolidated high-value test that checks several components/security properties over many repetitive mini-tests.
+- Verify current repository, CI, deployment and database state instead of relying on stale summaries.
+- For manual steps, provide direct URLs, numbered instructions and exact values.
+- Distinguish implemented, tested, deployed and production-cutover status.
+- Do not ask for credentials, API keys, passwords, JWT secrets, access tokens, authorization codes, private keys or Supabase service-role keys in chat/screenshots.
+- Do not change Production Vercel variables, Production Lambda, Production Supabase schema/data, Production Cognito, or main.
+- The user explicitly said the Supabase project named busted must be kept. Never reset, delete, replace or repurpose it.
+- The user has no budget / cannot spend money. AWS and Supabase usage may not be $0 even when a resource is small or eligible for a free tier. Do not provision chargeable resources unless the cost is proven acceptable and the user explicitly agrees.
+- The user has explicitly decided **not to migrate PostgreSQL to RDS**. Keep Supabase PostgreSQL. Do not create RDS, NAT Gateway, EC2, paid Supabase branches or other cost-prone resources without explicit approval.
+- Preserve Gemini and Qdrant Cloud.
+- Leave Supabase Auth and Supabase Storage as defaults until the Cognito/S3 integrations have passed staging checks and a rollback plan exists.
+
+## 3. Production baseline — do not disturb
+
+Last known Production architecture from the previous operational handoff; reconfirm before any future deployment:
+
+| Area | Service |
 |---|---|
 | Frontend | Vercel: https://enterprise-workplace-assistant.vercel.app |
-| Backend | FastAPI container hosted by AWS Lambda |
-| Lambda function | `enterprise-workplace-assistant-api` |
-| AWS region | `ap-south-1` (Mumbai) |
-| Lambda Function URL | `https://6wdbue2ejwqbs2pqtro4u7ojei0bxrcp.lambda-url.ap-south-1.on.aws/` |
-| Container image | Amazon ECR repository `enterprise-workplace-assistant-backend`, tag `latest` |
-| Application auth | Supabase Auth, Supabase JWTs and profile table |
+| Backend | FastAPI container on AWS Lambda |
+| Lambda function | enterprise-workplace-assistant-api |
+| AWS region | ap-south-1 (Mumbai) |
+| Existing Function URL | https://6wdbue2ejwqbs2pqtro4u7ojei0bxrcp.lambda-url.ap-south-1.on.aws/ |
+| Container registry | ECR repository enterprise-workplace-assistant-backend |
 | Relational database | Supabase PostgreSQL/PostgREST |
-| Existing object storage | Supabase Storage bucket used by upload flows (not yet retired) |
+| Interactive authentication | Supabase Auth |
+| Object storage | Supabase Storage |
 | AI | Gemini |
-| Vector database | Qdrant Cloud |
-| Monitoring | Lambda logs are available in CloudWatch; retention/alarms remain to be finalized |
-| Frontend hosting | Keep Vercel; not migrating it to AWS |
+| Vector retrieval | Qdrant Cloud |
+| Logging | CloudWatch Logs; final retention/alarms still need review |
 
-Production smoke tests were observed working on 21 Oct 2026: the health endpoint returned `{"status":"ok","version":"1.0.0","environment":"development"}` (note the environment label still says development), login worked with the existing Supabase credentials, job listings/details loaded, and candidate records were visible to a management account. During troubleshooting, the backend briefly had CORS errors; the Function URL CORS was configured for the Vercel origin. The Function URL has Auth type `NONE`, so it is reachable publicly; route-level authentication/authorization must remain correct. Never treat CORS as an authentication mechanism.
+A previous smoke test on 21 October showed the live backend health endpoint, legacy login, job listings/details and management candidate views working. The existing Lambda Function URL has AuthType NONE, so application routes must enforce authorization. CORS is not authentication. Pushing an image to ECR does not automatically update the image digest used by Lambda.
 
-The Lambda uses a container image with AWS Lambda Web Adapter. Lambda container updates require an explicit Lambda image update after pushing an image to ECR; pushing a new image tagged `latest` does **not** automatically change the digest used by the existing function. See AWS docs: https://docs.aws.amazon.com/lambda/latest/dg/python-image.html
+**Never point a Cognito signup test at the Production API.** The account-link endpoint can create user/profile records, so use isolated staging services only.
 
-## 3. AWS deployment history and current resources
+## 4. Current source branch, PR and CI
 
-- The initial AWS CodeBuild attempt failed repeatedly with `Cannot have more than 0 builds in queue for the account`. A quota increase/support case was opened, but the user ultimately successfully built and pushed the image using GitHub Actions.
-- The GitHub Actions workflow is `.github/workflows/build-backend-ecr.yml` on the default branch.
-- GitHub Actions uses OIDC to assume the IAM role `GitHubActions-EWA-Deploy`. Keep this role: it is part of the container-build/push workflow.
-- The ECR repository is `enterprise-workplace-assistant-backend`.
-- The Lambda function is `enterprise-workplace-assistant-api` in Mumbai.
-- A Lambda Function URL was created with Auth type `NONE`; CORS was set to allow the deployed Vercel origin and application methods/headers.
-- An initial health check returned an internal error caused by a read-only filesystem write. The application was updated to use `/tmp`, then `/health` returned OK.
-- The temporary EC2 troubleshooting instance was terminated.
-- Temporary CodeBuild cleanup was completed: CodeBuild project `enterprise_workplace_assistant`, S3 source bucket `ewa-codebuild-src-745531385877-ap-south-1`, and temporary role `ewa-codebuild-ecr-role` were the cleanup targets. The user reported cleanup complete.
-- The successful backend ECR GitHub Actions run was run #3 (the exact URL from the conversation: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39554468500).
-- Do not recreate CodeBuild or temporary EC2; they were troubleshooting paths, not part of the final deployment architecture.
-- Verify current AWS state in the console rather than assuming anything changed since this snapshot.
+- Branch: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/tree/cognito-staging-integration
+- Draft PR #3, base aws-service-replacements: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3
+- Verified code head before this handoff update: b3be0587d1bf910e2fe0086ac1be35266349e46b.
+- Latest passing test/frontend-build/backend-test/PostgreSQL-RLS/CloudFormation-lint run for that head: #84 https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39723988185.
+- Dedicated Cognito ECR image build #4: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39642644236.
+- Staging image tag: cognito-staging-0174c50b992222d01a87bea0f323e9196ddd511d.
+- Full image URI: 745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-0174c50b992222d01a87bea0f323e9196ddd511d.
+- Code after that backend image build changed SQL migrations, tests, docs and infrastructure rather than backend runtime code according to the PR summary. Check current diff before deploying that image.
+- Workflow .github/workflows/build-cognito-staging-ecr.yml runs only by manual dispatch, assumes the separate OIDC role GitHubActions-EWA-Cognito-Staging-ECR and pushes a unique Cognito staging tag. It does not push latest or update Lambda.
+- Workflow .github/workflows/test-service-replacements.yml runs frontend build, backend compilation/tests, pre-token handler tests, PostgreSQL RLS/mapping tests and CloudFormation lint for the two checked-in templates.
 
-Console links:
-- Lambda (Mumbai): https://ap-south-1.console.aws.amazon.com/lambda/home?region=ap-south-1
-- ECR repositories (Mumbai): https://ap-south-1.console.aws.amazon.com/ecr/repositories?region=ap-south-1
-- IAM roles: https://console.aws.amazon.com/iam/home#/roles
-- S3 buckets (Mumbai): https://s3.console.aws.amazon.com/s3/buckets?region=ap-south-1
-- CloudWatch (Mumbai): https://ap-south-1.console.aws.amazon.com/cloudwatch/home?region=ap-south-1
-- Billing: https://console.aws.amazon.com/billing/home
+## 5. Current cloud resources and identifiers
 
-## 4. Service-replacement goal
+### AWS
 
-The user specifically wants:
-1. **IAM role-based permissions**: managers vs employees in the app, and AWS workload access through IAM roles.
-2. **Amazon Cognito** to replace Supabase Auth.
-3. **Amazon S3** for uploaded files: chatbot/knowledge documents and resumes; if actual job-description attachments are supported/added, store those too.
-4. **CloudWatch** monitoring and log retention.
-5. There was a possible fourth replacement discussed as **Amazon RDS for PostgreSQL** to replace the Supabase relational database, but this item was not firmly confirmed. Ask once if it is indeed the intended database replacement before committing to an RDS migration. RDS can add cost and VPC/networking complexity for Lambda outbound calls to Gemini/Qdrant.
+- Account: 745531385877
+- Region: ap-south-1 (Mumbai)
+- Console links: Lambda https://ap-south-1.console.aws.amazon.com/lambda/home?region=ap-south-1 ; Cognito https://ap-south-1.console.aws.amazon.com/cognito/v2/idp/user-pools?region=ap-south-1 ; ECR https://ap-south-1.console.aws.amazon.com/ecr/repositories?region=ap-south-1 ; CloudFormation https://ap-south-1.console.aws.amazon.com/cloudformation/home?region=ap-south-1 ; CloudWatch https://ap-south-1.console.aws.amazon.com/cloudwatch/home?region=ap-south-1 ; Billing https://console.aws.amazon.com/billing/home
 
-Keep the existing database, auth, Supabase Storage, Gemini, Qdrant and production configuration until each replacement is tested. Never delete Supabase data during these cutovers.
+### Cognito staging pool and pre-token Lambda
 
-## 5. Work already staged on `aws-service-replacements`
+- User pool ID: ap-south-1_89s6YRnwQ; region ap-south-1.
+- Feature plan shown: Essentials.
+- App client: enterprise-workplace-assistant-staging.
+- App client ID: 7npkisjjm5jj0fsqf94et8lqra.
+- Hosted-login domain observed in the browser: https://ap-south-189s6yrnwq.auth.ap-south-1.amazoncognito.com
+- OAuth grant: authorization code. Managed login configuration showed scopes email, openid, and phone; the application flow requests openid email with PKCE. Do not create a browser client secret.
+- A new Cognito user was created during the manual test.
+- Lambda function: ewa-cognito-staging-pre-token.
+- Lambda ARN: arn:aws:lambda:ap-south-1:745531385877:function:ewa-cognito-staging-pre-token.
+- The Lambda code has been deployed and its console mock test succeeded. Output included role=authenticated overrides in both the access-token and ID-token generation structures. This is the Supabase infrastructure role, not application MANAGEMENT.
+- Cognito Extensions now shows a Pre token generation trigger attached to this Lambda with event version V2_0.
 
-Branch URL: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/tree/aws-service-replacements
+### Result of the manual Cognito browser test
 
-Docs:
-- Service plan: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/aws-service-replacements/docs/aws-service-replacement-plan.md
-- S3 cutover checklist: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/aws-service-replacements/docs/aws-s3-cutover-checklist.md
-- Manager/employee access matrix: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/aws-service-replacements/docs/aws-role-access-matrix.md
+The managed login page opened and the user authenticated. The browser returned to the old CloudFront root, https://d84l1y8p4kdic.cloudfront.net/, and displayed Cognito's generic success page instead of running the Next.js application callback. The URL contained a temporary authorization code; do not reuse or share it.
 
-### IAM / manager-versus-employee authorization staged in code
-Files changed on the branch include:
-- `backend/app/dependencies/auth.py`
-- `backend/app/middleware/auth_middleware.py`
-- `backend/app/services/auth_service.py`
-- `backend/app/routers/applications.py`
-- `backend/app/routers/candidates.py`
-- `backend/app/routers/evaluations.py`
-- `backend/app/routers/knowledge.py`
-- `backend/app/routers/onboarding.py`
-- `backend/app/routers/resume.py`
-- `backend/app/routers/hiring.py`
-- `frontend/app/(dashboard)/knowledge/page.tsx`
+This test did **not** prove the application's state/nonce/PKCE cookies, callback handler, authorization-code exchange, account-link endpoint, Supabase token acceptance, protected API requests, refresh or logout.
 
-Changes staged include:
-- Public signup rejects attempts to self-select `MANAGEMENT`; elevated accounts must be provisioned by a trusted admin workflow.
-- The special guest/demo identity is no longer assigned `MANAGEMENT` and is blocked from management/employee write guards.
-- Manager-only routes include job management (already present), candidate list/detail/delete, evaluation scores and re-evaluation, knowledge-document upload/delete, recruitment pipeline/notes, and onboarding employee creation.
-- Employees can submit applications as their own authenticated identity and can access their own onboarding tasks/chat; managers can act on any employee onboarding record.
-- Resume uploads require a real signed-in employee or management identity.
-- Hiring/resume screening now uses the common `MANAGEMENT` role guard and includes compatibility for old Supabase resume objects versus new S3 keys.
-- Knowledge upload/delete controls are hidden from employee UI, while server-side role checks enforce the restriction. Frontend hiding alone is never security.
-- Existing role dependencies already used `MANAGEMENT` and `EMPLOYEE` enums. Some routes/data-access paths may still need a thorough audit; do not call the app fully secured until integration tests cover all endpoints, including the application details/scores and every onboarding route.
+The Cognito client screen showed the CloudFront root as allowed callback, default redirect and sign-out URL. The correct application routes are the Vercel preview origin plus /auth/callback and plus /login. Keep the CloudFront root entry until the correct Vercel routes are added and tested. Remove the old root callback only after successful end-to-end staging login.
 
-### S3 storage staged in code
-Files changed/added include:
-- `backend/app/services/object_storage.py`
-- `backend/app/core/config.py`
-- `backend/requirements.txt`
-- `backend/app/routers/knowledge.py`
-- `backend/app/routers/resume.py`
-- `backend/app/repositories/candidate_repository.py`
-- `backend/app/repositories/application_repository.py`
-- `backend/app/routers/hiring.py`
-- `frontend/lib/api/knowledge.ts`
-- `frontend/app/(dashboard)/knowledge/page.tsx`
+Supabase Third-Party Auth for Cognito was created and showed a success toast/enabled state. Some screenshot text rendering of region/pool ID looked odd; the user confirms the entered values match the guide. Do not repeatedly delete and recreate the integration. Its real token acceptance is not yet verified end to end.
 
-New environment settings staged:
-- `STORAGE_PROVIDER=supabase` (default deliberately keeps production behavior unchanged until S3 is ready)
-- `AWS_REGION=ap-south-1`
-- `AWS_S3_BUCKET=` (must be the exact new bucket name before S3 mode)
-- `S3_PRESIGNED_URL_TTL_SECONDS=900`
+### Supabase staging project
 
-The staged S3 provider:
-- Uses `boto3` and the Lambda execution role's standard AWS credential chain (no AWS access keys in env vars).
-- Uploads to private prefixes `knowledge/` and `resumes/`.
-- Uses SSE-S3 (`AES256`) in the upload call.
-- Creates short-lived pre-signed GET URLs for authorized reads.
-- Supports deletion from the correct object prefix.
-- Leaves Supabase storage selected by default for rollback.
-- Keeps old resume links in Supabase supported; files are not automatically bulk-copied from Supabase to S3.
+- Name: workplace-assistant-staging
+- Ref: wxulxcsdpwsyhtpkbazi
+- URL: https://wxulxcsdpwsyhtpkbazi.supabase.co
+- Region: ap-south-1; status was ACTIVE_HEALTHY when checked.
+- The project is newly created and repository migrations were applied to this project only.
 
-### Important gap: job listing data vs job-description files
-The existing job listing model contains database fields such as title, department, location, description, requirements and status. It does not currently define a job-attachment upload field or route. Therefore:
-- **Job listings themselves remain relational records in the database, not S3 files.**
-- Chatbot/knowledge uploaded documents are the `knowledge/` objects.
-- Resume uploads are the `resumes/` objects.
-- If the product must accept PDF/DOCX job description attachments, add that as a separate feature and an S3 prefix such as `job-descriptions/`, then store the object key in the job record. That feature is not yet implemented on the branch and must not be represented as done.
-- If the user only means the typed job listing title/description, that continues to be saved in the DB, and S3 is not needed for it.
+### Protected existing Supabase projects
 
-## 6. S3 bucket and IAM policy still need manual AWS setup
+- Production app DB project: workplace-assistant, ref ybkfkdcdhrnjmjvavyhb. Never apply Cognito staging migrations or synthetic data here.
+- Protected project: busted, ref zkxpkjgprewurotifgeh, was INACTIVE when checked. User explicitly asked to keep it. Never reset/delete/repurpose it.
+- Staging database currently has 0 Supabase Auth users, 0 public profiles, and 0 Cognito identity mappings. The Cognito test user has not yet been linked to a staging application profile.
 
-No S3 cutover should happen until the bucket and Lambda role policy exist.
+### Vercel Preview
 
-Create a unique bucket name in `ap-south-1` (example placeholder: `ewa-private-documents-<unique-suffix>`; do not assume the name is available). Configure:
-- Object Ownership: Bucket owner enforced.
-- **Block all public access** enabled (all four settings).
-- Default encryption SSE-S3.
-- No public bucket policy or public ACL.
-- Keep bucket private; use temporary pre-signed URLs instead of public object URLs.
+- Project: enterprise-workplace-assistant, current project ID returned by Vercel connector: prj_ap3BHcwJymfIxo2ABdaBegLJRLBh.
+- Latest Ready immutable preview deployment on code head b3be058: https://enterprise-workplace-assistant-qur5zi2pc-divyansh-50b7.vercel.app
+- Current branch alias returned by Vercel: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
+- URLs may change after future pushes. Re-check the current alias and commit before configuring Cognito.
+- Vercel environment inventory showed only NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY with shared Production/Preview targets and NEXT_PUBLIC_API_URL with shared Production/Preview targets. No branch-scoped Cognito overrides were found for cognito-staging-integration.
+- **Do not set NEXT_PUBLIC_AUTH_PROVIDER=cognito until a separate staging API exists and Preview variables explicitly point to the staging API and Supabase project.** Otherwise Preview may call Production services/data.
+- Never edit shared Production/Preview variables to run this test; add branch-scoped Preview values only.
 
-Attach an inline policy to the **Lambda execution role** (the role shown at Lambda → Configuration → Permissions), not to the GitHub Actions OIDC role. Replace `YOUR_BUCKET_NAME` before saving:
+## 6. Code layout and implementation summary
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "ManageKnowledgeObjects",
-      "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/knowledge/*"
-    },
-    {
-      "Sid": "ManageResumeObjects",
-      "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/resumes/*"
-    }
-  ]
-}
-```
+### Frontend
 
-If the job-description attachment feature is added later, add its narrowly-scoped `job-descriptions/*` object ARN and API flow then. Avoid granting `s3:*` on all buckets.
+- Next.js source is in frontend/.
+- OAuth start route: frontend/app/api/auth/cognito/start/route.ts
+- Callback route: frontend/app/auth/callback/route.ts
+- Access/refresh route: frontend/app/api/auth/cognito/access-token/route.ts
+- Logout route: frontend/app/api/auth/cognito/logout/route.ts
+- Token provider: frontend/lib/auth/cognito.ts
+- Cognito login component: frontend/components/auth/CognitoLoginPage.tsx
+- Cognito flow is opt-in through NEXT_PUBLIC_AUTH_PROVIDER=cognito; otherwise legacy Supabase Auth remains the active path.
+- OAuth start creates state, nonce, PKCE verifier/challenge and HttpOnly cookies. The callback verifies returned state, exchanges the authorization code using the PKCE verifier, calls the link/provision API with ID token and nonce, then sets HttpOnly session cookies and redirects to /dashboard.
+- Callback validation requires COGNITO_REDIRECT_URI to be the HTTPS route /auth/callback. Using the CloudFront root cannot test that route. A direct hosted-login click also lacks the app-generated state/nonce/PKCE cookies.
+- Logout clears session cookies and attempts Cognito token revocation.
 
-When ready to cut over, set the four Lambda environment variables above and deploy the new container image built from the replacement branch. Keep `STORAGE_PROVIDER=supabase` until the bucket, policy, image build and tests are complete. The mode switch is not a bulk migration of existing Supabase files; old file objects remain in Supabase unless a separate copy/migration job is implemented.
+### Backend and application roles
 
-## 7. CI / verification status
+- FastAPI lives under backend/.
+- Cognito JWT checks: backend/app/core/cognito_security.py. Access token verification uses RS256/JWKS, issuer, expiry, token_use=access, and app client ID. ID-token account-link verification validates signature, issuer, expiry, audience, token_use=id, verified email and the expected OAuth nonce.
+- Auth dependencies: backend/app/dependencies/auth.py; identity mapping/resolution: backend/app/services/identity_resolver.py and backend/app/repositories/cognito_identity_repository.py.
+- Cognito account-link/provision route: backend/app/routers/auth.py, endpoint /api/v1/auth/cognito/link.
+- A one-to-one mapping links Cognito sub to existing public.profiles.id. Application role and account-active state come from the database profile; they are not trusted from browser fields or token application-role claims.
+- New public signups are provisioned as EMPLOYEE server-side. The browser cannot self-assign MANAGEMENT.
+- COGNITO_ENABLED defaults false. No Production auth cutover has occurred.
 
-Isolated GitHub Actions workflow:
-- File: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/aws-service-replacements/.github/workflows/test-service-replacements.yml
-- Latest known run: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39587879520
-- At snapshot, latest reported branch test workflow conclusion was **success**.
-- Workflow runs Python compile checks over backend app/test files and unit tests for the S3 object provider and manager/employee/guest guard functions.
-- These are isolated unit/syntax checks only. They do not prove live AWS S3 bucket permissions work, every API route is correctly scoped, or end-to-end uploads/recruitment workflows work after deployment.
-- The normal backend image workflow in the main branch builds/pushes to ECR. The Lambda function still needs explicit update-function-code deployment unless an auto-update step is added and validated.
-- The branch's normal image workflow and the additional isolated verification workflow should be reviewed together before merging. Don't accidentally deploy the new image to production while `STORAGE_PROVIDER=s3` points to a bucket that doesn't exist.
+### Supabase migration and RLS status
 
-## 8. Required next steps for a new chat
+- Migration directory: supabase/migrations/.
+- Cognito identity mapping/RLS migration: 20261021000000_cognito_third_party_auth.sql.
+- Trigger-function hardening: 20261022000000_harden_trigger_functions.sql.
+- Role-scoped RLS/profile/interview protection: 20261022000001_restrict_role_scoped_rls_policies.sql.
+- The staging migration registry reported 19 migrations at the last live check. They were applied only to workplace-assistant-staging. Do not blindly replay them and do not run them against Production or busted.
+- public.current_profile_id() maps a Cognito subject to a database profile ID. An unmapped Cognito subject resolves to NULL.
+- The identity-mapping table has RLS enabled and no client policies; anon/authenticated lack direct SELECT/INSERT permissions. service_role retains backend access.
+- Trigger-function hardening pins search_path and revokes direct browser RPC execution for handle_new_user, set_updated_at and log_onboarding_history.
+- Role/RLS hardening removes unrestricted public profile reads, scopes broad service-role policies, and revokes direct authenticated table privileges for interviews. Last live SQL audit: 16 of 16 public tables have RLS; 25 public/storage policy expressions use current_profile_id(); zero of those policy expressions use raw auth.uid(); authenticated has no SELECT/INSERT on interviews while service_role retains backend SELECT.
+- The Supabase security advisor reports an informational RLS-enabled/no-policy finding for the service-only mapping table, plus SECURITY DEFINER helper-function warnings relevant to RLS. Performance advice includes foreign-key indexes, RLS initplan, unused-index and multiple-policy findings. Do not broadly rewrite unrelated Production policies as part of this migration.
+- Staging has no application users/profiles/mappings yet; use only test identities.
 
-Proceed in this order, showing current status and keeping production safe.
+### S3 implementation and infrastructure
 
-### Step A — Review the current branch carefully
-1. Inspect the current `aws-service-replacements` head; do not assume it is still the SHA written here.
-2. Review the role changes and S3 service changes as a diff against `main`.
-3. Fix any security/logic issues found; run the existing GitHub Actions tests.
-4. Add integration tests for manager/employee permissions (signup, job CRUD, candidate list/detail, evaluations, applications, document upload/delete/download, resume upload/screening, employee onboarding tasks/chat). Specifically check that a caller cannot change their own role or read another employee's private onboarding data.
-5. Verify the public guest/demo behavior after restricting its privileges; don't silently break the live demo experience.
+- Object-storage adapter: backend/app/services/object_storage.py.
+- Storage config defaults: STORAGE_PROVIDER=supabase, AWS_REGION=ap-south-1, AWS_S3_BUCKET unset, S3_PRESIGNED_URL_TTL_SECONDS=900.
+- Knowledge originals use the knowledge/ prefix. Resume originals use resumes/. Text chunks/embeddings stay in Qdrant; job/application/candidate/profile data remains in Supabase PostgreSQL.
+- Current job listings are relational data; the application does not currently implement a job-description attachment upload. Do not claim job PDF attachments have migrated.
+- Old Supabase Storage files are not bulk-copied to S3. Existing URLs/objects must continue working for rollback.
+- Private bucket template: infra/aws/private-document-storage.yml. It enables all S3 public access blocks, bucket-owner-enforced ownership, SSE-S3 encryption and TLS-only transport.
+- No S3 bucket has been created; keep STORAGE_PROVIDER=supabase.
+- Cognito staging backend template: infra/aws/cognito-staging-backend.yml. It creates a separate staging Lambda, execution role, CloudWatch log group with 7-day retention and a public HTTPS Function URL. It sets COGNITO_ENABLED=true and STORAGE_PROVIDER=supabase, uses the staging Supabase URL/service-role secret parameter, and allows the Vercel branch origin through CORS.
+- That stack is a proposal only. It has not been deployed. Its Function URL is internet-accessible and AWS usage may incur charges. The stack outputs StagingApiFunctionUrl, CognitoLinkApiUrl, PreviewCallbackUrl and PreviewSignOutUrl.
+- Do not attach S3 permissions to the Production Lambda or the ECR publisher role. S3 object access belongs on a dedicated staging Lambda execution role and should be limited to knowledge/* and resumes/*.
 
-### Step B — S3 setup and staged upload cutover
-1. Create a new private S3 bucket in Mumbai with Block Public Access and default encryption.
-2. Add the exact prefix-limited policy to the Lambda execution role.
-3. Update the branch/image pipeline to build from `aws-service-replacements` and deploy to Lambda only after checks pass. Do not assume updating ECR's `latest` tag updates Lambda automatically.
-4. Initially smoke test upload/list/delete/download with a test PDF. Ensure the chatbot still processes/indexes the document in Qdrant and the binary file is persisted in S3.
-5. Test resume upload and candidate detail/screening; verify signed download links expire and the UI can use them.
-6. Only then set `STORAGE_PROVIDER=s3` in Lambda. Keep old Supabase objects intact for rollback.
-7. Test existing old Supabase document/resume records and new S3 records separately. Document any need to backfill S3 metadata for previously uploaded knowledge documents.
+## 7. What has been tested and what has not
 
-### Step C — Cognito replacement (not started)
-1. Decide the user migration strategy before changing authentication.
-2. Configure an Amazon Cognito User Pool and app client in Mumbai; configure password/sign-in, email verification and token settings.
-3. Use either a carefully tested migration trigger for first sign-in or bulk user import (bulk import may require password reset). AWS docs: https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-import-users.html
-4. Change frontend Supabase auth calls to Cognito login/signup/session handling, and change FastAPI JWT verification to Cognito issuer/JWKS/audience checks.
-5. Map Cognito subject to existing profile rows without allowing a user-supplied role to confer Management access.
-6. Test token refresh/expiry, logout, disabled users, role mapping, Vercel deployment env settings and CORS before cutover.
-7. Do not remove Supabase Auth until rollback and account migration have been verified.
+### Verified/passed
 
-### Step D — Confirm database replacement
-Ask user whether the intended extra service is RDS for PostgreSQL. If yes, compare running Supabase vs RDS cost, region, network implications, backup plan, migrations and connectivity before creating resources. RDS is not a drop-in replacement for the Supabase PostgREST client. The app has many direct calls such as `client.table(...)`; those must be refactored or a compatible API strategy provided. Be aware of Lambda networking and outbound connectivity to Gemini/Qdrant; don't add a NAT Gateway without cost approval.
+1. CI run #84 passed on code head b3be058, including frontend build, backend compile/tests, Cognito pre-token handler tests, PostgreSQL RLS/identity-mapping regression tests and CloudFormation lint.
+2. Dedicated staging ECR build #4 passed using GitHub OIDC and the ECR-only staging role.
+3. Deployed pre-token Lambda mock event returned Succeeded and output role=authenticated for access and ID token overrides.
+4. Cognito managed-login page loaded and a newly created Cognito user authenticated.
+5. Supabase staging reported 19 migrations. Live SQL checks confirmed 16/16 public tables have RLS, unmapped Cognito subjects resolve NULL, mapping table is inaccessible directly to browser roles, raw auth.uid() is no longer present in public/storage policy expressions, and direct authenticated interview table access is denied.
+6. Supabase staging was ACTIVE_HEALTHY at the last status check.
 
-### Step E — CloudWatch finalization
-1. Confirm the Lambda execution role includes `AWSLambdaBasicExecutionRole`.
-2. Set a reasonable explicit log-group retention period rather than leaving logs indefinitely.
-3. Add low-noise alarms for Lambda Errors, throttles and duration/timeouts. Consider a cost/budget alert too.
-4. Exercise health, login, job listing, job create/publish as manager, employee application flow, onboarding, chatbot, knowledge upload and resume screening; inspect logs on failures.
-5. Make sure logs do not emit bearer tokens, JWTs, passwords, API keys or resume contents.
+### Not yet verified
 
-### Step F — Production release and cost safety
-1. Keep replacement changes on the branch until CI and end-to-end smoke tests pass.
-2. Create a reviewed PR into `main`; avoid blind merges.
-3. Add an explicit workflow deployment step to call Lambda update for the newly pushed ECR image. Publish a Lambda version or use a stable alias if appropriate; verify rollback procedure.
-4. Confirm production configuration and health after deployment.
-5. Check AWS Billing and set a budget alarm. Be careful with RDS, NAT Gateway, EC2, ECR storage, Lambda usage and CloudWatch Logs; current billing dashboard may lag.
+- Real app-originated login/signup starting from the Vercel preview.
+- The Next.js /auth/callback route, state/nonce/PKCE verification, code exchange and session cookie creation.
+- Real Cognito JWT verification by the staging backend and acceptance by Supabase Third-Party Auth/PostgREST.
+- Staging account profile provisioning/link, mapped identity resolution and protected /me endpoint.
+- Combined employee/manager authorization denial checks in live staging.
+- Refresh/logout path.
+- Dedicated staging backend Lambda/Function URL.
+- Branch-scoped Cognito preview environment values.
+- S3 bucket/policy and live document/resume upload/read/delete.
+- Final CloudWatch alerting and production log-retention review.
 
-## 9. AWS official reference links
+## 8. Next steps — strict order
 
-- Lambda execution roles and least privilege: https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html
-- IAM best practices: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
-- S3 Block Public Access: https://docs.aws.amazon.com/AmazonS3/latest/userguide/configuring-block-public-access-bucket.html
-- S3 pre-signed URLs (private object sharing): https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html
-- Cognito existing-user migration: https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-import-using-lambda.html
-- Lambda Function URLs/CORS: https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html
-- Deploy/update Lambda container images: https://docs.aws.amazon.com/lambda/latest/dg/python-image.html
+### Gate 0: cost and isolation
 
-## 10. Starting prompt for the new chat
+The user has no budget. Do not deploy a staging Lambda/Function URL/log group stack unless cost has been established as acceptable and the user explicitly agrees to any non-zero exposure. A free-tier label does not guarantee a $0 bill. If a safe zero-cost path cannot be confirmed, continue with local/CI tests and read-only audits; keep Cognito mode disabled.
 
-Use this prompt together with the README:
+### Gate 1: isolated staging API (only if Gate 0 permits)
 
-"Read the attached README fully and continue the AWS deployment/service replacements for `divyanshsaxena2209/enterprise-workplace-assistant`. First inspect the current `aws-service-replacements` branch and GitHub Actions run status, then review the diff for role-security mistakes and the S3 provider implementation. Keep `main` and the working Vercel + Lambda production app untouched until end-to-end checks pass. I need manager/employee authorization, S3 storage for chatbot knowledge documents and resumes (tell me separately if job-description attachments need a feature), Cognito migration, CloudWatch log retention/alarms, and confirmation whether RDS is the intended database replacement. Give manual AWS Console links and numbered steps, keep costs low, and do not ask me to paste secrets."
+1. Review infra/aws/cognito-staging-backend.yml and the current ECR image tag.
+2. CloudFormation in Mumbai: https://ap-south-1.console.aws.amazon.com/cloudformation/home?region=ap-south-1
+3. The documented stack name is ewa-cognito-staging-api. The template creates a dedicated staging backend, execution role, 7-day CloudWatch log group and Function URL; it does not reuse or edit Production Lambda.
+4. Use only the service-role secret from staging project workplace-assistant-staging in the NoEcho parameter. Never use Production key or share any secret in chat. Staging API settings: https://supabase.com/dashboard/project/wxulxcsdpwsyhtpkbazi/settings/api
+5. SupabaseJwtSecret can be blank for Cognito-only tests; legacy Supabase HS256 tokens then fail closed on this staging backend.
+6. Review proposed resources/cost before creating. Do not create the stack if charges are unacceptable.
+7. After CREATE_COMPLETE, record StagingApiFunctionUrl, CognitoLinkApiUrl, PreviewCallbackUrl and PreviewSignOutUrl outputs. Check health and ensure environment=staging.
+
+### Gate 2: branch-scoped Preview env and OAuth callback
+
+Recheck current Vercel alias before configuring Cognito. At this snapshot it was:
+https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
+
+Only in Vercel Preview scoped to cognito-staging-integration set:
+
+| Variable | Expected value |
+|---|---|
+| NEXT_PUBLIC_AUTH_PROVIDER | cognito |
+| NEXT_PUBLIC_API_URL | StagingApiFunctionUrl only |
+| NEXT_PUBLIC_SUPABASE_URL | https://wxulxcsdpwsyhtpkbazi.supabase.co |
+| NEXT_PUBLIC_SUPABASE_ANON_KEY | Staging publishable/anon key; never service-role |
+| COGNITO_DOMAIN | Exact HTTPS managed-login domain shown in the staging pool |
+| COGNITO_APP_CLIENT_ID | 7npkisjjm5jj0fsqf94et8lqra |
+| COGNITO_REDIRECT_URI | Current Preview origin plus /auth/callback |
+| COGNITO_SIGN_OUT_URI | Current Preview origin plus /login |
+| COGNITO_LINK_API_URL | Full staging endpoint ending /api/v1/auth/cognito/link |
+| COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS | Match the app client's actual refresh-token lifetime |
+
+Do not alter shared Production/Preview variables or set these in Production. If the alias changes, update callback/sign-out URLs.
+
+In the staging Cognito app client, add the Preview origin plus /auth/callback as Allowed callback and Default redirect URL, and the Preview origin plus /login as Allowed sign-out URL. Keep the old CloudFront root entry until the new flow passes. Authorization code + PKCE, scopes openid/email, and a public client with no browser secret are required.
+
+### Gate 3: one consolidated end-to-end staging test
+
+Once isolated API and Preview configuration are ready, run one comprehensive test from the staging app's /signup or /login. Do not start from Cognito's hosted login directly, because the app must first create state/nonce/PKCE cookies.
+
+Validate together:
+1. App-originated login redirects to Cognito and returns to the exact /auth/callback route.
+2. Callback validates state/nonce, exchanges code with PKCE, calls the staging link endpoint, sets HttpOnly cookies and redirects to /dashboard.
+3. New employee is provisioned/linked only in staging and Cognito subject maps to the correct profile ID.
+4. Current-user and an ordinary employee API request succeed with a Cognito access token.
+5. A manager-only action is rejected for that employee.
+6. Direct browser-role access to interviews and the identity-mapping table is denied by Supabase.
+7. Unmapped subject receives no profile/data.
+8. Refresh and logout succeed.
+9. Legacy Supabase Auth remains selected if the Cognito flag is unset.
+10. Confirm Production is unchanged and save CI/preview/API evidence.
+
+Never share the code query URL or token contents. Do not test on Production user data. Keep PR #3 draft until the combined test passes.
+
+### Gate 4: S3 later, only if cost allows
+
+1. Review infra/aws/private-document-storage.yml and its CloudFormation lint.
+2. Check cost/free allowance before provisioning; storage, requests and transfer can be billable.
+3. If accepted, create one dedicated private staging bucket; preserve all public access blocks, encryption and TLS enforcement.
+4. Attach only prefix-restricted PutObject/GetObject/DeleteObject to the staging Lambda role for knowledge/* and resumes/*.
+5. Set STORAGE_PROVIDER=s3 only after bucket, policy and staging role are verified.
+6. Upload/read/delete a small non-sensitive knowledge file and a test resume; verify presigned URL expiry, object keys/provider metadata and Qdrant ingestion/deletion.
+7. Keep Supabase Storage and STORAGE_PROVIDER=supabase for Production/rollback. S3 mode does not copy old objects.
+
+### Gate 5: monitoring and release
+
+- The proposed staging stack sets 7-day log retention; Production log retention/alarms require a separate review.
+- Add low-noise Lambda error/throttle/timeout/latency alarms only after checking cost.
+- Before Production change, test login, profile/role, jobs, applications, candidates, interviews, onboarding, knowledge/RAG and resumes.
+- Keep the PR in draft, review its full diff into aws-service-replacements, and never assume ECR push updates Lambda. Production release is out of scope until staging checks and an approved rollback plan pass.
+- No RDS migration.
+
+## 9. Role, data and storage invariants
+
+- MANAGEMENT/HR/ADMIN/EMPLOYEE are application roles from the database profile, not AWS IAM roles.
+- Public signup must create EMPLOYEE only; never trust browser-supplied role fields or treat the Cognito infrastructure role claim as MANAGEMENT.
+- Cognito sub-to-profile mapping is server-only.
+- Lambda uses its execution role for AWS access. Never embed AWS access keys in the app.
+- Knowledge documents and resumes remain private and must be served only after application authorization using short-lived presigned URLs.
+- Job title/description/requirements remain relational records. Job-description PDF attachments are not implemented.
+- Keep Supabase, Gemini, and Qdrant until migration validation is complete.
+
+## 10. Direct links for continuing work
+
+- This handoff: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/docs/README_NEW_CHAT_HANDOFF.md
+- Draft PR #3: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3
+- Cognito implementation: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/docs/COGNITO_STAGING_IMPLEMENTATION.md
+- Staging API deployment guide: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/docs/COGNITO_STAGING_DEPLOYMENT.md
+- Private S3 setup guide: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/docs/S3_STAGING_SETUP.md
+- Staging Cognito API CloudFormation template: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/infra/aws/cognito-staging-backend.yml
+- Private S3 CloudFormation template: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/infra/aws/private-document-storage.yml
+- Pre-token handler: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/infra/cognito/pre-token-generation/index.mjs
+- Latest passing CI #84: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39723988185
+- Staging ECR build #4: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39642644236
+- Staging Supabase: https://supabase.com/dashboard/project/wxulxcsdpwsyhtpkbazi
+- Production Supabase: https://supabase.com/dashboard/project/ybkfkdcdhrnjmjvavyhb
+- Protected busted project: https://supabase.com/dashboard/project/zkxpkjgprewurotifgeh
+- Cognito staging pool: https://ap-south-1.console.aws.amazon.com/cognito/v2/idp/user-pools/ap-south-1_89s6YRnwQ/overview?region=ap-south-1
+- Cognito app client: https://ap-south-1.console.aws.amazon.com/cognito/v2/idp/user-pools/ap-south-1_89s6YRnwQ/applications/app-clients?region=ap-south-1
+- Supabase Third-Party Auth: https://supabase.com/dashboard/project/wxulxcsdpwsyhtpkbazi/auth/third-party
+
+---
+
+## Starter prompt for the new chat
+
+Read docs/README_NEW_CHAT_HANDOFF.md first. Continue the Enterprise Workplace Assistant AWS migration on cognito-staging-integration and keep PR #3 draft. Verify current branch head, PR, CI, Vercel Preview deployment and env configuration, staging Supabase migrations/RLS, and AWS resource state before acting. Optimize for one consolidated high-value end-to-end test, not repetitive individual tests. The Cognito hosted-login test returned to the CloudFront root and did not exercise the Next.js /auth/callback handler. Do not touch main, Production Vercel variables, Production Lambda, Production Supabase or the protected busted project. Keep Supabase PostgreSQL/Auth/Storage as the default until staging Cognito/S3 tests pass. I have no budget: do not provision potentially chargeable resources unless cost is established as acceptable. No RDS migration; keep Supabase, Gemini and Qdrant.
+
+---
+
+## 11. Milestone update — 2026-10-24 (AWS staging image deployed)
+
+### Completed in this milestone
+
+- GitHub Actions workflow **Build Cognito staging backend image to Amazon ECR #11** succeeded in 7m57s:
+  https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39996288700
+- Published staging-only backend image tag:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-8222e09e1d8a8f5a7761102b1f0a224f4d9e98ed`
+- Updated `infra/aws/cognito-staging-backend.yml` on `cognito-staging-integration` to use that tag. Commit: `bce5d4b1f7b2314707b3b14b74daed207fcf15ba`.
+- User applied the updated template to the existing CloudFormation stack `ewa-cognito-staging-api` in `ap-south-1`; console showed stack `UPDATE_COMPLETE` and resource `StagingApi` `UPDATE_COMPLETE`.
+- User's Lambda console screenshot confirmed the new image tag and a resolved digest beginning `sha256:25ee90f5120e646f89814227e52dc7798aea742ad5d37406b31906568c759544eb`.
+- User confirmed the Lambda environment values `COGNITO_ENABLED=true`, `ENVIRONMENT=staging`, and `STORAGE_PROVIDER=supabase` are correct. Do not request secret values.
+
+### Migration requirements and progress snapshot
+
+| Requirement | Status | Evidence / remaining work |
+|---|---|---|
+| IAM least-privilege and role-based authorization | **Partially implemented** | A dedicated ECR-only IAM role is used for the image publishing workflow; the staging Lambda has its own execution role. App authorization remains based on database profile roles, with public Cognito signup restricted to EMPLOYEE. Still verify effective deployed policies and end-to-end employee/manager authorization. Do not confuse AWS IAM roles with application roles. |
+| Cognito authentication | **Infrastructure deployed; app E2E pending** | Staging pool, app client, pre-token trigger and backend image exist. Previous hosted-login attempt returned to CloudFront root instead of exercising Next.js `/auth/callback`. Next: wire branch-scoped Vercel Preview env and callback allowlists, then one consolidated app-originated login test. |
+| Lambda backend | **Staging image deployed; runtime integration pending** | CloudFormation stack and `StagingApi` show `UPDATE_COMPLETE`; new image tag/digest visible in console. Still confirm health/current-user and Cognito link route via the staging endpoint as part of the consolidated E2E test. |
+| CloudWatch logging/monitoring | **Basic logging configured; application behavior not verified** | Template configures staging log retention of 7 days. Earlier Lambda test showed `Runtime.Unknown` and log-stream confusion; don't mark logging/runtime healthy solely from stack update. During the consolidated API test, inspect one corresponding CloudWatch log stream and check errors. Alarms remain optional pending cost review. |
+| S3 document-storage replacement | **Not implemented/deployed** | `infra/aws/private-document-storage.yml` and `docs/S3_STAGING_SETUP.md` are proposals/guides only. Keep `STORAGE_PROVIDER=supabase` until cost is accepted and private bucket, encryption, public-access block, TLS policy and prefix-scoped role are in place. Then test one non-sensitive knowledge file and one test resume. |
+| Supabase PostgreSQL/Auth/Storage, Gemini, Qdrant | **Retained intentionally** | No RDS migration. Keep current defaults and Production untouched until staging migration is proven. Gemini key is configured in staging Lambda per user's report; never print it. |
+| Vercel Preview isolation | **Configuration work recorded; verify current live values before relying on it** | Keep Production variables unchanged. Preview must use staging API and staging Supabase, with Cognito provider enabled only for the intended staging Preview. |
+| Release readiness | **Not ready** | PR #3 remains draft. Do not merge or cut over Production until one consolidated staging E2E pass, rollback review, and cost review are complete. |
+
+### Initial migration scope (keep this checklist current)
+
+1. **IAM:** least-privilege AWS execution/deployment roles; preserve application authorization by database profile role; never grant role based on browser-supplied claims.
+2. **Cognito:** migrate sign-in to Cognito in staging first; app-originated OAuth authorization-code + PKCE callback, identity linking, session refresh/logout and role enforcement must pass.
+3. **Lambda:** isolated staging API deployment from the dedicated ECR image; prove the running API works before routing Preview traffic to it.
+4. **CloudWatch:** logs with bounded retention, then check real invocation logs/errors; only add alarms after checking costs.
+5. **S3:** private staging document storage for knowledge documents and resumes, least-privilege access by `knowledge/*` and `resumes/*`, encryption and TLS enforcement; don't bulk-copy legacy files.
+6. **App integration:** branch-scoped Vercel Preview env/callback allowlists only; do not change Production.
+7. **Preserve current services:** Supabase PostgreSQL, Gemini and Qdrant stay. Supabase Auth/Storage remain fallback/default until staging Cognito/S3 validation passes. No RDS migration.
+8. **Safety/cost:** user has no budget. Do not create additional potentially billable resources or enable extra services/alarms without establishing cost and getting explicit approval.
+
+### Next work — avoid repetitive micro-tests
+
+1. Verify the current staging Preview environment variables and Cognito callback/sign-out allowlists, without changing Production.
+2. Connect Preview to the staging API and Cognito.
+3. Run **one consolidated end-to-end staging pass** covering app-originated login/callback, state/nonce/PKCE, profile link/provision, employee access, manager-only denial, unmapped-subject denial, refresh/logout, legacy Supabase fallback, and a single correlated CloudWatch log check.
+4. After Cognito is sound, review S3 cost and deploy private S3 only with explicit cost approval.
+5. Update this handoff at each major milestone with commit/run IDs, what actually changed, evidence, and remaining work. Never label an item complete based only on CI/template validation.
+
+### Handoff maintenance rule
+
+**Required after every major milestone:** update this file on `cognito-staging-integration` with date, changed files/commit or AWS resource, concrete verification evidence, status of IAM/Cognito/S3/Lambda/CloudWatch/Vercel, remaining blockers and the next consolidated action. Keep it factual; distinguish code/CI success from a deployed AWS resource and from end-to-end behavior. Preserve all Production, cost and protected-project constraints. Avoid making the user repeat context or perform many tiny checks.
+
+
+
+## Milestone update — 2026-10-24: isolated staging API connected to Preview env
+
+**Branch:** `cognito-staging-integration`  
+**Scope:** branch-specific Vercel Preview only; Production untouched.
+
+### Completed with live evidence
+- GitHub Actions workflow **Build and push isolated Cognito staging image #11** succeeded in 7m57s. Image tag: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-8222e09e1d8a8f5a7761102b1f0a224f4d9e98ed`. Run: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/39996288700
+- CloudFormation stack `ewa-cognito-staging-api` is `UPDATE_COMPLETE`. Its Outputs currently report:
+  - Staging API base URL: `https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/`
+  - Cognito link endpoint: `https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/api/v1/auth/cognito/link`
+  - Preview callback: `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/auth/callback`
+  - Preview sign-out: `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/login`
+- Updated Vercel env `NEXT_PUBLIC_API_URL` for Preview branch `cognito-staging-integration` to the staging API URL above. The live env listing confirmed the branch filter and Preview target. This does not change Production.
+- Rechecked the branch-scoped Vercel env inventory. Present: `NEXT_PUBLIC_SUPABASE_URL` points to isolated staging project `https://wxulxcsdpwsyhtpkbazi.supabase.co`; `NEXT_PUBLIC_SUPABASE_ANON_KEY` is configured as sensitive; `NEXT_PUBLIC_API_URL` points to staging API. No Cognito frontend variables were present in the branch-specific Preview inventory at this checkpoint.
+
+### Remaining blockers — do not claim end-to-end success
+- Cognito frontend Preview variables still need branch-scoped configuration: `NEXT_PUBLIC_AUTH_PROVIDER=cognito`, `COGNITO_DOMAIN`, `COGNITO_APP_CLIENT_ID=7npkisjjm5jj0fsqf94et8lqra`, `COGNITO_REDIRECT_URI`, `COGNITO_SIGN_OUT_URI`, `COGNITO_LINK_API_URL`, and `COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS`. Confirm the exact active Cognito domain and app-client refresh-token lifetime before setting values. Never configure these for Production.
+- Confirm staging Lambda health and account-link route against the deployed image, and correlate one invocation with CloudWatch logs. Stack status alone does not prove runtime health.
+- Create a fresh Vercel Preview deployment after env changes, then perform one consolidated app-originated Cognito E2E test. The prior hosted-login-only attempt did not test the app callback/account linking.
+- IAM least privilege and role separation remain under review; don't elevate app roles from Cognito claims or browser input.
+- S3 replacement is **not deployed**. `STORAGE_PROVIDER=supabase` remains. Review cost and get explicit approval before provisioning S3 or any additional potentially billable resources.
+- Preserve Supabase PostgreSQL, Gemini and Qdrant. No RDS migration. Supabase Auth/Storage remain fallback/default until Cognito and S3 staging checks pass. Production Lambda, Production Vercel variables, Production Supabase and protected project `busted` remain off-limits.
+
+### Migration status at this milestone
+- **Cognito:** backend trigger and isolated staging pool exist; app callback/E2E pending.
+- **Lambda:** isolated staging API deployed/updated; health/runtime verification pending.
+- **CloudWatch:** log group retention configured at 7 days; real invocation/error check pending.
+- **Vercel Preview isolation:** staging API URL now configured on the target branch; Cognito frontend variables and a fresh deployment pending.
+- **S3:** not implemented/deployed; Supabase Storage retained.
+- **IAM:** staging execution role exists with scoped log-write actions; complete IAM replacement/least-privilege audit pending.
+
+**Next action:** identify/confirm the exact Cognito managed-login domain and refresh-token lifetime from the staging user pool/app client, then set all Cognito frontend variables for Preview branch `cognito-staging-integration` only. Do not ask the user to run multiple micro-tests; after configuration, do one consolidated verification. Update this handoff again after that milestone.
+
+
+## Milestone update — 2026-10-24: Cognito domain and token lifetime confirmed
+
+### Verified from the user's AWS console screenshots
+- Staging Cognito pool: `ap-south-1_89s6YRnwQ`, region `ap-south-1`.
+- Managed-login domain: `https://ap-south-189s6yrnwq.auth.ap-south-1.amazoncognito.com`.
+- App client: `enterprise-workplace-assistant-staging`, ID `7npkisjjm5jj0fsqf94et8lqra`.
+- Refresh token expiry: **5 days = 432000 seconds**. Access and ID token expiry: 60 minutes each.
+- CloudFormation stack `ewa-cognito-staging-api` showed `UPDATE_COMPLETE`; outputs gave the staging API URL and branch Preview callback/sign-out URLs listed in the prior milestone.
+
+### Work attempted and blocker
+- Attempted to read the branch-scoped Vercel Preview env inventory and add the seven missing Cognito variables using the connected Vercel integration, scoped to project `prj_ap3BHcwJymfIxo2ABdaBegLJRLBh`, team `team_ajq6NlIYClqTjsKIYbLhLm97`, and branch `cognito-staging-integration`.
+- The Vercel API returned `404 Project not found` for both env listing and env creation. **No Vercel environment variables were changed by those failed calls.** Do not claim the Cognito frontend variables have been configured.
+- Required values are now known:
+  - `NEXT_PUBLIC_AUTH_PROVIDER=cognito`
+  - `COGNITO_DOMAIN=https://ap-south-189s6yrnwq.auth.ap-south-1.amazoncognito.com`
+  - `COGNITO_APP_CLIENT_ID=7npkisjjm5jj0fsqf94et8lqra`
+  - `COGNITO_REDIRECT_URI=https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/auth/callback`
+  - `COGNITO_SIGN_OUT_URI=https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/login`
+  - `COGNITO_LINK_API_URL=https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/api/v1/auth/cognito/link`
+  - `COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS=432000`
+- These must be added only as Vercel **Preview** variables with Git branch `cognito-staging-integration`. Do not edit shared Production variables. Before adding them, resolve Vercel project/team access so the existing project is positively identified and branch scoping is preserved.
+- Cognito's app client must also allow the exact callback URL above and sign-out URL above. Do not remove the old CloudFront callback until the app-originated staging flow passes.
+
+### Current status / next consolidated action
+- Cognito domain and refresh-token lifetime: **confirmed**.
+- Staging Lambda image and CloudFormation update: **deployed**, but end-to-end runtime behavior still pending.
+- Vercel branch-scoped Cognito configuration: **blocked by Vercel connector project-not-found response**.
+- S3: **not deployed**; keep Supabase Storage.
+- IAM: least-privilege review and real role-denial behavior still pending.
+- CloudWatch: 7-day retention configured; inspect one correlated invocation during the consolidated staging pass.
+- Next: resolve Vercel project access/identifier, add the seven branch-only Preview variables, ensure Cognito callback/sign-out allowlists, create a fresh Preview deployment, then run one consolidated app-originated login/authorization/refresh/logout test. Update this handoff again after the milestone.
+
+---
+
+## 12. Cognito staging sign-in investigation update — 24 October 2026
+
+**Current branch:** `cognito-staging-integration`  
+**Latest diagnostic commit:** `b807e5996d71d6f264d5ab0f6d00333cd403c6d1` — `Add safe diagnostics for Cognito staging account-link failures`.
+
+### Observed failure and evidence
+
+- A manual Cognito Preview login reached the application callback but displayed `cognito_account_link_failed`; a subsequent request to the Vercel route `/api/auth/cognito/access-token` returned HTTP 401 with `Your Cognito session has expired. Please sign in again.`
+- Code inspection shows the 401 is likely a **secondary symptom**: the callback only sets the session cookies after the staging backend account-link endpoint succeeds. When linking fails, it clears the temporary OAuth cookies and redirects to login, leaving no application access/refresh cookies.
+- The callback POSTs to `COGNITO_LINK_API_URL` (expected staging Lambda Function URL path `/api/v1/auth/cognito/link`) with the Cognito ID token, OAuth nonce, and optional signup profile.
+- The callback intentionally hides backend response bodies from the browser. Before this update, it also emitted no diagnostic for a non-2xx link response or a fetch exception.
+- CloudWatch Logs Insights on 24 October searched the last seven days across four log groups. Staging API invocations on 23 October included a 26.75-second request at 20:18:24 UTC and shorter requests around 20:21 and 20:32 UTC, but the visible log rows did not expose the HTTP response or application exception. An older 22 October startup failure showed Google `DefaultCredentialsError`; this is historical evidence and not proven to be the current account-link failure.
+- The staging API log stream showed Python/Starlette warnings. These warnings alone do not establish the account-link root cause.
+
+### Code change just made
+
+- Updated `frontend/app/auth/callback/route.ts` to log only the staging account-link HTTP status for non-success responses, or the exception class for fetch/parsing failures.
+- This deliberately does **not** log ID tokens, nonce, signup profile, response bodies, or other user data.
+- Commit: `b807e5996d71d6f264d5ab0f6d00333cd403c6d1`.
+- The change is committed on the staging branch only. It does not change Production, Cognito, Lambda configuration, Supabase schema/data, or role logic.
+- CI and a new Vercel Preview deployment must be confirmed before the next attempt. Do not assume this diagnostic commit is deployed until the Vercel Preview shows the matching commit and Ready status.
+
+### Next high-value action
+
+1. Confirm the GitHub CI run for commit `b807e5996d71d6f264d5ab0f6d00333cd403c6d1` passes and the corresponding Vercel Preview deployment is Ready.
+2. Make one new sign-in attempt using the existing staging Cognito test user (do not create more accounts).
+3. Inspect Vercel Runtime Logs for `[cognito-staging] account-link endpoint returned a non-success status` or `[cognito-staging] account-link request failed before a successful response`. Use the logged status or exception class to select the actual fix. Do not treat the downstream `/api/auth/cognito/access-token` 401 as the root cause unless new evidence supports that.
+4. If status is 404, inspect whether the verified Cognito email has an existing profile or the signup profile cookie was provided. If 401/403, investigate ID-token verification/configuration; if 409/500, investigate Supabase staging user/profile/mapping provisioning; if no response/exception class is logged, investigate endpoint URL/network/CORS and Lambda invocation. These are decision branches, not confirmed diagnoses.
+5. Keep PR #3 draft. Do not touch Production, `main`, the protected `busted` project, or provision additional resources. Preserve Supabase Auth/Storage as fallback until the full staging flow passes.
+
+### Migration status snapshot
+
+- **Implemented:** Cognito staging pool/app client, pre-token trigger, isolated staging API/Lambda Function URL, branch-scoped Vercel environment setup, callback/token routes, Cognito identity-link endpoint, IAM role-based authorization groundwork and CloudWatch log groups.
+- **Partially validated:** staging image build and deployment, Cognito hosted sign-in, pre-token mock test, CI/build checks and Lambda invocations.
+- **Not yet end-to-end verified:** successful callback/token exchange, profile provisioning/linking, Cognito-to-Supabase token acceptance, employee/manager authorization checks, refresh/logout, legacy Supabase-auth fallback after Cognito opt-in, S3 private storage replacement and production cutover.
+- **S3:** still not migrated; Supabase Storage remains the active/default provider. Do not deploy S3 resources without explicit cost approval.
+- **IAM:** dedicated staging execution/OIDC roles and least-privilege groundwork exist; final policy audit and end-to-end role checks remain.
+- **CloudWatch:** log groups are present and basic Lambda events are visible; useful application-level account-link diagnostics were missing and are now being added.
+
+---
+
+## 13. Cognito account-link diagnostic update — 24 October 2026
+
+**Working branch:** cognito-staging-integration  
+**Relevant source files:** frontend/app/auth/callback/route.ts; frontend/components/auth/CognitoLoginPage.tsx; frontend/app/api/auth/cognito/access-token/route.ts
+
+### Findings from the latest investigation
+
+- The user-visible failure is cognito_account_link_failed; a separate Vercel Request Logs entry showed GET /api/auth/cognito/access-token returning HTTP 401. The access-token 401 can be expected after callback failure clears session cookies; it is not proof of the original cause.
+- Read-only SQL against staging only (wxulxcsdpwsyhtpkbazi) returned 0 rows in auth.users, public.profiles, and public.cognito_identity_mappings. Therefore this staging test has not successfully provisioned and mapped an app user.
+- Historical CloudWatch rows included an initial slow/cold Lambda invocation and older runtime warnings. Those are not enough to identify the link endpoint's actual HTTP status/error code.
+- No Cognito tokens, authorization codes, user profile values or keys were read or logged in this investigation.
+- Vercel Hobby runtime log retention is limited to one hour, so the previous attempt's exact callback log may no longer be available. Vercel connector reads for this project were returning project-not-found/forbidden; deployment state was not independently verified through that connector.
+
+### Code changes committed in the staging branch
+
+1. Commit b807e5996d71d6f264d5ab0f6d00333cd403c6d1: add safe logging of the link endpoint HTTP status, or the exception class for a fetch failure.
+2. Commit d28d342607b52164c06b32c972b4ec8379e83174: parse only an allow-listed error_code from the staging backend's standardized error response and log status + safe errorCode; never log response bodies, tokens, nonce or user data. Translate common backend error categories into diagnostic login error keys.
+3. Commit 5b4cd788f826f9ba4c53db380a458fca9c57ab83: add corresponding user-safe explanations for token rejection, profile identity mismatch, mapping conflict, invalid profile data, database error, unavailable service, and generic backend failure.
+
+The new behavior is frontend-only and does not modify AWS resources, the staging Supabase database, Production environment variables, Production Lambda, or the main branch. It is not considered deployed until the Vercel Preview is Ready on a commit containing these changes.
+
+### Next action after Preview is Ready
+
+- Make one app-originated attempt through the current branch Preview, using /signup to supply the employee profile and the existing test Cognito user if the Hosted UI allows sign-in from that screen. Do not begin at the Cognito dashboard/root URL. If the existing Cognito identity cannot complete the signup path, stop and report the exact on-screen message rather than creating multiple identities.
+- The login page should now show a more specific safe category. That single result should tell us whether the failure is token/JWKS validation (cognito_link_token_rejected), identity mismatch (cognito_link_identity_mismatch), conflict, validation, database, service or generic backend.
+- If a generic failure remains, use the newly logged Vercel entry to record the safe HTTP status/error code and correlate with the same staging Lambda invocation in CloudWatch. Do not run broad repetitive log queries.
+- Do not change the Cognito refresh-token lifetime based only on Vercel's Needs Attention warning. It is a configuration-exposure warning for a numeric value, not evidence of this profile-link failure.
+- Keep PR #3 draft. Do not deploy a new backend image or alter CloudFormation unless the diagnosis shows it is necessary and the user accepts any possible cost. Keep Supabase Auth/Storage as fallback and do not perform a Production cutover.
+
+---
+
+## 14. Backend provisioning error classification fix — 24 October 2026
+
+### Root defect identified in source
+
+Review of `backend/app/routers/auth.py` found that failures from `client.auth.admin.create_user(...)` were caught, followed by one profile lookup. If that lookup returned no profile, the backend raised `ConflictError` (HTTP 409) for every exception, including Auth API/configuration failures, trigger/database failures, or transient service failures. This falsely labeled provisioning failures as account conflicts and obscured the original cause. The Supabase staging database currently has 0 Auth users, 0 profiles, and 0 Cognito mappings, so successful provisioning has not occurred.
+
+### Code fix committed on `cognito-staging-integration`
+
+- `713a63c35fd143cb5e0ed8ca92dc7144611480ad`: change failed shadow-user provisioning without a profile into `DatabaseError` instead of `ConflictError` and log only exception class (no email, tokens, or exception text).
+- `153529a28098bd9f8f7d83e399e3091764f4cccd`: add `backend/tests/test_cognito_provisioning_errors.py`, a regression test that verifies an Auth admin creation failure without a profile is not mislabeled as a conflict.
+- `20c2009140cab30179a4f03923d12b56432e1f00`: include the new regression test in the isolated service-replacement CI suite.
+- `b5c745afcbf587dc180b7307b57b8d570b66800f`: log only the upstream numeric HTTP status (when present) alongside exception class, to aid diagnosis without logging user data, response text, credentials, tokens, or email.
+- `b472156059f51bb79bbf900722e586968d66f6ad`: change the frontend message for `CONFLICT` to a neutral warning because the currently deployed backend may still emit this legacy code for a provisioning failure.
+
+The broader staging callback diagnostics remain in place: frontend logs an allow-listed backend error code and HTTP status, and shows targeted messages for authentication, identity mismatch, conflict, validation, database, service-unavailable, and backend-error categories. The account-link failure still is **not considered fixed in the live environment** until the new backend image is built/deployed and the complete sign-in succeeds.
+
+### Validation / deployment gates
+
+- Previous service-replacement CI run `40084027344` passed frontend build, Python compilation, CloudFormation lint and isolated tests for the frontend-only diagnostic commits.
+- CI run `40084393987` completed **success** after the backend provisioning fix. It passed frontend build, backend/test compilation, CloudFormation template validation and the isolated service replacement tests; the test logs report `54 passed, 10 warnings` (warnings are recorded in the run and are not test failures).
+- Vercel's check status for the latest handoff source previously showed success; Vercel connector read APIs have returned not-found/forbidden, so deployment details must be confirmed from the GitHub Vercel status and/or user dashboard if necessary.
+- The running staging Lambda still uses its existing ECR image, which does not include the new backend source changes. To apply the backend fix, a new staging backend image must be built/pushed to ECR and the staging Lambda/CloudFormation stack updated. This can cause ECR storage/build costs. Because the user has no budget, do not trigger that build/deployment without explicit acceptance of any nonzero cost. Do not touch Production, `main`, Production Supabase, or `busted`.
+
+### Next action
+
+1. Confirm the current CI run passed; do not start another redundant test suite.
+2. Before a new staging Lambda image can be deployed, the user must explicitly confirm whether any nonzero ECR/AWS cost is acceptable. If not, keep the backend fix committed but undeployed; do not pretend the live API uses it.
+3. If cost is approved and the image is deployed, do one app-originated `/signup` staging run and inspect the specific displayed error category plus the corresponding sanitized CloudWatch event. Avoid extra accounts and broad repeated queries.
+4. Keep PR #3 draft until full staging end-to-end validation and rollback requirements pass.
+
+---
+
+## 15. CI validation checkpoint — 24 October 2026
+
+- GitHub Actions run `40084393987` completed **success** on code commit `b5c745afcbf587dc180b7307b57b8d570b66800f`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40084393987
+- This single workflow run passed the Cognito pre-token test, frontend dependency install/build, backend and test compile, CloudFormation lint, and the isolated service replacement tests including the new `test_cognito_provisioning_errors.py` regression test.
+- GitHub's Vercel status for the code commit `b5c745afcbf587dc180b7307b57b8d570b66800f` reported success at https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/CpwfB4wD7SbHLo2TUxfP6sHDG49i. The current branch tip at the time of this note is a subsequent handoff-only commit and its Vercel status was still pending; verify the branch alias points to a Ready deployment before the next sign-in.
+- The repo source fix is validated by CI, but the live AWS staging Lambda still uses the previous container image. Applying the backend fix requires a new ECR image plus Lambda image update. Do not do that until the user explicitly accepts any nonzero ECR/AWS costs. No Production service or staging database was modified during this code work.
+
+---
+
+## 16. Staging backend image build milestone — 24 October 2026
+
+- GitHub Actions build workflow run **#12 succeeded** on commit `d0d33cb4b4ac379e6bdd32378de817f7560c5dfe` (7/7 minutes? recorded total run duration 2m47s): https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40084892406
+- The Docker build logs confirm the image was pushed to ECR with tag:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-d0d33cb4b4ac379e6bdd32378de817f7560c5dfe`
+- Exact single-platform linux/amd64 image digest from the successful push:
+  `sha256:fb2fe145a2821db094a0886927a7e80a2e617fb535ff61e7769bd8ba19039698`
+- Use immutable image URI for the staging Lambda code update (not an older tag):
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:fb2fe145a2821db094a0886927a7e80a2e617fb535ff61e7769bd8ba19039698`
+- Verified at that exact source commit: `backend/app/routers/auth.py` contains the new safe failure-classification/logging behavior, and `backend/tests/test_cognito_provisioning_errors.py` contains the regression test.
+- **Not yet deployed:** existing staging Lambda still runs the prior resolved digest until its code is explicitly updated. Next step is update only function `ewa-cognito-staging-api-StagingApi-xlm7Nj337FcE` using the immutable URI above, preserving its existing environment/config and permissions. Do not change the CloudFormation stack parameters or any Production Lambda/config. After image update completes, inspect sanitized logs and do one app-originated staging signup flow. If the backend returns a more specific error, diagnose that rather than repeating generic queries.
+- Cost note: ECR image push/in-region ECR-to-Lambda transfer has no ingress/transfer charge; private image storage is billed over time. Image size shown by the build output is not the billed storage amount, and the user's remaining credits/eligibility cannot be independently verified here. Preserve all existing tags for rollback; do not delete old ECR images as part of this deployment.
+
+---
+
+## 17. Staging Lambda image alignment / E2E gate — 24 October 2026
+
+- Expected backend image digest: `sha256:fb2fe145a2821db094a0886927a7e80a2e617fb535ff61e7769bd8ba19039698`, built in GitHub Actions run `40084892406` from the corrected staging code. The user supplied the same full image URI from the AWS console, so proceed on the assumption the Lambda's **Resolved Image URI** now matches; do not call it fully validated until successful sign-in/profile linking proves the running path.
+- Current staging branch head at the checkpoint: `a156aae4caa5cb4aeb6c34451240417b33ddfb04`. GitHub reports the Vercel Preview status success for this head: https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/3JMQD4FNpt4woQrj9f9ASG6uL3Y3. Connected Vercel deployment/log detail reads are denied (403/404), so do not claim to have independently inspected private Vercel runtime logs.
+- Confirmed source behavior: `frontend/app/signup/page.tsx` selects `CognitoSignupForm` when `NEXT_PUBLIC_AUTH_PROVIDER=cognito`; the form POSTs `{ profile: { full_name, department, job_title, ... } }` to `/api/auth/cognito/start`, which stores the profile and creates OAuth state/nonce/PKCE cookies before redirecting to Cognito. `/auth/callback` exchanges the code, POSTs the ID token + nonce + pending profile to the staging `COGNITO_LINK_API_URL`, and only sets the app token cookies after a successful link response.
+- **Single required end-to-end check:** use the configured branch alias (it matches Cognito's allowed callback URI), open `/signup`, provide a test employee name/department/job title, and continue to Cognito. Use the **existing Cognito test account** if it already exists; do not create additional Cognito users. Complete the hosted UI sign-up/sign-in, then observe whether the app lands on `/dashboard` or shows a specific `cognito_link_*` message. Do not use an ephemeral deployment hostname; callback cookies are scoped to the browser host and Cognito redirect URI must match the branch alias.
+- After the one flow, run one read-only staging database check for counts in `auth.users`, `public.profiles`, and `public.cognito_identity_mappings`; expected to become 1+ consistent records after successful first provisioning. If the flow fails, the new callback will log only the HTTP status + allow-listed error code (or exception class). Do not ask user for further broad CloudWatch queries; use exact timestamp/diagnostic category to follow up.
+- Verified baseline before testing: staging project `wxulxcsdpwsyhtpkbazi` had 0 auth users, 0 profiles, and 0 Cognito mappings. Production and protected `busted` remain untouched. PR #3 remains draft. S3 Storage replacement is still not deployed; Supabase Storage remains active/default.
+
+---
+
+## 18. First post-deployment Cognito signup result — 24 October 2026
+
+- After the user reported the Lambda Resolved Image URI matches the fixed digest `sha256:fb2fe145a2821db094a0886927a7e80a2e617fb535ff61e7769bd8ba19039698`, one staging `/signup` flow reached the new frontend error category `cognito_link_database_error`.
+- The screen message is: `The staging API could not save the employee profile. The staging database/API configuration needs repair; retrying signup is unlikely to help.` This category is emitted by the backend when `client.auth.admin.create_user(...)` throws and the follow-up lookup still finds no `public.profiles` record. It is not proof of a PostgreSQL write failure specifically: the wrapped exception may originate from Supabase Auth credentials/authorization, request validation, Auth service, or the `on_auth_user_created` trigger.
+- Read-only query against staging `wxulxcsdpwsyhtpkbazi` after the failed flow shows `auth.users=0`, `public.profiles=0`, `public.cognito_identity_mappings=0`. Therefore provisioning did not commit.
+- Read-only inspection shows `auth.users` has an `on_auth_user_created` trigger invoking `public.handle_new_user()`. The current function inserts profile columns that exist in the staging `public.profiles` schema (`id`, `email`, `full_name`, `role`, `employee_id`, `department`, `job_title`, `phone`, `location`, `bio`, `avatar_url`, `is_management_verified`, `is_active`). The observed schema has no profile role CHECK constraint that would reject `EMPLOYEE`, so do not change schema or role values speculatively.
+- The latest staging image includes a safe warning line from the `create_user` exception handler: `Cognito staging shadow-user provisioning failed (exception_type=<class> upstream_status=<numeric status or None>)`. It logs only exception class and validated numeric upstream HTTP status, not response bodies, email, token, or credentials.
+- **Next required evidence:** inspect the latest `/aws/lambda/ewa-cognito-staging-api-StagingApi-xlm7Nj337FcE` log event for that exact warning at the timestamp of this failed attempt. Use its `exception_type` and `upstream_status` to branch diagnosis: 401/403 likely service-role credential/authorization; 4xx likely request/provider validation or user state; 5xx or status missing likely Auth service/database trigger/transient connection. These are diagnostic directions, not confirmed causes. No need to rerun signup or execute another broad CloudWatch query.
+- No Production settings/data were modified. Do not use Supabase SQL to insert/repair a user manually. Keep PR #3 draft and update this handoff after the root cause and final successful flow are confirmed.
+
+---
+
+## 19. Staging profile GRANT fix — 24 October 2026
+
+**Root cause confirmed:** Supabase staging project `wxulxcsdpwsyhtpkbazi` logged HTTP 403 / PostgREST error 42501 for the backend's `GET /rest/v1/profiles` request during Cognito signup. The request JWT role was `service_role`. Catalog checks showed `service_role` had no SELECT, INSERT or UPDATE table privileges on `public.profiles`, even though the role-scoped service-role INSERT policy existed. RLS policies do not replace PostgreSQL GRANT privileges.
+
+**Fix applied to staging:** applied migration `grant_service_role_profile_privileges` with `GRANT SELECT, INSERT, UPDATE ON TABLE public.profiles TO service_role;`. This succeeded on staging only. Follow-up query confirms those three privileges are now true; DELETE remains false, and direct SELECT for anon/authenticated remains false. No rows were inserted or changed.
+
+**Repository commits:**
+- `5200da8497cee2719ac03ad772cebca7b1abfb27`: adds `supabase/migrations/20261024000000_grant_service_role_profile_privileges.sql`.
+- `6c41a352adc5f3d62c74ed90fdbcdde90ebb3cbc`: regression assertion in `backend/tests/test_cognito_rls_migration.py` that checks backend role privileges and browser-role denial.
+
+**Next:** wait for CI on branch head `6c41a352adc5f3d62c74ed90fdbcdde90ebb3cbc`; then do one end-to-end staging signup/login. Verify staging counts for auth users, profiles and Cognito mappings, and dashboard success. Do not run more broad log queries. Production, `main`, and protected `busted` were not modified. S3 replacement has not started; Supabase Storage remains active. PR #3 stays draft until end-to-end auth and authorization checks pass.
+
+
+## Follow-up update — 2026-10-24 (staging-only profile/jobs corrections)
+
+- Confirmed staging Supabase project `wxulxcsdpwsyhtpkbazi` is the target; Production and the protected `busted` project remain untouched.
+- The existing staging profile grants migration is `20261024000000_grant_service_role_profile_privileges.sql`.
+- Applied staging-only `GRANT SELECT ON public.jobs TO service_role` after the staging `/jobs` request explicitly returned PostgreSQL `42501`. No browser role was granted direct table access.
+- Next source migrations added in `cognito-staging-integration`:
+  - `20261024010000_grant_service_role_jobs_select.sql`: mirrors the narrow staging grant for repeatable environments.
+  - `20261024020000_auto_assign_employee_ids.sql`: generates employee IDs for newly created profiles and backfills existing profiles whose ID is blank, without changing profile roles or overwriting nonblank IDs. Employee roles receive `EMP-######`; management roles receive `MGR-######`.
+- `TopNavbar.tsx` now uses the same Dicebear `7.x/adventurer` fallback as the profile page, because the profile page is where the user confirmed the cartoon avatar already renders.
+- The Cognito public signup flow intentionally remains employee-only. Management role assignment must continue to come from a trusted administrative workflow, never a public signup dropdown.
+- Added test coverage for the grants and employee-ID trigger. CI must be checked before the staging database receives the employee-ID migration. After CI passes, apply that migration to staging and verify the newly signed-up profile is assigned an ID. Do not merge the draft PR until the live Cognito staging flow is verified.
+- Existing production/legacy Supabase profiles must not be bulk-copied or recreated. They continue to belong to the existing profile/auth rows; any Cognito identity should be linked by verified email and the existing identity-mapping route, preserving that profile's role and data.
+
+
+## Follow-up update — 2026-10-24 (signup role hardening)
+
+- CI run 106 for commit `b0aa75b19ec5a0db23c10af90581639d2f48a916` passed, including the frontend build and isolated service-replacement test.
+- The staging-only `20261024020000_auto_assign_employee_ids.sql` migration was applied successfully to project `wxulxcsdpwsyhtpkbazi`. The existing staging profile is now `EMPLOYEE` with generated ID `EMP-000001`; all staging profiles have a nonblank ID.
+- `/jobs` now has the missing service-role SELECT grant in staging. `anon` and `authenticated` still cannot directly SELECT from `public.jobs`; the API service layer continues to force Employee results to Published jobs.
+- A public-signup role escalation path was found in the legacy Supabase `handle_new_user` trigger. A follow-up migration `20261024030000_harden_public_signup_roles.sql` now takes the role only from trusted `raw_app_meta_data` (Management if explicitly admin-assigned; otherwise Employee), ignores public `raw_user_meta_data.role` and `raw_user_meta_data.employee_id`, and retains the secure employee-ID generator. The legacy signup UI also labels Management as administrator-assigned and removes the manual employee-ID input. The Cognito signup UI now visibly presents Employee self-service versus administrator-assigned Management.
+- Regression tests exercise spoofed public metadata and trusted app-metadata provisioning. GitHub Actions run 107 for commit `6fd033077817b6e43826594774a704f78bacca57` **passed**: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40106803383. Vercel reported the Preview deployment as completed for the same source commit: https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/DkQSuCrn4oSDPf8sBYiXXC7Kg779.
+- After CI passed, migration `20261024030000_harden_public_signup_roles.sql` was applied to staging project `wxulxcsdpwsyhtpkbazi`. Read-only verification confirmed one staging profile, role `EMPLOYEE`, ID `EMP-000001`, active=true, and is_management_verified=false. No profile IDs are blank.
+- Post-migration grants: service_role has SELECT/INSERT/UPDATE on profiles but not DELETE; service_role has SELECT on jobs only; anon/authenticated cannot SELECT either table. `handle_new_user()` is SECURITY DEFINER with fixed `search_path=pg_catalog, public, auth, pg_temp`; direct EXECUTE is denied to anon/authenticated. Do not change Production or merge the draft PR until the staging UI/E2E flow is manually verified.
+
+
+## Follow-up update — 2026-10-24 (complete backend table grants and profile edit route)
+
+- Staging audit found that while `/jobs` was fixed, `service_role` still lacked SQL privileges for applications, candidates, resumes, candidate scores, application status history, and recruiter notes. These are all accessed by trusted FastAPI repositories, and the old frontend silently swallowed employee application-list errors.
+- Least-privilege migration `20261024040000_grant_backend_service_role_table_privileges.sql` was added, CI run 108 for code commit `f7929fd383e5bcc7098bfb8ba216d635e29c5c1c` passed (https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40107673040), and the migration was applied to staging project `wxulxcsdpwsyhtpkbazi`. Read-only catalog checks confirmed the exact service-role privilege matrix: jobs/applications/candidates SELECT+INSERT+UPDATE; resumes SELECT+INSERT; candidate_scores SELECT+INSERT+UPDATE; application_status_history SELECT+INSERT; recruiter_notes SELECT+INSERT+UPDATE+DELETE. No hard DELETE is granted to jobs, applications, candidates, resumes, candidate_scores, or application_status_history. For all seven tables, both `anon` and `authenticated` have no direct SELECT, INSERT, UPDATE, or DELETE privileges.
+- The Profile page edit path has been moved from direct browser Supabase table writes to authenticated `PATCH /api/v1/profile` through `fetchWithAuth`. It uses the same Cognito identity resolver and trusted service-role repository as profile reads; the request schema does not permit changing role, employee ID, or email. Empty phone values are normalized to `null`.
+- Do not merge PR #3; live E2E testing remains required before migration completion.
+
+
+## Existing-profile access clarification — 2026-10-24
+
+The Cognito staging environment uses its own Supabase project (`wxulxcsdpwsyhtpkbazi`) and does **not** contain the Production profile dataset. Its only current profile is the staging test employee with ID `EMP-000001`. Do not tell existing Production users to sign up through the staging preview yet: if their profile row has not been migrated into the staging project, the staging callback cannot link to that Production-only row and may create a separate staging test profile.
+
+For now, existing users should continue signing in through the current Production application and its currently configured auth flow. The verified-email identity-link route links a Cognito subject only to a matching profile and Auth identity **inside the same Supabase project**; the route does not reach across environments. Existing profiles must be moved to Cognito only through a separately planned, reviewed Production migration that preserves profile IDs, existing roles, profile data, and verified email matching. No Production records were changed during this work.
+
+## E2E status and required final verification — 2026-10-24
+
+- GitHub Actions run 108 passed for code commit `f7929fd383e5bcc7098bfb8ba216d635e29c5c1c`. Vercel reported Preview deployment complete for that source commit at https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/5eAh8DeBmrmyTsgrheahgTNGTkKF. Follow-on commits `28ba760137645d69a2efdad5c92808dca3accd59` and the subsequent handoff updates are documentation-only; the tested functional code is still commit `f7929fd383e5bcc7098bfb8ba216d635e29c5c1c`.
+- Staging database role-spoof probe passed: public `raw_user_meta_data` attempting `role=MANAGEMENT`, a spoofed employee ID, and `is_management_verified=true` resulted in EMPLOYEE plus generated EMP ID and false verification; trusted `raw_app_meta_data` management assignment resulted in MANAGEMENT plus generated MGR ID. Temporary test records were deleted.
+- Full table privilege checks passed after migration 0400. The profile remained active EMPLOYEE with `EMP-000001`; no staging profile lacks an ID.
+- The Vercel connector did not authorize direct fetch of this team's protected preview, so the page itself has not been visually E2E-tested from this session. Do not merge PR #3 until the user manually verifies Cognito signup/login and the role/ID/avatar/jobs/profile-edit behavior on the preview deployment. Keep Production and `busted` untouched.
+
+
+## Handoff correction — 2026-10-24 (final privilege audit)
+
+- Verified directly against staging after migration 0400: every expected service_role grant matches the repository-operation matrix, and all four table privileges (SELECT/INSERT/UPDATE/DELETE) are false for both browser-facing roles on jobs, applications, candidates, resumes, candidate_scores, application_status_history, and recruiter_notes. Profiles remain backend-only; service_role has SELECT/INSERT/UPDATE but not DELETE, and authenticated has no UPDATE grant on profiles.
+- The actual GitHub Actions run number is **108** (not 110): run ID `40107673040`, successful for code commit `f7929fd383e5bcc7098bfb8ba216d635e29c5c1c`. The later commits `28ba760137645d69a2efdad5c92808dca3accd59`, `792eaa571eec9c06ebcb2fb72244efb7843f5be3`, and the current handoff-correction commit are documentation-only; the tested functional code remains `f7929fd383e5bcc7098bfb8ba216d635e29c5c1c`.
+- Staging data remains unchanged by the grants migration: exactly one profile, `EMPLOYEE / EMP-000001`, active, not management-verified, and no profile lacking an employee ID. The signup role-hardening migration is present in the active trigger definition.
+- **Do not call end-to-end complete yet.** The Vercel status is successful, but direct preview inspection from this session returned HTTP 403 from the Vercel connection; visual and interactive browser testing still needs the user. Keep PR #3 open and draft.
+- A source audit found `frontend/components/dashboard/ManagementDashboard.tsx` and `frontend/components/onboarding/ManagementOnboardingDashboard.tsx` still query backend-only Supabase tables/profiles directly from the browser. Those screens need management-protected API endpoints before management dashboard/onboarding can be declared Cognito-compatible. Do not grant browser access to those tables as a workaround.
+- When resuming, start by converting those two Management UI data paths to protected backend endpoints (or record the scope decision), run CI, then have the user verify the preview: employee avatar/name, generated ID, profile edits, published-only Jobs results, employee/management denial boundaries, and Management routes under a trusted Management account. Do not merge PR #3 before those checks; do not modify Production or protected project `busted`.
+
+
+## Continuation update — 24 October 2026 (employee-ID CI regression)
+
+**Active branch and PR**
+- Repository: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant
+- Continue on `cognito-staging-integration`; PR #3 remains **open and draft** against `aws-service-replacements`.
+- Latest code commits in this continuation:
+  - `38086e305f78a86c8d9c92feae761f973e4577c2`: restored the management-only employee-ID endpoint and schema in `backend/app/routers/profile.py`.
+  - `2681bdcbe75a8d4b19189d9d497dae47306145d7`: cleaned up imports for that endpoint.
+- CI runs for those commits were queued/in progress at the time this note was written:
+  - https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108589567
+  - https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108599409
+  Re-check both runs before relying on this change as tested.
+
+**Why this code follow-up was necessary**
+- The previous run, https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108374461 (head `53585e9bed348c4d1674b88e4e7db9b6a16e4201`), failed the service-replacement test step after the frontend build, backend compile and CloudFormation lint succeeded. Result: **46 passed, 8 failed**. All 8 failures were in `backend/tests/test_profile_employee_id.py`: the test contract expected `ProfileRepository`, `EmployeeIdUpdateRequest`, and `assign_employee_id` in `backend/app/routers/profile.py`, but the route had disappeared from that module.
+- The route is now restored as `PATCH /api/v1/profile/employees/{profile_id}/employee-id`, guarded with `require_management`. It accepts only `SS-12345` format, returns 404 when the target profile is missing, rejects non-EMPLOYEE targets, and writes only the `employee_id` field through `ProfileRepository`. Database-generated `EMP-######` / `MGR-######` assignment remains the signup default. This endpoint does not grant/alter roles.
+- The new commits require a fresh CI result; this tool session cannot run the repository tests locally. Do not describe the CI as passing until one of the new runs completes successfully.
+
+**Correction to the prior source-audit note**
+- The earlier note saying management dashboard components still read Supabase backend-only tables directly is stale for the current branch. Source inspection confirms `frontend/components/dashboard/ManagementDashboard.tsx` calls `/dashboard/management-summary`, backed by `backend/app/routers/dashboard.py` with `require_management`.
+- `frontend/components/onboarding/ManagementOnboardingDashboard.tsx` calls `/onboarding/management/progress`, backed by `backend/app/routers/onboarding_portal.py` with management authorization. Do not add browser-facing table grants to fix either screen.
+- These source checks do **not** replace a live browser/Preview test. The Vercel deployment could not be inspected from the connector (403); visual and interactive checks remain unverified.
+
+**Migration status / next gates**
+1. Re-check CI for the two commits above; fix any actual remaining test failures and keep PR #3 in draft.
+2. The staging backend image / Cognito flow must be checked against the live staging Lambda and its resolved immutable ECR image before testing. The handoff's prior runtime note describes a `cognito_link_database_error` with zero staged `auth.users`, `profiles`, and Cognito mappings. A later note says missing staging `service_role` SQL grants were corrected; do not repeat signup blindly. Use the specific sanitized Lambda warning and read-only privilege/migration checks to confirm the present state.
+3. Do not create resources simply to advance the flow: the user has no budget and the staging CloudFormation Lambda/Function URL, S3, ECR storage, logs and transfer can incur charges. No new chargeable AWS resource should be created without a confirmed acceptable cost and explicit approval.
+4. Keep `COGNITO_ENABLED` opt-in and `STORAGE_PROVIDER=supabase` as defaults. No production cutover, main-branch change, RDS migration, or changes to the protected `busted` project.
+5. Consolidated live staging E2E is still outstanding: begin sign-in from the actual branch preview `/signup` route (so state/nonce/PKCE cookies are made), confirm callback and profile mapping/provisioning, verify employee-vs-management denial boundaries, test profile edit/employee ID, published-only jobs, dashboard/onboarding routes, refresh/logout and legacy Supabase behavior. Do not use Production credentials/data or create more test identities without need.
+
+
+## CI result follow-up — 24 October 2026
+
+- Confirmed successful CI run **#109 / run ID `40108599409`** for commit `2681bdcbe75a8d4b19189d9d497dae47306145d7`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108599409. Frontend build, backend compilation, CloudFormation lint, and the complete service-replacement test step passed.
+- That successful run verifies the employee-ID route restoration at commit `2681bdc...`; it ran before the final route-decorator ordering cleanup described below.
+- Follow-up commit `3e294c8314f06c5cb2d01be9caaa8b9fe8a79dbb` reorders the existing profile PATCH decorator and the employee-ID route so each decorator is immediately followed by its intended function (the previous attempt had caused a syntax error caught at compile time).
+- CI run for `3e294c...`, run ID `40108723010`, was still **in progress** when last checked: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108723010. Re-check before treating the latest source head as validated.
+- Current PR #3 stays open and draft. Passing automated checks do not prove the running AWS staging Lambda, Cognito callback/provisioning, live database mappings, Preview UI or role boundaries are end-to-end tested.
+
+
+
+---
+
+## Continuation update — 24 October 2026, staging auth/access fixes
+
+This section supersedes older status notes above where they conflict. Confirm the current branch/PR/CI state before deploying; do not infer that passing source CI means the AWS backend is updated.
+
+### Verified branch and CI
+
+- Branch: `cognito-staging-integration`
+- Verified source head for this update: `024077c6aef11f1e498b065c2011f8206fb50c9d` — commit message `Cover knowledge-only object deletion boundaries`.
+- PR #3 remains **open and draft**, base `aws-service-replacements`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3
+- Successful CI run **#125**: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40109613701
+- That run passed the pre-token handler test, frontend production build, backend/test compilation, CloudFormation lint, and the isolated service replacement tests, including the employee-ID route, generated-ID/public role spoof prevention and knowledge chat session ownership regression.
+- A Vercel status reported the Preview deployment complete for this head: https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/3Z6vMcZrTvR5DvBCw4AbpW5uUyyY. Do not declare visual end-to-end verified: the Vercel tool connection returned 403 when attempting to fetch the protected preview. Current frontend branch alias last known from previous checks: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
+
+### Staging database changes applied (project `wxulxcsdpwsyhtpkbazi` only)
+
+- `20261024000000_grant_service_role_profile_privileges.sql`: service_role SELECT/INSERT/UPDATE only on `public.profiles`; no DELETE. Browser roles are not granted profile SELECT.
+- `20261024010000_grant_service_role_jobs_select.sql`: missing job read grant was fixed for the trusted backend service role; browser roles still have no direct job SELECT.
+- `20261024020000_auto_assign_employee_ids.sql`: stable generated `EMP-######` / `MGR-######` IDs and blank-ID backfill; pre-existing nonblank IDs and profile roles stay unchanged.
+- `20261024030000_harden_public_signup_roles.sql`: public metadata cannot self-select Management or spoof employee IDs/management verification. Management must be assigned through trusted Auth admin metadata.
+- `20261024040000_grant_backend_service_role_table_privileges.sql`: least-privilege SQL grants for backend repositories using applications, candidates, resumes, candidate scoring, status history and recruiter notes. Browser-role direct SELECT remains denied on those backend-only tables.
+- Read-only staging verification showed one profile: `EMPLOYEE`, ID `EMP-000001`, active and not Management-verified. No additional profile was left by the temporary role-spoof transaction test.
+- A live transaction probe confirmed that public user metadata requesting `MANAGEMENT`, `SPOOF-999` and `is_management_verified=true` was reduced to Employee with a generated EMP ID and verification false; trusted `raw_app_meta_data` Management assignment resulted in a generated MGR ID and verification true. Probe records were deleted after verification.
+- No Production Supabase rows, Production schema, Production Lambda, Production Cognito or the protected `busted` project was altered.
+
+### Source fixes included in the tested branch
+
+- Navbar now uses the same Dicebear Adventurer URL version as the profile page, so the cartoon avatar should render instead of falling back to the initial when the avatar URL works.
+- Public signup UIs show Employee self-service and clearly mark Management as administrator-assigned; they do not offer public self-service Management selection. Legacy API signup no longer accepts or copies a client-supplied employee ID.
+- Profile reads and edits use authenticated backend APIs, not browser-side direct access to protected `profiles` rows.
+- Management dashboard counts and both management/employee onboarding views use protected backend APIs. The onboarding/editor mutations are management-only, and an employee can read only their own onboarding progress.
+- Knowledge chat now verifies a session belongs to the current profile before writing a question into it; error responses no longer echo raw downstream errors/chat text. Knowledge-document deletion is confined to knowledge object prefixes and not resume object keys.
+- Employee hired/onboarding state is determined from actual hired application status rather than merely the presence of the now-automatically-generated employee ID.
+
+### Existing profiles and login: do not mix environments
+
+- Production profiles remain in the Production Supabase project `ybkfkdcdhrnjmjvavyhb`; they were not copied into staging and were not modified.
+- Existing Production users should continue using the current Production application and its configured authentication until a separately reviewed production cutover plan is approved.
+- The Cognito identity-link route can link a verified Cognito subject only to a matching profile/Auth identity **within the same Supabase project**. It does not link to a Production profile from the staging project.
+- Do not sign up an existing Production user in the staging preview expecting the existing Production profile to appear. If the matching profile isn't in staging, the flow can create a separate staging test profile. A later Production migration must preserve existing profile UUIDs, roles, data and verified email checks.
+- Public signup must not be used to create or elevate a Management identity. Use an explicitly trusted admin provisioning path for Management accounts.
+
+### Final deployment gate — requires user action
+
+The code CI and staging SQL migrations are verified, but the backend changes are **not end-to-end complete until the latest backend image is built into ECR, the existing Cognito staging Lambda is updated to that exact image tag, and login/routes are verified in a browser**.
+
+The repository workflow `.github/workflows/build-cognito-staging-ecr.yml` runs only on manual dispatch. The current branch head at this snapshot is `024077c6aef11f1e498b065c2011f8206fb50c9d`; build the image from the current branch head, not the older image tag documented earlier in this file. The workflow writes a unique tag of the form `cognito-staging-<git-sha>` to:
+
+`745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-<git-sha>`
+
+1. Open [GitHub Actions — Cognito staging backend image build](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml).
+2. Choose **Run workflow** and select `cognito-staging-integration`. This is the existing workflow, not a new AWS resource; pushing an image adds ECR storage usage, so confirm the expected small but nonzero storage cost is acceptable before running it.
+3. After the run succeeds, note its exact `cognito-staging-<sha>` image tag and update only the **existing Cognito staging Lambda** to the matching full image URI. Do not update `enterprise-workplace-assistant-api` (Production). Check the currently deployed CloudFormation stack / Lambda name before saving; do not create a new Lambda/stack or resource.
+4. Then run the staging preview flow starting from the actual Vercel branch preview `/signup` route (so the OAuth state/nonce/PKCE cookies are created). Test Cognito signup/login/callback, `EMPLOYEE` role and generated ID, top-right cartoon avatar, profile edit, published-only Jobs, Knowledge Base question access, onboarding visibility, refresh/logout, and Management-only denial boundaries. Use a trusted Management test account only for manager-side routes; never try role elevation through public signup.
+5. Check CloudWatch for any sanitized Lambda startup/runtime errors and verify the backend image/deployment version matches the exact SHA used by ECR.
+
+**Do not merge PR #3, change Production, or change `busted` until these manual staging E2E checks pass.** If the Vercel connection remains 403, inspect the preview using the user's own logged-in browser. Do not share passwords, authorization codes, bearer tokens or secrets in chat.
+
+
+## Continuation update — 24 October 2026 (shared knowledge-document registry)
+
+**Source and validation**
+- Working branch: `cognito-staging-integration`; PR #3 stays **open and draft**: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3.
+- Source head for the verified code: `485da1dd3e16e6e91509b51db73355e09c384200`.
+- CI run #127 passed: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40111103324. Results: **65 passed, 10 warnings**; frontend production build, backend compilation, CloudFormation lint, pre-token handler tests, Cognito/RLS/identity tests, employee-ID/profile route tests, object-storage tests, chat-session ownership tests and new knowledge-document registry tests passed.
+- This is an automated/isolated test pass. It is not a live Cognito browser E2E result and does not justify merging PR #3 or switching S3 on.
+
+**Changes in the branch**
+- Added migration `supabase/migrations/20261024050000_knowledge_document_registry.sql` and backend-only repository `backend/app/repositories/knowledge_document_repository.py`.
+- Knowledge documents now have a shared server-side metadata registry. Authenticated users can list the registered documents; uploads require management access and register filename, provider, durable key, pages/chunks, uploader and internal vector source. The internal Qdrant source path is not returned to the browser.
+- S3 upload records use stable keys and keep `file_url=NULL`; they do not persist expiring presigned URLs. The download endpoint can create an expiring URL when it is requested.
+- The UI loads the registry and merges legacy localStorage-only documents to avoid dropping old entries. Registered document delete requests use the registry's ID rather than trusting a client-supplied object key.
+- Added exact-source Qdrant deletion for registry-backed records and moved DOCX ingestion from Windows-only `pythoncom/docx2pdf` conversion to `Docx2txtLoader`, which works in the Linux Lambda container.
+- Knowledge upload validates PDF/DOCX extension and content type, limits upload size to 10 MB, stores the object before indexing, persists metadata, and performs best-effort cleanup of partial writes on failure.
+
+**Staging database migration applied and verified**
+- Applied only `knowledge_document_registry` to isolated Supabase project `wxulxcsdpwsyhtpkbazi` (workplace-assistant-staging); migration registry version `20261024162221`.
+- A combined read-only query confirmed `public.knowledge_documents` exists with RLS enabled.
+- Exact privileges: `service_role` has SELECT/INSERT/UPDATE/DELETE; both `anon` and `authenticated` have none of those privileges. The table is protected by the `knowledge_documents_service_role_only` policy.
+- Counts immediately after migration: 1 `auth.users` row, 1 `public.profiles` row, 1 Cognito identity mapping, and 0 registered knowledge documents. Existing staging identity/profile data is unchanged.
+- No AWS resources were created or modified for this registry work. `STORAGE_PROVIDER` remains `supabase`; no S3 bucket/cutover has occurred. Production and protected `busted` remain untouched.
+- **Next operational blocker:** the running staging Lambda still uses the prior ECR image and does not contain the newly tested `/api/v1/knowledge/documents` registry route. Do not ask the user to test registry UI against that old runtime. Before rebuilding/pushing a new staging ECR image, obtain explicit approval to incur any possible ECR image-storage cost; the user's budget/free allowance cannot be independently confirmed. If approved, run [.github/workflows/build-cognito-staging-ecr.yml](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml) on this branch, then update only the existing staging CloudFormation stack `ewa-cognito-staging-api` / staging Lambda to the new immutable image URI. Preserve its environment and permissions. Do not alter Production.
+- Vercel's GitHub status reported the deployment for handoff commit `5f0805dadca463e195c15a76ff2a02e72e0ec1f5` as completed, but direct deployment inspection/API calls from this session returned permission/not-found failures and direct app/API requests were not accessible from this runtime. The authenticated Preview smoke test therefore remains a manual gate after the staging image is updated.
+
+**Next gates**
+1. Verify the new branch Preview deployment visually and run one consolidated knowledge smoke test: manager uploads a harmless PDF, employee can see the registered document and request access as expected, S3 mode remains off, and management can delete exactly that document without affecting another same-named document.
+2. Then continue the isolated Cognito E2E flow (callback/profile link, employee-vs-management denial, profile editing/ID, Jobs, onboarding, refresh/logout) before any merge/cutover.
+3. Only consider S3 staging activation after a separate private staging bucket and least-privilege staging Lambda S3 permissions have been reviewed and the cost is explicitly acceptable. User has no budget; do not create new chargeable AWS resources or switch `STORAGE_PROVIDER=s3` by default.
+
+
+## Continuation update — 24 October 2026 (post-connection recovery, image slimming, and registry index)
+
+- **Recovery state:** the conversation resumed after a connection interruption. No partially completed AWS deployment was in progress; ECR image push / Lambda update remains intentionally gated.
+- **Latest verified application-code SHA:** \`c27aaa846ba143a81ba60ad3939480f7da5c6411\`. CI run #130 passed: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40111719938 — **65 passed, 10 warnings**. Frontend production build, backend/test compilation, Cognito pre-token tests, CloudFormation lint, and the consolidated backend/security/database tests passed. The later commits in this section are handoff/documentation updates only unless a newer source commit is noted.
+- **Container slimming:** \`backend/Dockerfile\` no longer installs LibreOffice or Java. Knowledge DOCX ingestion now uses \`Docx2txtLoader\`, and the resume parser also uses \`docx2txt\`; repository search found no remaining runtime use of \`pythoncom\`, \`docx2pdf\`, or \`soffice\`. This reduces unnecessary image packages before the next staging image build.
+- **Registry index optimization:** added \`supabase/migrations/20261024060000_knowledge_document_registry_fk_index.sql\` to cover the registry's nullable \`uploaded_by\` foreign key. Applied to staging as migration \`knowledge_document_registry_fk_index\`, version \`20261024163027\`, after the migration regression test passed.
+- **Final staging DB verification after both additive migrations:** \`public.knowledge_documents\` has RLS enabled; its \`knowledge_documents_service_role_only\` policy exists; \`service_role\` has SELECT/INSERT/UPDATE/DELETE; \`anon\` and \`authenticated\` have none of those table privileges. Both \`knowledge_documents_created_at_idx\` and \`knowledge_documents_uploaded_by_idx\` exist. Current counts are 1 auth user, 1 profile, 1 Cognito identity mapping, 0 registered knowledge documents; 17 public tables have RLS. No profile or identity records were inserted/changed by these migrations.
+- **Supabase advisor review:** the registry's foreign-key-index finding was addressed above. Remaining advisories are pre-existing or intentionally designed: RLS enabled with no policy for \`cognito_identity_mappings\` (intentional fail-closed, service-role-only table); user-scoped \`SECURITY DEFINER\` RPCs \`current_profile_id()\` and \`get_current_user_role()\` are executable to support current-user/RLS behavior; leaked-password protection is disabled in Supabase Auth; and several existing business tables have FK-index, RLS-initplan, unused-index, or multiple-permissive-policy performance findings. Do not broadly change these existing auth/RLS semantics without focused tests and a deliberate migration.
+- **Deployment blocker unchanged:** the new backend route and image cleanup are not live until the existing Cognito staging Lambda gets an ECR image built from the verified branch. The GitHub workflow \`.github/workflows/build-cognito-staging-ecr.yml\` is manual-dispatch and pushes an immutable \`cognito-staging-\${github.sha}\` tag. It can incur ECR image-storage charges. Given the recorded zero-budget constraint, do not push or update the Lambda until the user explicitly approves the possible cost. No AWS resource was created or updated during this continuation. The production Lambda, Production environment, and \`busted\` remain untouched.
+- **Access limitation:** the current Vercel connector returns HTTP 403 when listing this project's deployments. It cannot independently verify the new Preview deployment from this session; do not claim a live browser E2E result. After the image is built and the existing staging Lambda is updated, use a Preview browser session for the consolidated management-upload / employee-list-and-download / management-delete smoke test, then the broader Cognito auth and role-boundary checks.

@@ -109,10 +109,12 @@ register_exception_handlers(app)
 
 
 
-from app.routers import auth, profile  
+from app.routers import auth, profile, dashboard, onboarding_portal
 
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(profile.router, prefix=settings.API_V1_STR)
+app.include_router(dashboard.router, prefix=settings.API_V1_STR)
+app.include_router(onboarding_portal.router, prefix=settings.API_V1_STR)
 
 
 

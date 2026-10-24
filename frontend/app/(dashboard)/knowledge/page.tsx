@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { Search, UploadCloud, MessageSquare, FileText, Database, MoreHorizontal, Sparkles, Loader2, X, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/context/UserContext";
-import { uploadKnowledgeDocument, deleteKnowledgeDocument, getKnowledgeDocumentDownloadUrl } from "@/lib/api/knowledge";
+import { uploadKnowledgeDocument, deleteKnowledgeDocument, getKnowledgeDocumentDownloadUrl, listKnowledgeDocuments } from "@/lib/api/knowledge";
 import LockedFeature from "@/components/layout/LockedFeature";
 export default function KnowledgeDashboard() {
   const { profile, isHired } = useUser();
@@ -15,17 +15,63 @@ export default function KnowledgeDashboard() {
   const [viewingDoc, setViewingDoc] = useState<{url: string, title: string} | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   useEffect(() => {
-    const savedDocs = JSON.parse(localStorage.getItem('knowledge_documents') || '[]');
-    setDocuments(savedDocs);
+    let cancelled = false;
     const savedSearches = parseInt(localStorage.getItem('knowledge_searches') || '0', 10);
-    setSearchesRun(savedSearches);
-  }, []);
-  const handleDeleteDocument = async (e: React.MouseEvent, docId: string, filename: string, file_url?: string, file_key?: string, storage_provider?: string) => {
+    setSearchesRun(Number.isFinite(savedSearches) ? savedSearches : 0);
+
+    let savedDocs: any[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem('knowledge_documents') || '[]');
+      savedDocs = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      savedDocs = [];
+    }
+    setDocuments(savedDocs);
+
+    // The API registry is the shared source of truth. Keep legacy local-only
+    // entries visible until removed, while de-duplicating objects already registered.
+    async function loadRegisteredDocuments() {
+      try {
+        const result = await listKnowledgeDocuments();
+        if (!Array.isArray(result)) return;
+        const registered = result.map((doc: any) => ({
+          id: String(doc.id),
+          managed_by_api: true,
+          title: doc.filename,
+          uploaded: doc.created_at ? new Date(doc.created_at).toLocaleDateString() : "",
+          dept: "Knowledge Base",
+          file_url: doc.file_url || undefined,
+          file_key: doc.file_key,
+          storage_provider: doc.storage_provider,
+          pages: doc.pages,
+          chunks: doc.chunks,
+        }));
+        const registeredKeys = new Set(
+          registered.map((doc: any) => doc.file_key ? `${doc.storage_provider}:${doc.file_key}` : ""),
+        );
+        const legacy = savedDocs.filter((doc: any) => {
+          const key = doc.file_key ? `${doc.storage_provider || "supabase"}:${doc.file_key}` : "";
+          return !key || !registeredKeys.has(key);
+        }).map((doc: any) => ({ ...doc, managed_by_api: false }));
+        const merged = [...registered, ...legacy];
+        if (!cancelled) {
+          setDocuments(merged);
+          localStorage.setItem("knowledge_documents", JSON.stringify(merged));
+        }
+      } catch {
+        // Preserve local documents while the backend is temporarily unavailable.
+      }
+    }
+
+    if (profile?.id) void loadRegisteredDocuments();
+    return () => { cancelled = true; };
+  }, [profile?.id]);
+  const handleDeleteDocument = async (e: React.MouseEvent, docId: string, filename: string, file_url?: string, file_key?: string, storage_provider?: string, managedByApi?: boolean) => {
     e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete "${filename}" from the Knowledge Base? This cannot be undone.`)) return;
     setIsDeleting(true);
     try {
-      await deleteKnowledgeDocument(filename, file_url, file_key, storage_provider);
+      await deleteKnowledgeDocument(filename, file_url, file_key, storage_provider, managedByApi ? docId : undefined);
       await new Promise(resolve => setTimeout(resolve, 2000));
       const updatedDocs = documents.filter(doc => doc.id !== docId);
       setDocuments(updatedDocs);
@@ -51,13 +97,16 @@ export default function KnowledgeDashboard() {
     try {
       const result = await uploadKnowledgeDocument(file);
       const newDoc = {
-        id: Date.now().toString(),
+        id: String(result.id || Date.now()),
+        managed_by_api: Boolean(result.id),
         title: result.filename || file.name,
-        uploaded: new Date().toLocaleDateString(),
+        uploaded: result.created_at ? new Date(result.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
         dept: "Knowledge Base",
-        file_url: result.file_url,
+        file_url: result.file_url || undefined,
         file_key: result.file_key,
-        storage_provider: result.storage_provider
+        storage_provider: result.storage_provider,
+        pages: result.pages,
+        chunks: result.chunks
       };
       const updatedDocs = [newDoc, ...documents];
       setDocuments(updatedDocs);
@@ -174,7 +223,7 @@ export default function KnowledgeDashboard() {
                 {profile?.role === "MANAGEMENT" && (
                   <button 
                     className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
-                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider)}
+                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider, doc.managed_by_api)}
                     title="Delete Document"
                   >
                     <Trash2 size={16} />

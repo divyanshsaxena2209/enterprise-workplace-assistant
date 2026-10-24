@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Opt-in isolated Cognito staging API for Enterprise Workplace Assistant.
+  Nothing is deployed until this stack is created. Lambda invocations, logs,
+  ECR storage, and data transfer may incur charges; check AWS Billing/Free Tier
+  first and do not deploy if you cannot tolerate a non-zero charge.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Default: 745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-8222e09e1d8a8f5a7761102b1f0a224f4d9e98ed
+    Description: Newly built isolated Cognito staging ECR image from the successful build workflow.
+
+  SupabaseProjectUrl:
+    Type: String
+    Default: https://wxulxcsdpwsyhtpkbazi.supabase.co
+    Description: The isolated workplace-assistant-staging Supabase project URL.
+
+  SupabaseServiceRoleKey:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: >
+      Paste the SERVICE ROLE secret from the staging Supabase project only.
+      Never use the Production key and never share this value in chat.
+
+  SupabaseJwtSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >
+      Optional staging Supabase JWT secret for legacy HS256 token validation.
+      Leave blank if you only want to test Cognito tokens; legacy Supabase HS256
+      tokens will fail closed until this staging-only secret is configured.
+
+  CognitoRegion:
+    Type: String
+    Default: ap-south-1
+
+  CognitoUserPoolId:
+    Type: String
+    Default: ap-south-1_89s6YRnwQ
+
+  CognitoAppClientId:
+    Type: String
+    Default: 7npkisjjm5jj0fsqf94et8lqra
+
+  PreviewOrigin:
+    Type: String
+    Default: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
+    Description: Exact HTTPS Vercel preview branch alias. Update if that alias changes.
+
+Resources:
+  StagingApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/ewa-cognito-staging-api
+      RetentionInDays: 7
+
+  StagingApiExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WriteOnlyStagingApiLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${StagingApiLogGroup.Arn}:*"
+
+  StagingApi:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - StagingApiLogGroup
+    Properties:
+      Description: Isolated backend API for Cognito staging only; Production Lambda is unchanged.
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Role: !GetAtt StagingApiExecutionRole.Arn
+      MemorySize: 1024
+      Timeout: 60
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          ENVIRONMENT: staging
+          SUPABASE_URL: !Ref SupabaseProjectUrl
+          SUPABASE_SERVICE_ROLE_KEY: !Ref SupabaseServiceRoleKey
+          SUPABASE_JWT_SECRET: !Ref SupabaseJwtSecret
+          COGNITO_ENABLED: "true"
+          COGNITO_REGION: !Ref CognitoRegion
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_APP_CLIENT_ID: !Ref CognitoAppClientId
+          STORAGE_PROVIDER: supabase
+          FRONTEND_URLS: !Ref PreviewOrigin
+      EphemeralStorage:
+        Size: 512
+
+  StagingApiFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt StagingApi.Arn
+      AuthType: NONE
+      Cors:
+        AllowCredentials: true
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+          - apikey
+          - x-client-info
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+        AllowOrigins:
+          - !Ref PreviewOrigin
+        MaxAge: 300
+
+  AllowPublicHttpInvocationThroughFunctionUrl:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StagingApi
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  AllowInvocationViaFunctionUrlOnly:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StagingApi
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+Outputs:
+  StagingApiFunctionName:
+    Description: Separate staging backend; do not substitute for the Production Lambda.
+    Value: !Ref StagingApi
+
+  StagingApiFunctionUrl:
+    Description: HTTPS base URL to use for Preview NEXT_PUBLIC_API_URL.
+    Value: !GetAtt StagingApiFunctionUrl.FunctionUrl
+
+  CognitoLinkApiUrl:
+    Description: Full HTTPS callback account-link endpoint for Vercel Preview.
+    Value: !Sub "${StagingApiFunctionUrl.FunctionUrl}api/v1/auth/cognito/link"
+
+  PreviewCallbackUrl:
+    Description: Set as Cognito allowed callback and default redirect URL.
+    Value: !Sub "${PreviewOrigin}/auth/callback"
+
+  PreviewSignOutUrl:
+    Description: Set as Cognito allowed sign-out URL.
+    Value: !Sub "${PreviewOrigin}/login"

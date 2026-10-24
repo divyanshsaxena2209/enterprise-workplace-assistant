@@ -2,6 +2,15 @@
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user();
 
+-- The initial schema's RLS policies query profiles.role. PostgreSQL will not
+-- allow changing that column's enum type while those dependent policies exist.
+-- Drop these legacy policies before the type change; later migrations rebuild
+-- the current role-based policies after the core schema is recreated.
+DROP POLICY IF EXISTS "Allow HR admins to manage jobs" ON public.jobs;
+DROP POLICY IF EXISTS "Allow HR/Super admins to manage candidates" ON public.candidates;
+DROP POLICY IF EXISTS "Allow HR/Super admins to manage onboarding steps" ON public.onboarding_steps;
+DROP POLICY IF EXISTS "Allow HR/Super admins to view and manage all onboarding tasks" ON public.employee_onboarding_tasks;
+DROP POLICY IF EXISTS "Allow HR/Super admins to manage company documents" ON public.company_documents;
 
 ALTER TABLE public.profiles ALTER COLUMN role DROP DEFAULT;
 ALTER TABLE public.profiles ALTER COLUMN role TYPE text USING role::text;

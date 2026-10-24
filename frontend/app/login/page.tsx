@@ -3,8 +3,9 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import CognitoLoginPage from "@/components/auth/CognitoLoginPage";
 import { Mail, Lock, Shield, Loader2, Sparkles } from "lucide-react";
-export default function LoginPage() {
+function LegacyLoginPage() {
   const router = useRouter();
   const supabase = createClient();
   const [email, setEmail] = useState("");
@@ -109,4 +110,12 @@ export default function LoginPage() {
       </div>
     </div>
   );
+}
+
+
+export default function LoginPage() {
+  if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+    return <CognitoLoginPage />;
+  }
+  return <LegacyLoginPage />;
 }

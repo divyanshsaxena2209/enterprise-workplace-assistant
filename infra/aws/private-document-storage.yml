@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Opt-in private S3 bucket for staging knowledge documents and resumes.
+  This template creates no resources until explicitly deployed. Storage,
+  requests, and data transfer can incur charges; review the AWS estimate first.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique S3 bucket name for staging documents.
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    ConstraintDescription: Use a globally unique lowercase S3-compatible bucket name.
+
+Resources:
+  PrivateDocumentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  RequireTLSForDocumentBucket:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PrivateDocumentBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt PrivateDocumentBucket.Arn
+              - !Sub "${PrivateDocumentBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+Outputs:
+  BucketName:
+    Description: Private document bucket name; set AWS_S3_BUCKET only on staging.
+    Value: !Ref PrivateDocumentBucket
+  BucketArn:
+    Description: Bucket ARN for a least-privilege staging Lambda IAM policy.
+    Value: !GetAtt PrivateDocumentBucket.Arn

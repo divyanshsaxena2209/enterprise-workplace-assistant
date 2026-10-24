@@ -1,17 +1,25 @@
 """
-Authentication router — POST /auth/signup, /auth/login, /auth/logout, GET /auth/me
+Authentication router — existing Supabase routes plus the staged Cognito identity-link route.
 
-All routes use AuthService which delegates to Supabase Auth.
+Legacy signup/login/logout continue to use AuthService and Supabase Auth.
 Errors are handled centrally by the error middleware — no try/except here.
 """
+
+import logging
+import secrets
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.security import bearer_scheme
+from app.core.cognito_security import decode_cognito_id_token
+from app.core.enums import UserRole
+from app.core.exceptions import AuthenticationError, AuthorizationError, ConflictError, DatabaseError, NotFoundError
+from app.repositories.cognito_identity_repository import CognitoIdentityRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.db.supabase import get_supabase_client
 from app.dependencies.auth import get_current_user
-from app.schemas.auth import LoginRequest, SignupRequest, TokenResponse
+from app.schemas.auth import CognitoLinkRequest, LoginRequest, SignupRequest, TokenResponse
 from app.schemas.common import ErrorResponse, SuccessResponse
 from app.schemas.profile import ProfileResponse
 from app.services.auth_service import AuthService
@@ -20,6 +28,8 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _get_auth_service() -> AuthService:
@@ -150,3 +160,125 @@ def get_me(
     Use this endpoint to bootstrap the frontend after login.
     """
     return current_user
+
+
+@router.post(
+    "/cognito/link",
+    response_model=SuccessResponse,
+    summary="Link a verified Cognito identity to an existing profile",
+    description=(
+        "Staging migration endpoint. Verifies the Cognito ID token, OAuth nonce, "
+        "and verified email, then links it to an existing Supabase profile with "
+        "the same email. Application roles continue to come from the database."
+    ),
+)
+def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
+    """Link a Cognito identity only after matching verified email to the Auth user record."""
+    claims = decode_cognito_id_token(body.id_token, body.nonce)
+    cognito_email = str(claims["email"]).strip().lower()
+
+    client = get_supabase_client()
+    profile_repo = ProfileRepository(client)
+    profile = profile_repo.get_by_email(cognito_email)
+    if profile is None:
+        if body.profile is None:
+            raise NotFoundError(
+                "No existing profile matches this verified email. Use the signup form to provide employee profile details."
+            )
+
+        # Create a Supabase Auth shadow identity so the existing profiles.id
+        # foreign key remains valid. Cognito remains the only interactive login
+        # provider in Cognito mode; this random password is never returned.
+        signup = body.profile
+        metadata = {
+            "full_name": signup.full_name,
+            "role": UserRole.EMPLOYEE.value,
+            "department": signup.department,
+            "job_title": signup.job_title,
+            "phone": signup.phone,
+            "location": signup.location,
+            "bio": signup.bio,
+            "avatar_url": signup.avatar_url,
+            "is_management_verified": False,
+        }
+        try:
+            created = client.auth.admin.create_user({
+                "email": cognito_email,
+                "password": secrets.token_urlsafe(48),
+                "email_confirm": True,
+                "user_metadata": metadata,
+            })
+        except Exception as exc:
+            # A concurrent request may have created the profile after the first
+            # lookup. Reuse only that exact email-matched profile; never overwrite
+            # an existing user's role or profile fields. If the profile still
+            # does not exist, the original exception could be an Auth API failure,
+            # a trigger failure, bad staging credentials, or a transient outage.
+            # Do not mislabel all such failures as a duplicate-account conflict.
+            upstream_status = getattr(exc, "status_code", None)
+            if not isinstance(upstream_status, int):
+                upstream_status = getattr(exc, "status", None)
+            if not isinstance(upstream_status, int) or not 100 <= upstream_status <= 599:
+                upstream_status = None
+            logger.warning(
+                "Cognito staging shadow-user provisioning failed "
+                "(exception_type=%s upstream_status=%s)",
+                type(exc).__name__,
+                upstream_status,
+            )
+            profile = profile_repo.get_by_email(cognito_email)
+            if profile is None:
+                raise DatabaseError(
+                    "Could not provision the employee profile in the staging database. "
+                    "Check staging Supabase Auth and profile-trigger configuration."
+                ) from exc
+
+        if profile is None:
+            created_user = getattr(created, "user", None) or created
+            created_user_id = getattr(created_user, "id", None)
+            if not created_user_id:
+                raise DatabaseError("Supabase did not return the ID for the Cognito shadow user.")
+
+            try:
+                profile = profile_repo.upsert({
+                    "id": str(created_user_id),
+                    "email": cognito_email,
+                    "full_name": signup.full_name,
+                    "role": UserRole.EMPLOYEE.value,
+                    "department": signup.department,
+                    "job_title": signup.job_title,
+                    "phone": signup.phone,
+                    "location": signup.location,
+                    "bio": signup.bio,
+                    "avatar_url": signup.avatar_url,
+                    "is_active": True,
+                    "is_management_verified": False,
+                })
+            except Exception as exc:
+                raise DatabaseError(
+                    "The Cognito account was created but its employee profile could not be saved."
+                ) from exc
+
+    # The profiles table email is application data. Cross-check it against
+    # the actual Supabase Auth identity so an editable/stale profile email can
+    # never be used to attach Cognito to a different account.
+    try:
+        auth_record = client.auth.admin.get_user_by_id(str(profile.id))
+        auth_user = getattr(auth_record, "user", None) or auth_record
+        auth_email = getattr(auth_user, "email", None)
+    except Exception as exc:
+        raise AuthorizationError(
+            "Could not verify the existing account's identity safely. Contact support."
+        ) from exc
+
+    if not isinstance(auth_email, str) or auth_email.strip().lower() != cognito_email:
+        raise AuthorizationError(
+            "The verified Cognito email does not match the linked Supabase Auth account."
+        )
+
+    if not profile.is_active:
+        raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
+
+    mapping_repo = CognitoIdentityRepository(client)
+    mapping_repo.create_mapping(str(claims["sub"]), str(profile.id))
+    return SuccessResponse(message="Cognito identity linked to the existing profile.")

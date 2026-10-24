@@ -53,15 +53,12 @@ def upload_knowledge_document(
             ContentType=content_type,
             ServerSideEncryption="AES256",
         )
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=settings.S3_PRESIGNED_URL_TTL_SECONDS,
-        )
+        # Signed URLs are minted on demand by the authenticated download endpoint.
+        # Persisting one would leave the registry with an expiring bearer credential.
         return {
             "storage_provider": "s3",
             "file_key": key,
-            "file_url": url,
+            "file_url": None,
         }
 
     if provider == "supabase":
@@ -94,12 +91,15 @@ def delete_knowledge_document_object(
     provider = (storage_provider or "supabase").strip().lower()
 
     if provider == "s3":
+        # This function is called by the knowledge-document route. It must never
+        # delete resume objects; those live under a separate protected prefix.
         if (
             not file_key
-            or not file_key.startswith(("knowledge/", "resumes/"))
+            or not file_key.startswith("knowledge/")
             or ".." in file_key
+            or "\\" in file_key
         ):
-            raise ValueError("Invalid S3 document object key.")
+            raise ValueError("Invalid knowledge document object key.")
         _s3_client().delete_object(Bucket=settings.AWS_S3_BUCKET, Key=file_key)
         return
 
@@ -109,7 +109,12 @@ def delete_knowledge_document_object(
         key = file_key
         if not key and file_url:
             key = file_url.split("?", 1)[0].rstrip("/").split("/")[-1]
+        # Legacy Supabase knowledge objects are stored in the resumes bucket with
+        # a knowledge_ prefix. Do not let this management endpoint delete resume
+        # blobs simply because a caller supplies a resume key or URL.
         if key:
+            if not key.startswith("knowledge_") or ".." in key or "\\" in key:
+                raise ValueError("Invalid knowledge document object key.")
             get_supabase_client().storage.from_("resumes").remove([key])
         return
 

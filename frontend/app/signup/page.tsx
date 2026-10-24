@@ -3,11 +3,12 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import CognitoSignupForm from "@/components/auth/CognitoSignupForm";
 import { 
   User, Mail, Lock, Briefcase, Phone, MapPin, 
-  FileText, Shield, ArrowRight, ArrowLeft, Loader2, Sparkles, CheckCircle
+  Shield, ArrowRight, ArrowLeft, Loader2, Sparkles, CheckCircle
 } from "lucide-react";
-export default function SignupPage() {
+function LegacySignupPage() {
   const router = useRouter();
   const supabase = createClient();
   const [step, setStep] = useState(1);
@@ -19,10 +20,8 @@ export default function SignupPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "Employee", 
     department: "",
     jobTitle: "",
-    employeeId: "",
     phone: "",
     location: "",
     bio: "",
@@ -42,9 +41,6 @@ export default function SignupPage() {
     } else if (step === 2) {
       if (!formData.department.trim()) return "Department is required.";
       if (!formData.jobTitle.trim()) return "Job Title is required.";
-      if (formData.role === "Management" && !formData.employeeId.trim()) {
-        return "Employee ID is mandatory for Management accounts.";
-      }
     }
     return null;
   };
@@ -77,8 +73,7 @@ export default function SignupPage() {
         options: {
           data: {
             full_name: formData.fullName,
-            role: formData.role,
-            employee_id: formData.employeeId || null,
+            role: "EMPLOYEE",
             department: formData.department,
             job_title: formData.jobTitle,
             phone: formData.phone,
@@ -230,19 +225,20 @@ export default function SignupPage() {
             {step === 2 && (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Organizational Role</label>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Access Level</label>
                   <div className="relative">
                     <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                     <select
-                      name="role"
-                      value={formData.role}
-                      onChange={handleChange}
-                      className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all appearance-none cursor-pointer shadow-sm"
+                      value="Employee"
+                      disabled
+                      aria-label="Access level"
+                      className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm opacity-90 shadow-sm"
                     >
-                      <option value="Employee">Employee</option>
-                      <option value="Management">Management</option>
+                      <option value="Employee">Employee (self-service)</option>
+                      <option value="Management" disabled>Management (assigned by administrator)</option>
                     </select>
                   </div>
+                  <p className="text-[11px] text-muted-foreground">Management access must be assigned by a trusted administrator.</p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -276,22 +272,9 @@ export default function SignupPage() {
                     </div>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                    Employee ID {formData.role === "Management" ? "(Mandatory)" : "(Optional)"}
-                  </label>
-                  <div className="relative">
-                    <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-                    <input 
-                      type="text" 
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleChange}
-                      required={formData.role === "Management"}
-                      className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-secondary/50 text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all placeholder:text-muted-foreground shadow-sm"
-                      placeholder={formData.role === "Management" ? "MGR-1004" : "EMP-4921"}
-                    />
-                  </div>
+                <div className="rounded-lg border border-border bg-secondary/40 p-3">
+                  <p className="text-xs font-bold text-foreground">Employee ID</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Assigned automatically after account creation.</p>
                 </div>
               </div>
             )}
@@ -404,4 +387,12 @@ export default function SignupPage() {
       </div>
     </div>
   );
+}
+
+
+export default function SignupPage() {
+  if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+    return <CognitoSignupForm />;
+  }
+  return <LegacySignupPage />;
 }

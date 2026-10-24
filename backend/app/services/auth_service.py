@@ -75,7 +75,6 @@ class AuthService:
         user_metadata = {
             "full_name": data.full_name,
             "role": data.role.value,
-            "employee_id": data.employee_id,
             "department": data.department,
             "job_title": data.job_title,
             "phone": data.phone,
@@ -110,7 +109,6 @@ class AuthService:
             "email": data.email.lower().strip(),
             "full_name": data.full_name,
             "role": data.role.value,
-            "employee_id": data.employee_id,
             "department": data.department,
             "job_title": data.job_title,
             "phone": data.phone,

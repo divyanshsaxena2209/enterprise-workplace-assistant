@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Bell, User, Settings, LogOut, ChevronDown, Loader2, FileText, Home, Sparkles } from "lucide-react";
 import { useUser } from "@/lib/context/UserContext";
 import { createClient } from "@/lib/supabase/client";
+import { clearCognitoAccessTokenCache } from "@/lib/auth/cognito";
 export default function TopNavbar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function TopNavbar() {
   }, [profile?.avatar_url, profile?.full_name]);
 
   const fallbackAvatarUrl = profile
-    ? `https://api.dicebear.com/10.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name || profile.email || "user")}`
+    ? `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(profile.full_name || profile.email || "user")}`
     : "";
   const avatarSrc = !profile
     ? null
@@ -38,6 +39,11 @@ export default function TopNavbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
   const handleLogout = async () => {
+    if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+      clearCognitoAccessTokenCache();
+      window.location.href = "/api/auth/cognito/logout";
+      return;
+    }
     try {
       await Promise.race([
         supabase.auth.signOut(),
