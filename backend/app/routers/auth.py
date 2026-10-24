@@ -16,6 +16,7 @@ from app.core.cognito_security import decode_cognito_id_token
 from app.core.enums import UserRole
 from app.core.exceptions import AuthenticationError, AuthorizationError, ConflictError, DatabaseError, NotFoundError
 from app.repositories.cognito_identity_repository import CognitoIdentityRepository
+from app.repositories.management_access_request_repository import ManagementAccessRequestRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.db.supabase import get_supabase_client
 from app.dependencies.auth import get_current_user
@@ -281,4 +282,21 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
 
     mapping_repo = CognitoIdentityRepository(client)
     mapping_repo.create_mapping(str(claims["sub"]), str(profile.id))
+
+    # Public signup can request Management access, but it always provisions an
+    # EMPLOYEE first. Elevation is performed only by the Management-only review
+    # endpoint, backed by an atomic database function.
+    if (
+        body.profile is not None
+        and body.profile.requested_access_level == "MANAGEMENT"
+        and profile.role != UserRole.MANAGEMENT
+    ):
+        ManagementAccessRequestRepository(client).submit(str(profile.id))
+        return SuccessResponse(
+            message=(
+                "Cognito account linked. Employee access is active; your Management "
+                "access request is pending administrator approval."
+            )
+        )
+
     return SuccessResponse(message="Cognito identity linked to the existing profile.")
