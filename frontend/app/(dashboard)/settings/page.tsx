@@ -35,6 +35,7 @@ export default function SettingsPage() {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -64,6 +65,26 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadRequests();
   }, [loadRequests]);
+
+  async function submitManagementRequest() {
+    setRequestSubmitting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await fetchWithAuth("/profile/management-access-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setOwnRequest(result.request || null);
+      setNotice(result.message || "Management access request submitted for review.");
+      await loadRequests();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to submit the access request.");
+    } finally {
+      setRequestSubmitting(false);
+    }
+  }
 
   async function reviewRequest(profileId: string, decision: "APPROVE" | "REJECT") {
     setReviewingId(profileId);
@@ -132,16 +153,38 @@ export default function SettingsPage() {
                       ? "Your account keeps Employee permissions until an existing Management user approves the request."
                       : ownRequest.status === "APPROVED"
                         ? "Your Management permissions have been approved and are now controlled by your database profile."
-                        : "Your request was rejected. You may submit a new request from the signup/access request flow."}
+                        : "Your request was rejected. You can submit a new request if your responsibilities have changed."}
                   </p>
                   {ownRequest.reviewer_note && (
                     <p className="mt-2 text-sm text-muted-foreground">Reviewer note: {ownRequest.reviewer_note}</p>
                   )}
+                  {profile.role === "EMPLOYEE" && ownRequest.status === "REJECTED" && (
+                    <button
+                      type="button"
+                      disabled={requestSubmitting}
+                      onClick={() => void submitManagementRequest()}
+                      className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50"
+                    >
+                      {requestSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Submit a new request
+                    </button>
+                  )}
                 </div>
-              ) : profile.role !== "MANAGEMENT" ? (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  No Management access request is recorded for this account.
-                </p>
+              ) : profile.role === "EMPLOYEE" ? (
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    No Management access request is recorded for this account.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={requestSubmitting}
+                    onClick={() => void submitManagementRequest()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50"
+                  >
+                    {requestSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Request Management access
+                  </button>
+                </div>
               ) : null}
             </div>
           </div>
