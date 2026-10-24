@@ -3,7 +3,7 @@ Resume Router
 Handles resume uploads, parsing, and initial candidate creation.
 """
 
-import uuid
+import logging
 from fastapi import APIRouter, Depends, UploadFile, File, status
 
 from app.db.supabase import get_supabase_client
@@ -19,6 +19,8 @@ router = APIRouter(
     prefix="/resume",
     tags=["Resume Screening"],
 )
+
+logger = logging.getLogger(__name__)
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  
 
@@ -110,9 +112,33 @@ def upload_resume(
         "parsed_data": parsed_data.model_dump(),
     }
     
-    candidate_id, resume_id = repo.create_candidate_with_resume(
-        candidate_data=candidate_data,
-        resume_data=resume_data
-    )
+    try:
+        candidate_id, resume_id = repo.create_candidate_with_resume(
+            candidate_data=candidate_data,
+            resume_data=resume_data
+        )
+    except Exception as exc:
+        # The object has already been uploaded. Compensate if the database write
+        # fails so an S3/Supabase object is not left orphaned and billed forever.
+        try:
+            from app.services.object_storage import delete_resume_object
+
+            delete_resume_object(
+                stored.get("storage_provider"),
+                stored.get("file_key"),
+                stored.get("file_url"),
+            )
+        except Exception as cleanup_exc:
+            logger.warning(
+                "Resume object cleanup failed (exception_type=%s).",
+                type(cleanup_exc).__name__,
+            )
+        logger.error(
+            "Resume metadata persistence failed (exception_type=%s).",
+            type(exc).__name__,
+        )
+        raise DatabaseError(
+            "Failed to save candidate and resume records after upload; object cleanup was attempted."
+        ) from exc
 
     return ResumeUploadResponse(candidate_id=candidate_id, resume_id=resume_id)
