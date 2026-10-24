@@ -6,9 +6,14 @@ Errors are handled centrally by the error middleware.
 """
 
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel, Field
+
+from app.core.enums import UserRole
+from app.core.exceptions import AuthorizationError, NotFoundError
+from app.dependencies.auth import get_current_user, require_management
+from app.repositories.profile_repository import ProfileRepository
 
 from app.db.supabase import get_supabase_client
-from app.dependencies.auth import get_current_user
 from app.schemas.common import ErrorResponse
 from app.schemas.profile import ProfileResponse, ProfileUpdateRequest
 from app.services.profile_service import ProfileService
@@ -76,14 +81,6 @@ def get_profile(
 # Employee IDs are managed by administrators, not by self-service profile edits.
 # The database trigger remains responsible for generated EMP-/MGR- IDs; this route
 # supports the legacy HR-assigned SS-12345 format only.
-import re
-from pydantic import BaseModel, Field
-from app.core.enums import UserRole
-from app.core.exceptions import AuthorizationError, NotFoundError
-from app.repositories.profile_repository import ProfileRepository
-from app.dependencies.auth import require_management
-
-
 class EmployeeIdUpdateRequest(BaseModel):
     employee_id: str = Field(
         pattern=r"^SS-[0-9]{5}$",
