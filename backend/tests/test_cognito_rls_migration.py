@@ -17,6 +17,7 @@ KNOWLEDGE_DOCUMENTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "2026102
 KNOWLEDGE_DOCUMENTS_INDEX_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024060000_knowledge_document_registry_fk_index.sql"
 KNOWLEDGE_DOCUMENTS_SCOPE_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024070000_knowledge_document_department_scope.sql"
 KNOWLEDGE_DOCUMENTS_SCOPE_DEFAULT_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261024080000_knowledge_document_scope_fail_closed_default.sql"
+MANAGEMENT_ACCESS_REQUESTS_MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20261025000000_management_access_requests.sql"
 PROFILE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 COGNITO_SUB = "11111111-1111-4111-8111-111111111111"
 UNMAPPED_SUB = "22222222-2222-4222-8222-222222222222"
@@ -181,6 +182,81 @@ def test_cognito_migration_maps_rls_identity_without_breaking_supabase_auth():
         ).fetchone()
         assert scope_column is not None
         assert "REVIEW_REQUIRED" in (scope_column[0] or "")
+
+        # Management permission is requested explicitly but never self-granted.
+        management_access_migration = MANAGEMENT_ACCESS_REQUESTS_MIGRATION.read_text(encoding="utf-8")
+        conn.execute(management_access_migration, prepare=False)
+        management_request_rls = conn.execute(
+            "select relrowsecurity from pg_class where oid = 'public.management_access_requests'::regclass"
+        ).fetchone()
+        assert management_request_rls == (True,)
+        assert conn.execute(
+            """
+            select
+              has_table_privilege('service_role', 'public.management_access_requests', 'SELECT'),
+              has_table_privilege('service_role', 'public.management_access_requests', 'INSERT'),
+              has_table_privilege('service_role', 'public.management_access_requests', 'UPDATE'),
+              has_table_privilege('service_role', 'public.management_access_requests', 'DELETE'),
+              has_table_privilege('anon', 'public.management_access_requests', 'SELECT'),
+              has_table_privilege('authenticated', 'public.management_access_requests', 'SELECT')
+            """
+        ).fetchone() == (True, True, True, False, False, False)
+        assert conn.execute(
+            """
+            select
+              has_function_privilege('service_role', 'public.review_management_access_request(uuid,text,uuid,text)', 'EXECUTE'),
+              has_function_privilege('anon', 'public.review_management_access_request(uuid,text,uuid,text)', 'EXECUTE'),
+              has_function_privilege('authenticated', 'public.review_management_access_request(uuid,text,uuid,text)', 'EXECUTE')
+            """
+        ).fetchone() == (True, False, False)
+
+        manager_id = "88888888-8888-4888-8888-888888888888"
+        target_id = "99999999-9999-4999-8999-999999999999"
+        conn.execute(
+            "insert into public.profiles (id, email, full_name, role, is_active, is_management_verified) values (%s, %s, %s, 'MANAGEMENT', true, true)",
+            (manager_id, "manager@example.test", "Trusted Manager"),
+        )
+        conn.execute(
+            "insert into public.profiles (id, email, full_name, role, is_active, is_management_verified) values (%s, %s, %s, 'EMPLOYEE', true, false)",
+            (target_id, "requester@example.test", "Requesting Employee"),
+        )
+        conn.execute(
+            "insert into public.management_access_requests (profile_id) values (%s)",
+            (target_id,),
+        )
+        # The database independently rejects a review attributed to a non-manager.
+        with pytest.raises(psycopg.Error):
+            conn.execute(
+                "select public.review_management_access_request(%s, 'APPROVE', %s, null)",
+                (target_id, PROFILE_ID),
+            )
+        # Rejecting a request leaves the application role unchanged.
+        assert conn.execute(
+            "select public.review_management_access_request(%s, 'REJECT', %s, %s)",
+            (target_id, manager_id, "Access needs confirmation"),
+        ).fetchone() == ("REJECTED",)
+        assert conn.execute(
+            "select role, is_management_verified from public.profiles where id = %s",
+            (target_id,),
+        ).fetchone() == ("EMPLOYEE", False)
+        # Re-submitted requests may be approved later. Promotion and request
+        # status update occur atomically in the database function.
+        conn.execute(
+            "update public.management_access_requests set status = 'PENDING', reviewer_id = null, reviewed_at = null where profile_id = %s",
+            (target_id,),
+        )
+        assert conn.execute(
+            "select public.review_management_access_request(%s, 'APPROVE', %s, %s)",
+            (target_id, manager_id, "Verified by an administrator"),
+        ).fetchone() == ("APPROVED",)
+        assert conn.execute(
+            "select role, is_management_verified from public.profiles where id = %s",
+            (target_id,),
+        ).fetchone() == ("MANAGEMENT", True)
+        assert conn.execute(
+            "select status, reviewer_id, reviewer_note from public.management_access_requests where profile_id = %s",
+            (target_id,),
+        ).fetchone() == ("APPROVED", manager_id, "Verified by an administrator")
 
         policy = conn.execute(
             "select qual, with_check from pg_policies where schemaname='public' and policyname='test_owned_rows'"
