@@ -815,3 +815,11 @@ The repository workflow `.github/workflows/build-cognito-staging-ecr.yml` runs o
 - **ECR is the only newly changed AWS resource.** No backend Lambda, CloudFormation stack, Lambda Function URL, or S3 bucket was created or updated. Production Lambda/Vercel/Supabase remain untouched.
 - Next blocked step is deploying the separate staging stack `ewa-cognito-staging-api` from `infra/aws/cognito-staging-backend.yml`, then setting Cognito callback/sign-out URLs and branch-specific Vercel Preview settings using the stack outputs. The CloudFormation `SupabaseServiceRoleKey` parameter must contain the *staging* project service-role secret only (it is `NoEcho`; never paste the secret into chat or GitHub files). This template creates an internet-reachable Lambda Function URL and can incur Lambda/log/ECR charges, so check AWS Billing/credit eligibility before creating it.
 - This session's available connected tooling did not provide AWS CloudFormation/Lambda control, and the existing GitHub workflow role is only verified for ECR push. Therefore the stack was not deployed and no AWS permissions were guessed or broadened. Resume from the manual deployment gate rather than repeating the ECR build.
+
+
+## Continuation update — 2026-10-24: outbound TLS and staging cost guard
+
+- Security review found `backend/app/main.py` globally monkey-patched both `httpx.Client` and `httpx.AsyncClient` to use `verify=False`, disabling TLS certificate verification for outbound requests application-wide. Removed this override. HTTPX now uses its normal certificate verification defaults. Follow-up CI run was started for this backend change.
+- Added `ReservedConcurrentExecutions: 2` to `StagingApi` in `infra/aws/cognito-staging-backend.yml`. This is a concurrency guard against accidental or abusive simultaneous compute; it is **not** a cap on total requests and does not replace application authentication/authorization.
+- Updated `docs/COGNITO_STAGING_DEPLOYMENT.md` to explain the concurrency guard and its limits. The CloudFormation validation workflow is expected to validate the new property along with the full template.
+- No live Lambda or CloudFormation stack was created/changed in response to these edits. Production remains untouched; staging deploy still requires a direct CloudFormation action with the staging Supabase service-role secret.
