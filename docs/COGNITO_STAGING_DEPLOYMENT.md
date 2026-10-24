@@ -17,7 +17,7 @@ Lambda invocations, compute, ECR storage, CloudWatch logs, and data transfer are
 3. Upload `infra/aws/cognito-staging-backend.yml`.
 4. Use stack name `ewa-cognito-staging-api`.
 5. Keep the default image URI unless ECR no longer has this tag:
-   `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-ba091b53ed2d3f6b71e4b54128c894b55da3a35b`
+   `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-5f67a3ec61e09b8dab1181f8b134a1894bb4b4ae`
 6. For `SupabaseServiceRoleKey`, paste the **service-role secret for the isolated `workplace-assistant-staging` Supabase project only**. Retrieve it in that project's API keys settings. The parameter uses CloudFormation `NoEcho`; never paste the value in GitHub, a chat, or a screenshot. Never use the Production service-role key.
 7. `SupabaseJwtSecret` is optional for this Cognito-only smoke test; leaving it blank means legacy Supabase HS256 bearer tokens will fail closed on this staging backend. Set it only to the staging project's JWT secret if you intend to exercise legacy Supabase JWTs as well.
 8. Review the proposed resources and charges. Do not confirm the stack if the cost gate is not acceptable.
