@@ -14,7 +14,7 @@ const LOGIN_ERRORS: Record<string, string> = {
   cognito_account_link_failed: "We could not connect this Cognito account to a profile. Please try again or contact support.",
   cognito_link_token_rejected: "The staging API rejected the Cognito identity token. Restart sign-in; if this repeats, the staging Cognito pool/client or token-verification configuration needs correction.",
   cognito_link_identity_mismatch: "The signed-in Cognito identity could not be safely matched to its application profile. Use the account email that belongs to the profile, and contact support if it continues.",
-  cognito_link_conflict: "This Cognito identity or application profile is already linked to a different account. Do not create another account; the existing mapping needs review.",
+  cognito_link_conflict: "The staging API could not create or link this employee profile. This may be an existing-account conflict or a provisioning problem. Do not create another account; the staging backend needs review.",
   cognito_link_invalid_profile: "The employee profile details were rejected by the staging API. Check the required name, department, and job title fields, then try again.",
   cognito_link_database_error: "The staging API could not save the employee profile. The staging database/API configuration needs repair; retrying signup is unlikely to help.",
   cognito_link_service_unavailable: "The staging API could not reach a required service. The staging backend needs attention before sign-in can complete.",
