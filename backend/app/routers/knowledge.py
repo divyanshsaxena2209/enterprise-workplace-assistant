@@ -127,43 +127,62 @@ def delete_session(session_id: str, current_user: ProfileResponse = Depends(requ
 
 @router.post("/query")
 def query_documents(
-    request: Request, 
+    request: Request,
     query: QueryRequest,
-    current_user: ProfileResponse = Depends(require_authenticated_user)
+    current_user: ProfileResponse = Depends(require_authenticated_user),
 ):
-    print(f"[DEBUG] /query endpoint hit for user {current_user.id} with question: {query.question}")
     if not query.question or not query.question.strip():
-        print("[DEBUG] /query aborted: Question is empty")
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
-        
+
     try:
         chat_history = []
         if query.session_id:
-            print(f"[DEBUG] Adding user message to DB for session {query.session_id}")
-            knowledge_chat_service.add_message(query.session_id, "user", query.question)
-            print(f"[DEBUG] Fetching session messages for chat history")
-            history_rows = knowledge_chat_service.get_session_messages(query.session_id, str(current_user.id))
-            chat_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
-            print(f"[DEBUG] Chat history loaded. Length: {len(chat_history)}")
+            # Verify ownership BEFORE writing anything to the session. The backend
+            # uses a service-role client, so RLS is not a substitute for this check.
+            try:
+                history_rows = knowledge_chat_service.get_session_messages(
+                    query.session_id, str(current_user.id)
+                )
+            except Exception as exc:
+                message = str(exc).lower()
+                if "not found" in message or "unauthorized" in message:
+                    raise HTTPException(
+                        status_code=404, detail="Chat session not found."
+                    ) from exc
+                raise HTTPException(
+                    status_code=500, detail="Unable to load chat history."
+                ) from exc
 
-        print("[DEBUG] Calling retrieve_and_answer...")
-        result = retrieve_and_answer(query.question, k=15, chat_history=chat_history)
-        print("[DEBUG] retrieve_and_answer completed successfully")
-        
+            # Preserve only prior turns in history; the new question is passed as
+            # the current prompt separately to avoid duplicating it in the context.
+            chat_history = [
+                {"role": row["role"], "content": row["content"]}
+                for row in history_rows
+            ]
+            knowledge_chat_service.add_message(
+                query.session_id, "user", query.question
+            )
+
+        result = retrieve_and_answer(
+            query.question, k=15, chat_history=chat_history
+        )
+
         if query.session_id:
-            print("[DEBUG] Adding assistant message to DB")
             answer = result.get("answer", "") if isinstance(result, dict) else str(result)
             sources = result.get("sources", []) if isinstance(result, dict) else []
-            knowledge_chat_service.add_message(query.session_id, "assistant", answer, sources)
-            print("[DEBUG] Assistant message saved successfully")
-            
-        print("[DEBUG] /query request fully completed")
+            knowledge_chat_service.add_message(
+                query.session_id, "assistant", answer, sources
+            )
+
         return result
-    except Exception as e:
-        print(f"[ERROR] /query endpoint failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Avoid logging tokens, questions or chat contents. Keep details out of the
+        # HTTP response because downstream provider/database errors may be sensitive.
+        raise HTTPException(
+            status_code=500, detail="Unable to process the knowledge query."
+        ) from exc
 
 class DeleteDocumentRequest(BaseModel):
     filename: str
