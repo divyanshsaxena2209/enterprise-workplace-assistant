@@ -174,7 +174,9 @@ class TokenResponse(BaseModel):
 
 
 class CognitoSignupProfile(BaseModel):
-    """Non-authoritative employee profile fields collected before Cognito signup."""
+    """Non-authoritative profile fields plus an unprivileged access request."""
+    model_config = {"extra": "forbid"}
+
     full_name: str = Field(..., min_length=2, max_length=128)
     department: str = Field(..., min_length=1, max_length=100)
     job_title: str = Field(..., min_length=1, max_length=100)
