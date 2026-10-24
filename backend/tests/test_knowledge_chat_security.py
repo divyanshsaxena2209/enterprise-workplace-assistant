@@ -45,7 +45,7 @@ def test_query_checks_session_ownership_before_writing_any_messages(
 
     if not owns_session:
         with pytest.raises(HTTPException) as error:
-            knowledge.query_documents(None, query, current_user)
+            knowledge.query_documents(query, current_user)
 
         assert error.value.status_code == 404
         assert events == [
@@ -53,7 +53,7 @@ def test_query_checks_session_ownership_before_writing_any_messages(
         ]
         return
 
-    result = knowledge.query_documents(None, query, current_user)
+    result = knowledge.query_documents(query, current_user)
 
     assert result == {"answer": "safe answer", "sources": []}
     assert [event[0] for event in events] == [
