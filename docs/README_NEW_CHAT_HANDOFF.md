@@ -700,3 +700,64 @@ For now, existing users should continue signing in through the current Productio
 - Follow-up commit `3e294c8314f06c5cb2d01be9caaa8b9fe8a79dbb` reorders the existing profile PATCH decorator and the employee-ID route so each decorator is immediately followed by its intended function (the previous attempt had caused a syntax error caught at compile time).
 - CI run for `3e294c...`, run ID `40108723010`, was still **in progress** when last checked: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40108723010. Re-check before treating the latest source head as validated.
 - Current PR #3 stays open and draft. Passing automated checks do not prove the running AWS staging Lambda, Cognito callback/provisioning, live database mappings, Preview UI or role boundaries are end-to-end tested.
+
+
+
+---
+
+## Continuation update — 24 October 2026, staging auth/access fixes
+
+This section supersedes older status notes above where they conflict. Confirm the current branch/PR/CI state before deploying; do not infer that passing source CI means the AWS backend is updated.
+
+### Verified branch and CI
+
+- Branch: `cognito-staging-integration`
+- Verified source head for this update: `024077c6aef11f1e498b065c2011f8206fb50c9d` — commit message `Cover knowledge-only object deletion boundaries`.
+- PR #3 remains **open and draft**, base `aws-service-replacements`: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3
+- Successful CI run **#125**: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40109613701
+- That run passed the pre-token handler test, frontend production build, backend/test compilation, CloudFormation lint, and the isolated service replacement tests, including the employee-ID route, generated-ID/public role spoof prevention and knowledge chat session ownership regression.
+- A Vercel status reported the Preview deployment complete for this head: https://vercel.com/divyansh-50b7/enterprise-workplace-assistant/3Z6vMcZrTvR5DvBCw4AbpW5uUyyY. Do not declare visual end-to-end verified: the Vercel tool connection returned 403 when attempting to fetch the protected preview. Current frontend branch alias last known from previous checks: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
+
+### Staging database changes applied (project `wxulxcsdpwsyhtpkbazi` only)
+
+- `20261024000000_grant_service_role_profile_privileges.sql`: service_role SELECT/INSERT/UPDATE only on `public.profiles`; no DELETE. Browser roles are not granted profile SELECT.
+- `20261024010000_grant_service_role_jobs_select.sql`: missing job read grant was fixed for the trusted backend service role; browser roles still have no direct job SELECT.
+- `20261024020000_auto_assign_employee_ids.sql`: stable generated `EMP-######` / `MGR-######` IDs and blank-ID backfill; pre-existing nonblank IDs and profile roles stay unchanged.
+- `20261024030000_harden_public_signup_roles.sql`: public metadata cannot self-select Management or spoof employee IDs/management verification. Management must be assigned through trusted Auth admin metadata.
+- `20261024040000_grant_backend_service_role_table_privileges.sql`: least-privilege SQL grants for backend repositories using applications, candidates, resumes, candidate scoring, status history and recruiter notes. Browser-role direct SELECT remains denied on those backend-only tables.
+- Read-only staging verification showed one profile: `EMPLOYEE`, ID `EMP-000001`, active and not Management-verified. No additional profile was left by the temporary role-spoof transaction test.
+- A live transaction probe confirmed that public user metadata requesting `MANAGEMENT`, `SPOOF-999` and `is_management_verified=true` was reduced to Employee with a generated EMP ID and verification false; trusted `raw_app_meta_data` Management assignment resulted in a generated MGR ID and verification true. Probe records were deleted after verification.
+- No Production Supabase rows, Production schema, Production Lambda, Production Cognito or the protected `busted` project was altered.
+
+### Source fixes included in the tested branch
+
+- Navbar now uses the same Dicebear Adventurer URL version as the profile page, so the cartoon avatar should render instead of falling back to the initial when the avatar URL works.
+- Public signup UIs show Employee self-service and clearly mark Management as administrator-assigned; they do not offer public self-service Management selection. Legacy API signup no longer accepts or copies a client-supplied employee ID.
+- Profile reads and edits use authenticated backend APIs, not browser-side direct access to protected `profiles` rows.
+- Management dashboard counts and both management/employee onboarding views use protected backend APIs. The onboarding/editor mutations are management-only, and an employee can read only their own onboarding progress.
+- Knowledge chat now verifies a session belongs to the current profile before writing a question into it; error responses no longer echo raw downstream errors/chat text. Knowledge-document deletion is confined to knowledge object prefixes and not resume object keys.
+- Employee hired/onboarding state is determined from actual hired application status rather than merely the presence of the now-automatically-generated employee ID.
+
+### Existing profiles and login: do not mix environments
+
+- Production profiles remain in the Production Supabase project `ybkfkdcdhrnjmjvavyhb`; they were not copied into staging and were not modified.
+- Existing Production users should continue using the current Production application and its configured authentication until a separately reviewed production cutover plan is approved.
+- The Cognito identity-link route can link a verified Cognito subject only to a matching profile/Auth identity **within the same Supabase project**. It does not link to a Production profile from the staging project.
+- Do not sign up an existing Production user in the staging preview expecting the existing Production profile to appear. If the matching profile isn't in staging, the flow can create a separate staging test profile. A later Production migration must preserve existing profile UUIDs, roles, data and verified email checks.
+- Public signup must not be used to create or elevate a Management identity. Use an explicitly trusted admin provisioning path for Management accounts.
+
+### Final deployment gate — requires user action
+
+The code CI and staging SQL migrations are verified, but the backend changes are **not end-to-end complete until the latest backend image is built into ECR, the existing Cognito staging Lambda is updated to that exact image tag, and login/routes are verified in a browser**.
+
+The repository workflow `.github/workflows/build-cognito-staging-ecr.yml` runs only on manual dispatch. The current branch head at this snapshot is `024077c6aef11f1e498b065c2011f8206fb50c9d`; build the image from the current branch head, not the older image tag documented earlier in this file. The workflow writes a unique tag of the form `cognito-staging-<git-sha>` to:
+
+`745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-<git-sha>`
+
+1. Open [GitHub Actions — Cognito staging backend image build](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml).
+2. Choose **Run workflow** and select `cognito-staging-integration`. This is the existing workflow, not a new AWS resource; pushing an image adds ECR storage usage, so confirm the expected small but nonzero storage cost is acceptable before running it.
+3. After the run succeeds, note its exact `cognito-staging-<sha>` image tag and update only the **existing Cognito staging Lambda** to the matching full image URI. Do not update `enterprise-workplace-assistant-api` (Production). Check the currently deployed CloudFormation stack / Lambda name before saving; do not create a new Lambda/stack or resource.
+4. Then run the staging preview flow starting from the actual Vercel branch preview `/signup` route (so the OAuth state/nonce/PKCE cookies are created). Test Cognito signup/login/callback, `EMPLOYEE` role and generated ID, top-right cartoon avatar, profile edit, published-only Jobs, Knowledge Base question access, onboarding visibility, refresh/logout, and Management-only denial boundaries. Use a trusted Management test account only for manager-side routes; never try role elevation through public signup.
+5. Check CloudWatch for any sanitized Lambda startup/runtime errors and verify the backend image/deployment version matches the exact SHA used by ECR.
+
+**Do not merge PR #3, change Production, or change `busted` until these manual staging E2E checks pass.** If the Vercel connection remains 403, inspect the preview using the user's own logged-in browser. Do not share passwords, authorization codes, bearer tokens or secrets in chat.
