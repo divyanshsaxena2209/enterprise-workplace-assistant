@@ -1,12 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
+import { getMyApplications } from "@/lib/api/applications";
 import Link from "next/link";
 import { ArrowRight, CheckCircle, PlayCircle, Loader2, BookOpen, FileText, Settings, User } from "lucide-react";
 export default function EmployeeDashboard() {
   const { profile, loading: profileLoading } = useUser();
-  const supabase = createClient();
   const [progressData, setProgressData] = useState<any[]>([]);
   const [stats, setStats] = useState({ applicationsCount: 0 });
   const [loading, setLoading] = useState(true);
@@ -14,29 +14,24 @@ export default function EmployeeDashboard() {
     if (!profile) return;
     setLoading(true);
     try {
-      const [onboardingRes, applicationsRes] = await Promise.all([
-        supabase
-          .from("employee_onboarding_progress")
-          .select(`id, status, onboarding_steps ( id, step_name, step_order )`)
-          .eq("employee_id", profile.id),
-        supabase
-          .from("applications")
-          .select("id", { count: "exact", head: true })
-          .eq("candidate_id", profile.id) 
+      const [onboardingData, applicationsData] = await Promise.all([
+        fetchWithAuth("/onboarding/my-progress"),
+        getMyApplications(1, 100, true),
       ]);
-      if (onboardingRes.data) {
-        const sortedData = onboardingRes.data.sort((a: any, b: any) => (a.onboarding_steps?.step_order || 0) - (b.onboarding_steps?.step_order || 0));
-        setProgressData(sortedData);
-      }
+      const rows = Array.isArray(onboardingData) ? onboardingData : [];
+      rows.sort((a: any, b: any) => (a.onboarding_steps?.step_order || 0) - (b.onboarding_steps?.step_order || 0));
+      setProgressData(rows);
       setStats({
-        applicationsCount: applicationsRes.count || 0
+        applicationsCount: Number(applicationsData?.total ?? applicationsData?.items?.length ?? 0),
       });
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load employee dashboard:", err);
+      setProgressData([]);
+      setStats({ applicationsCount: 0 });
     } finally {
       setLoading(false);
     }
-  }, [profile, supabase]);
+  }, [profile]);
   useEffect(() => {
     if (!profileLoading && profile) {
       fetchDashboardData();
