@@ -25,7 +25,7 @@ class ManagementAccessRequestRepository:
         try:
             response = (
                 self._db.table(_TABLE)
-                .select("profile_id,requested_role,status,request_note,reviewer_note,requested_at,reviewed_at,updated_at")
+                .select("profile_id,requested_role,status,request_note,reviewer_id,reviewer_note,requested_at,reviewed_at,updated_at")
                 .eq("profile_id", profile_id)
                 .limit(1)
                 .execute()
@@ -97,6 +97,54 @@ class ManagementAccessRequestRepository:
                 return latest
             raise DatabaseError("Could not submit the Management access request.") from exc
         raise DatabaseError("Management access request insert returned no record.")
+
+    def mark_allowlisted_approved(self, profile_id: str) -> dict[str, Any]:
+        """Record Management access granted by trusted server-side allowlist configuration."""
+        now = datetime.now(timezone.utc).isoformat()
+        existing = self.get_for_profile(profile_id)
+        if existing and existing.get("status") == "APPROVED":
+            return existing
+
+        payload = {
+            "requested_role": "MANAGEMENT",
+            "status": "APPROVED",
+            "reviewer_id": None,
+            "reviewer_note": "Granted through the configured trusted Management email allowlist.",
+            "reviewed_at": now,
+            "updated_at": now,
+        }
+        try:
+            if existing:
+                response = (
+                    self._db.table(_TABLE)
+                    .update(payload)
+                    .eq("profile_id", profile_id)
+                    .execute()
+                )
+                if response.data:
+                    return response.data[0]
+                latest = self.get_for_profile(profile_id)
+                if latest:
+                    return latest
+                raise ConflictError("The Management access record changed concurrently.")
+
+            payload["profile_id"] = profile_id
+            payload["request_note"] = None
+            payload["requested_at"] = now
+            response = self._db.table(_TABLE).insert(payload).execute()
+            if response.data:
+                return response.data[0]
+        except ConflictError:
+            raise
+        except Exception as exc:
+            latest = self.get_for_profile(profile_id)
+            if latest and latest.get("status") == "APPROVED":
+                return latest
+            raise DatabaseError("Could not record allowlisted Management access.") from exc
+        latest = self.get_for_profile(profile_id)
+        if latest:
+            return latest
+        raise DatabaseError("Allowlisted Management access record returned no data.")
 
     def review(
         self,

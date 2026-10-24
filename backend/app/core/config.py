@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     COGNITO_REGION: str = "ap-south-1"
     COGNITO_USER_POOL_ID: str = ""
     COGNITO_APP_CLIENT_ID: str = ""
+    # Comma-separated, verified emails explicitly trusted for immediate Management access.
+    COGNITO_MANAGEMENT_EMAIL_ALLOWLIST: str = ""
 
     # Object storage provider. Keep "supabase" until the private S3 bucket and IAM
     # permissions have been created and the S3 upload flow has been verified.
@@ -81,6 +83,15 @@ class Settings(BaseSettings):
     
     
     
+    @property
+    def cognito_management_email_allowlist(self) -> set[str]:
+        """Normalized allowlist supplied only by trusted server-side configuration."""
+        return {
+            email.strip().lower()
+            for email in self.COGNITO_MANAGEMENT_EMAIL_ALLOWLIST.split(",")
+            if email.strip()
+        }
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"

@@ -52,6 +52,7 @@ def test_shadow_user_creation_failure_is_not_mislabeled_as_conflict(monkeypatch)
 
 def test_management_access_choice_creates_request_without_elevating_profile(monkeypatch):
     from app.core.enums import UserRole
+    monkeypatch.setattr(auth.settings, "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST", "")
 
     employee_profile = SimpleNamespace(
         id="employee-profile-id",
@@ -124,6 +125,7 @@ def test_management_access_choice_creates_request_without_elevating_profile(monk
 
 def test_employee_choice_does_not_create_management_request(monkeypatch):
     from app.core.enums import UserRole
+    monkeypatch.setattr(auth.settings, "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST", "")
 
     employee_profile = SimpleNamespace(
         id="employee-profile-id",
@@ -187,3 +189,151 @@ def test_employee_choice_does_not_create_management_request(monkeypatch):
 
     assert result.message == "Cognito identity linked to the existing profile."
     assert request_calls == []
+
+
+
+def test_allowlisted_management_signup_is_assigned_management_by_server(monkeypatch):
+    from app.core.enums import UserRole
+
+    profile = SimpleNamespace(
+        id="allowlisted-profile-id",
+        email="trusted.manager@example.test",
+        role=UserRole.EMPLOYEE,
+        is_active=True,
+        is_management_verified=False,
+    )
+    fake_client = SimpleNamespace(
+        auth=SimpleNamespace(
+            admin=SimpleNamespace(
+                get_user_by_id=lambda _profile_id: SimpleNamespace(
+                    user=SimpleNamespace(email="trusted.manager@example.test")
+                )
+            )
+        )
+    )
+    mappings = []
+    updates = []
+    audited = []
+
+    class FakeProfiles:
+        def __init__(self, _client):
+            pass
+
+        def get_by_email(self, _email):
+            return profile
+
+        def update(self, profile_id, payload):
+            updates.append((profile_id, dict(payload)))
+            profile.role = UserRole(payload["role"])
+            profile.is_management_verified = payload["is_management_verified"]
+            return profile
+
+    class FakeMappings:
+        def __init__(self, _client):
+            pass
+
+        def create_mapping(self, subject, profile_id):
+            mappings.append((subject, profile_id))
+
+    class FakeRequests:
+        def __init__(self, _client):
+            pass
+
+        def mark_allowlisted_approved(self, profile_id):
+            audited.append(profile_id)
+            return {"profile_id": profile_id, "status": "APPROVED"}
+
+        def submit(self, *_args, **_kwargs):
+            raise AssertionError("Trusted allowlisted accounts should not queue for approval.")
+
+    monkeypatch.setattr(
+        auth.settings,
+        "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST",
+        "other@example.test, trusted.manager@example.test",
+    )
+    monkeypatch.setattr(auth, "decode_cognito_id_token", lambda _token, _nonce: {
+        "email": "trusted.manager@example.test",
+        "sub": "trusted-cognito-sub",
+    })
+    monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
+    monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
+    monkeypatch.setattr(auth, "ManagementAccessRequestRepository", FakeRequests)
+
+    body = CognitoLinkRequest(
+        id_token="i" * 32,
+        nonce="n" * 24,
+        profile=CognitoSignupProfile(
+            full_name="Trusted Manager",
+            department="Engineering",
+            job_title="Engineering Manager",
+            requested_access_level="MANAGEMENT",
+        ),
+    )
+    result = auth.link_cognito_identity(body)
+
+    assert "Management access was assigned" in result.message
+    assert profile.role == UserRole.MANAGEMENT
+    assert profile.is_management_verified is True
+    assert updates == [(
+        "allowlisted-profile-id",
+        {"role": "MANAGEMENT", "is_management_verified": True},
+    )]
+    assert mappings == [("trusted-cognito-sub", "allowlisted-profile-id")]
+    assert audited == ["allowlisted-profile-id"]
+
+
+def test_existing_allowlisted_employee_can_request_and_receive_management(monkeypatch):
+    from app.core.enums import UserRole
+    from app.routers import profile as profile_router
+
+    employee = SimpleNamespace(
+        id="existing-profile-id",
+        email="trusted.manager@example.test",
+        role=UserRole.EMPLOYEE,
+    )
+    updates = []
+    audited = []
+    client = object()
+
+    class FakeProfiles:
+        def __init__(self, _client):
+            pass
+
+        def update(self, profile_id, payload):
+            updates.append((profile_id, dict(payload)))
+            employee.role = UserRole.MANAGEMENT
+            return employee
+
+    class FakeRequests:
+        def __init__(self, _client):
+            pass
+
+        def mark_allowlisted_approved(self, profile_id):
+            audited.append(profile_id)
+            return {"profile_id": profile_id, "requested_role": "MANAGEMENT", "status": "APPROVED"}
+
+        def submit(self, *_args, **_kwargs):
+            raise AssertionError("Allowlisted account should be granted access directly.")
+
+    monkeypatch.setattr(
+        profile_router.settings,
+        "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST",
+        "trusted.manager@example.test",
+    )
+    monkeypatch.setattr(profile_router, "get_supabase_client", lambda: client)
+    monkeypatch.setattr(profile_router, "ProfileRepository", FakeProfiles)
+    monkeypatch.setattr(profile_router, "ManagementAccessRequestRepository", FakeRequests)
+
+    result = profile_router.submit_management_access_request(
+        profile_router.ManagementAccessRequestSubmit(),
+        current_user=employee,
+    )
+
+    assert result["request"]["status"] == "APPROVED"
+    assert "assigned by the trusted administrator configuration" in result["message"]
+    assert updates == [(
+        "existing-profile-id",
+        {"role": "MANAGEMENT", "is_management_verified": True},
+    )]
+    assert audited == ["existing-profile-id"]

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 
 from app.core.enums import UserRole
+from app.core.config import settings
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.dependencies.auth import get_current_user, require_management
 from app.repositories.profile_repository import ProfileRepository
@@ -180,7 +181,22 @@ def submit_management_access_request(
     """Submitting a request never changes the caller's application role."""
     if current_user.role != UserRole.EMPLOYEE:
         raise AuthorizationError("Only Employee accounts may request Management access.")
-    request_record = ManagementAccessRequestRepository(get_supabase_client()).submit(
+
+    client = get_supabase_client()
+    if str(current_user.email).strip().lower() in settings.cognito_management_email_allowlist:
+        ProfileRepository(client).update(
+            str(current_user.id),
+            {"role": UserRole.MANAGEMENT.value, "is_management_verified": True},
+        )
+        request_record = ManagementAccessRequestRepository(client).mark_allowlisted_approved(
+            str(current_user.id)
+        )
+        return {
+            "request": request_record,
+            "message": "Management access was assigned by the trusted administrator configuration.",
+        }
+
+    request_record = ManagementAccessRequestRepository(client).submit(
         str(current_user.id), request_note=body.request_note
     )
     return {

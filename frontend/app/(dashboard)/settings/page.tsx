@@ -30,7 +30,7 @@ type PendingRequest = {
 };
 
 export default function SettingsPage() {
-  const { profile } = useUser();
+  const { profile, refreshProfile } = useUser();
   const [ownRequest, setOwnRequest] = useState<OwnRequest | null>(null);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +78,7 @@ export default function SettingsPage() {
       });
       setOwnRequest(result.request || null);
       setNotice(result.message || "Management access request submitted for review.");
+      await refreshProfile();
       await loadRequests();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit the access request.");

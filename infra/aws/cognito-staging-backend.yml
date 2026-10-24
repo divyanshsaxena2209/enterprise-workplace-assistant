@@ -60,6 +60,15 @@ Parameters:
     Type: String
     Default: 7npkisjjm5jj0fsqf94et8lqra
 
+  ManagementEmailAllowlist:
+    Type: String
+    Default: ""
+    MaxLength: 4000
+    Description: >-
+      Comma-separated verified email addresses explicitly approved for immediate
+      Management application access. Leave empty to require approval by an existing
+      Management user. This does not grant browser users AWS IAM credentials.
+
   PreviewOrigin:
     Type: String
     Default: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
@@ -156,6 +165,7 @@ Resources:
           COGNITO_REGION: !Ref CognitoRegion
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           COGNITO_APP_CLIENT_ID: !Ref CognitoAppClientId
+          COGNITO_MANAGEMENT_EMAIL_ALLOWLIST: !Ref ManagementEmailAllowlist
           STORAGE_PROVIDER: !Ref StorageProvider
           AWS_S3_BUCKET: !Ref DocumentBucketName
           S3_PRESIGNED_URL_TTL_SECONDS: "900"

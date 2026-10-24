@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.security import bearer_scheme
+from app.core.config import settings
 from app.core.cognito_security import decode_cognito_id_token
 from app.core.enums import UserRole
 from app.core.exceptions import AuthenticationError, AuthorizationError, ConflictError, DatabaseError, NotFoundError
@@ -283,14 +284,35 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     mapping_repo = CognitoIdentityRepository(client)
     mapping_repo.create_mapping(str(claims["sub"]), str(profile.id))
 
-    # Public signup can request Management access, but it always provisions an
-    # EMPLOYEE first. Elevation is performed only by the Management-only review
-    # endpoint, backed by an atomic database function.
-    if (
+    requested_management = (
         body.profile is not None
         and body.profile.requested_access_level == "MANAGEMENT"
-        and profile.role != UserRole.MANAGEMENT
-    ):
+    )
+    allowlisted_management_email = (
+        cognito_email in settings.cognito_management_email_allowlist
+    )
+
+    # A verified email on a trusted server-side allowlist can receive Management
+    # application permissions immediately. Browser selection alone is never enough.
+    if requested_management and allowlisted_management_email:
+        if profile.role != UserRole.MANAGEMENT or not profile.is_management_verified:
+            profile = profile_repo.update(
+                str(profile.id),
+                {"role": UserRole.MANAGEMENT.value, "is_management_verified": True},
+            )
+        try:
+            ManagementAccessRequestRepository(client).mark_allowlisted_approved(str(profile.id))
+        except Exception as exc:
+            logger.warning(
+                "Trusted Management allowlist audit update failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+        return SuccessResponse(
+            message="Cognito identity linked. Management access was assigned by trusted administrator configuration."
+        )
+
+    # Non-allowlisted Management selection submits a request, but never elevates role.
+    if requested_management and profile.role != UserRole.MANAGEMENT:
         ManagementAccessRequestRepository(client).submit(str(profile.id))
         return SuccessResponse(
             message=(
