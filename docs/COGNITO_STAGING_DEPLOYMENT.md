@@ -21,6 +21,9 @@ Lambda invocations, compute, ECR storage, CloudWatch logs, and data transfer are
 6. For `SupabaseServiceRoleKey`, paste the **service-role secret for the isolated `workplace-assistant-staging` Supabase project only**. Retrieve it in that project's API keys settings. The parameter uses CloudFormation `NoEcho`; never paste the value in GitHub, a chat, or a screenshot. Never use the Production service-role key.
 7. `SupabaseJwtSecret` is optional for this Cognito-only smoke test; leaving it blank means legacy Supabase HS256 bearer tokens will fail closed on this staging backend. Set it only to the staging project's JWT secret if you intend to exercise legacy Supabase JWTs as well.
 8. Review the proposed resources and charges. Do not confirm the stack if the cost gate is not acceptable.
+
+The `StorageProvider` parameter defaults to `supabase`; keep that default for the first Cognito smoke test. Optional S3 cutover is documented in [S3_STAGING_SETUP.md](S3_STAGING_SETUP.md). Only choose `StorageProvider=s3` after the private staging bucket exists and you can provide its exact name through `DocumentBucketName`. CloudFormation adds only object-level permissions for the `knowledge/*` and `resumes/*` prefixes; it does not create the bucket in this stack.
+
 9. After CREATE_COMPLETE, copy the stack outputs:
    - `StagingApiFunctionUrl` — staging API base URL.
    - `CognitoLinkApiUrl` — account-link endpoint.
