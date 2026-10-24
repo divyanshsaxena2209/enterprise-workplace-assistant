@@ -106,3 +106,81 @@ def test_registry_lookup_and_delete_use_record_id():
     assert deleted is True
     assert client.calls[0]["filters"] == [("id", "doc-1")]
     assert client.calls[1]["filters"] == [("id", "doc-1")]
+
+
+import asyncio
+import sys
+from io import BytesIO
+from types import ModuleType, SimpleNamespace
+
+from starlette.datastructures import Headers, UploadFile
+from app.routers import knowledge as knowledge_router
+
+
+def test_s3_upload_registers_stable_metadata_and_cleans_temporary_file(monkeypatch, tmp_path):
+    events = []
+    rag = ModuleType("app.services.knowledge_rag")
+
+    def process(path):
+        assert __import__("os").path.exists(path)
+        events.append(("index", path))
+        return {"pages": 1, "chunks": 3}
+
+    def delete_document(*_args, **_kwargs):
+        return 0
+
+    rag.process_and_store_document = process
+    rag.delete_document = delete_document
+    monkeypatch.setitem(sys.modules, "app.services.knowledge_rag", rag)
+    monkeypatch.setattr(knowledge_router, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(knowledge_router, "get_supabase_client", lambda: object())
+
+    class FakeRepository:
+        def __init__(self, _client):
+            pass
+
+        def create_document(self, values):
+            events.append(("register", values.copy()))
+            return {
+                "id": "doc-1",
+                **values,
+                "created_at": "2026-10-24T16:00:00+00:00",
+                "updated_at": "2026-10-24T16:00:00+00:00",
+            }
+
+    monkeypatch.setattr(knowledge_router, "KnowledgeDocumentRepository", FakeRepository)
+
+    from app.services import object_storage
+
+    def upload_knowledge_document(filename, file_bytes, content_type, *, prefix):
+        events.append(("store", filename, prefix))
+        return {
+            "storage_provider": "s3",
+            "file_key": "knowledge/knowledge_uuid_policy.pdf",
+            # Even if an adapter accidentally returns a temporary URL, it must not
+            # be persisted or returned as a permanent document URL.
+            "file_url": "https://example.invalid/temporary-signed-url",
+        }
+
+    monkeypatch.setattr(object_storage, "upload_knowledge_document", upload_knowledge_document)
+    file = UploadFile(
+        file=BytesIO(b"%PDF-1.7 test"),
+        filename="policy.pdf",
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+
+    result = asyncio.run(
+        knowledge_router.upload_document(file, SimpleNamespace(id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+    )
+
+    assert result["success"] is True
+    assert result["id"] == "doc-1"
+    assert result["file_url"] is None
+    assert result["file_key"] == "knowledge/knowledge_uuid_policy.pdf"
+    assert [event[0] for event in events] == ["store", "index", "register"]
+    registry_values = events[-1][1]
+    assert registry_values["storage_provider"] == "s3"
+    assert registry_values["file_url"] is None
+    assert registry_values["pages"] == 1
+    assert registry_values["chunks"] == 3
+    assert not __import__("os").path.exists(registry_values["index_source"])
