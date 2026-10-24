@@ -2,11 +2,11 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Request
 from pydantic import BaseModel
 
-from app.core.exceptions import AuthorizationError
 from app.dependencies.auth import require_authenticated_user, require_management
 from app.schemas.profile import ProfileResponse
 from app.schemas.knowledge_chat import ChatSessionCreate, ChatSessionUpdate
@@ -49,7 +49,6 @@ async def upload_document(
     if len(file_bytes) > MAX_KNOWLEDGE_FILE_SIZE:
         raise HTTPException(status_code=413, detail="Document exceeds the 20MB size limit.")
 
-    # Use a server-generated temporary filename. Never trust an uploaded path.
     temp_name = f"knowledge_{uuid.uuid4().hex}{suffix}"
     file_path = os.path.join(UPLOAD_DIR, temp_name)
     try:
@@ -62,17 +61,16 @@ async def upload_document(
         result = await loop.run_in_executor(
             None, functools.partial(process_and_store_document, file_path)
         )
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to process and index the document.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Failed to process and index the document.") from exc
     finally:
         try:
             os.remove(file_path)
         except FileNotFoundError:
             pass
 
-    # S3 migration is intentionally separate: this repository does not yet have
-    # an S3 bucket/prefix contract or a tested download/delete compatibility path.
-    file_url = None
+    # TODO(AWS migration): replace the legacy private-store boundary with the
+    # dedicated S3 knowledge-document prefix and persist its stable object key.
     try:
         from app.db.supabase import get_supabase_client
         client = get_supabase_client()
@@ -83,12 +81,12 @@ async def upload_document(
             file_options={"content-type": file.content_type},
         )
         file_url = client.storage.from_("resumes").get_public_url(stored_name)
-    except Exception:
-        # Indexing success must not be reported as a fully backed-up document.
+    except Exception as exc:
+        # Avoid silently reporting a durable upload if storage did not persist.
         raise HTTPException(
             status_code=502,
             detail="The document was indexed but storage persistence failed.",
-        )
+        ) from exc
 
     return {
         "success": True,
@@ -104,8 +102,8 @@ async def upload_document(
 def get_sessions(current_user: ProfileResponse = Depends(require_authenticated_user)):
     try:
         return knowledge_chat_service.get_user_sessions(str(current_user.id))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to fetch chat sessions.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Failed to fetch chat sessions.") from exc
 
 
 @router.post("/sessions")
@@ -115,8 +113,8 @@ def create_session(
 ):
     try:
         return knowledge_chat_service.create_session(str(current_user.id), body.title)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to create chat session.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Failed to create chat session.") from exc
 
 
 @router.get("/sessions/{session_id}/messages")
@@ -128,8 +126,8 @@ def get_session_messages(
         return knowledge_chat_service.get_session_messages(session_id, str(current_user.id))
     except Exception as exc:
         if "not found" in str(exc).lower() or "unauthorized" in str(exc).lower():
-            raise HTTPException(status_code=404, detail="Chat session not found.")
-        raise HTTPException(status_code=500, detail="Failed to fetch chat messages.")
+            raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+        raise HTTPException(status_code=500, detail="Failed to fetch chat messages.") from exc
 
 
 @router.put("/sessions/{session_id}")
@@ -143,8 +141,8 @@ def rename_session(
         return {"success": True, "message": "Session renamed successfully"}
     except Exception as exc:
         if "not found" in str(exc).lower() or "unauthorized" in str(exc).lower():
-            raise HTTPException(status_code=404, detail="Chat session not found.")
-        raise HTTPException(status_code=500, detail="Failed to rename chat session.")
+            raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+        raise HTTPException(status_code=500, detail="Failed to rename chat session.") from exc
 
 
 @router.delete("/sessions/{session_id}")
@@ -156,8 +154,8 @@ def delete_session(
         return knowledge_chat_service.delete_session(session_id, str(current_user.id))
     except Exception as exc:
         if "not found" in str(exc).lower() or "unauthorized" in str(exc).lower():
-            raise HTTPException(status_code=404, detail="Chat session not found.")
-        raise HTTPException(status_code=500, detail="Failed to delete chat session.")
+            raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+        raise HTTPException(status_code=500, detail="Failed to delete chat session.") from exc
 
 
 @router.post("/query")
@@ -172,10 +170,10 @@ def query_documents(
     try:
         chat_history = []
         if query.session_id:
-            # Validate ownership before accepting a message into the session.
             history_rows = knowledge_chat_service.get_session_messages(
                 query.session_id, str(current_user.id)
             )
+            # Check ownership first; only then persist the user's message.
             knowledge_chat_service.add_message(query.session_id, "user", query.question)
             chat_history = [
                 {"role": row["role"], "content": row["content"]} for row in history_rows
@@ -190,8 +188,10 @@ def query_documents(
                 query.session_id, "assistant", answer, sources
             )
         return result
-    except Exception:
-        raise HTTPException(status_code=500, detail="Knowledge query failed. Please retry.")
+    except Exception as exc:
+        if "not found" in str(exc).lower() or "unauthorized" in str(exc).lower():
+            raise HTTPException(status_code=404, detail="Chat session not found.") from exc
+        raise HTTPException(status_code=500, detail="Knowledge query failed. Please retry.") from exc
 
 
 class DeleteDocumentRequest(BaseModel):
@@ -205,8 +205,9 @@ async def delete_document_endpoint(
     body: DeleteDocumentRequest,
     current_user: ProfileResponse = Depends(require_management),
 ):
-    """Management-only document deletion; restrict file removal to known storage paths."""
-    if not body.filename.strip():
+    """Management-only document deletion; only accept a simple storage object key."""
+    filename = Path(body.filename).name
+    if not filename:
         raise HTTPException(status_code=400, detail="A document filename is required.")
 
     try:
@@ -215,18 +216,22 @@ async def delete_document_endpoint(
         import functools
         loop = asyncio.get_running_loop()
         deleted_chunks = await loop.run_in_executor(
-            None, functools.partial(delete_document, Path(body.filename).name)
+            None, functools.partial(delete_document, filename)
         )
 
         storage_deleted = False
         if body.file_url:
-            from urllib.parse import urlparse, unquote
-            from app.db.supabase import get_supabase_client
-
             parsed = urlparse(body.file_url)
             storage_filename = unquote(parsed.path.rsplit("/", 1)[-1])
-            if not storage_filename or "/" in storage_filename or "\\" in storage_filename:
+            if (
+                not storage_filename
+                or storage_filename in {".", ".."}
+                or "/" in storage_filename
+                or "\\" in storage_filename
+            ):
                 raise HTTPException(status_code=400, detail="Invalid storage file reference.")
+
+            from app.db.supabase import get_supabase_client
             client = get_supabase_client()
             client.storage.from_("resumes").remove([storage_filename])
             storage_deleted = True
@@ -235,9 +240,9 @@ async def delete_document_endpoint(
             "success": True,
             "deleted_chunks": deleted_chunks,
             "storage_deleted": storage_deleted,
-            "message": f"Document '{Path(body.filename).name}' deletion processed.",
+            "message": f"Document '{filename}' deletion processed.",
         }
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to delete the knowledge document.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Failed to delete the knowledge document.") from exc
