@@ -69,7 +69,7 @@ The employee Apply for Position modal showed two failures during resume submissi
 - The first error occurred before storage/database persistence, while the resume parser called Gemini. CloudWatch showed several model availability failures (503) and legacy/unavailable model IDs (404); the model fallback chain is corrected in this staging change.
 - Supabase staging edge logs at `2026-10-25T19:33:27Z` show the resume PDF upload to the private `resumes` bucket succeeded (HTTP 200), the candidate insert succeeded (HTTP 201), the resume insert failed with HTTP 400 / PostgREST `PGRST204`, and storage cleanup returned HTTP 200.
 - The live staging `public.resumes` schema uses `id, candidate_id, file_name, file_url, parsed_json, uploaded_at`. The backend was incorrectly sending `parsed_data` (not a live column) and omitting required `file_name`. This explains the second failure.
-- The failed attempt left one candidate row created at `2026-10-25T19:33:27.947654Z` with no resume and no application. That staging test orphan is scheduled for narrowly scoped cleanup after a final recheck.
+- The failed attempt left one candidate row created at `2026-10-25T19:33:27.947654Z` with no resume and no application. That exact staging-only orphan row was subsequently deleted after checking both related tables were empty; no Production data was queried or modified.
 - No Production resources or data were modified.
 
 ### Code changes prepared for staging
@@ -82,3 +82,7 @@ The employee Apply for Position modal showed two failures during resume submissi
 ### Release status
 These changes must pass the staging branch GitHub Actions test workflow and ECR image build. The new image must then be deployed to the existing `ewa-cognito-staging-api` CloudFormation stack through a reviewed, modify-in-place change set. Production stays untouched. After deployment, verify one real PDF upload succeeds, creates the application, and can be reopened/downloaded from the candidate details route. Do not repeat uploads before the new image is live.
 
+
+
+### CloudFormation configuration drift prevention — added to the same staging fix
+The existing staging Lambda had manually added `GEMINI_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` environment variables, but the CloudFormation template did not declare them. A future stack update could overwrite that manual Lambda environment configuration. The template now declares `GeminiApiKey`, `QdrantUrl`, and `QdrantApiKey` parameters and maps them into Lambda's environment. During the next reviewed stack change set, the user must enter the actual current staging values directly in the AWS Console parameter form (not in chat), while preserving existing Supabase NoEcho parameters via “Use previous value.” This keeps configuration managed by CloudFormation and prevents the fix deployment from unintentionally dropping AI/vector settings.

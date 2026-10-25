@@ -28,6 +28,25 @@ Parameters:
     AllowedPattern: "^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
     ConstraintDescription: Leave blank for Supabase storage or provide a valid lowercase staging S3 bucket name.
 
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: Staging Gemini API key used server-side for resume parsing, evaluation, and Knowledge Base answers. Never paste this value into chat or GitHub.
+
+  QdrantUrl:
+    Type: String
+    MinLength: 10
+    AllowedPattern: "^https://.+"
+    ConstraintDescription: Enter the HTTPS URL of the existing staging Qdrant cluster.
+    Description: Existing staging Qdrant Cloud cluster URL.
+
+  QdrantApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 1
+    Description: Staging Qdrant database API key for vector search and indexing. Never paste this value into chat or GitHub.
+
   SupabaseProjectUrl:
     Type: String
     Default: https://wxulxcsdpwsyhtpkbazi.supabase.co
@@ -177,6 +196,9 @@ Resources:
           SUPABASE_URL: !Ref SupabaseProjectUrl
           SUPABASE_SERVICE_ROLE_KEY: !Ref SupabaseServiceRoleKey
           SUPABASE_JWT_SECRET: !Ref SupabaseJwtSecret
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          QDRANT_URL: !Ref QdrantUrl
+          QDRANT_API_KEY: !Ref QdrantApiKey
           COGNITO_ENABLED: "true"
           COGNITO_REGION: !Ref CognitoRegion
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
