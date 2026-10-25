@@ -1377,3 +1377,29 @@ Use the staging Preview URL only. Perform one consolidated test:
 6. Confirm staging database ends with exactly the new test accounts/profiles/mappings expected, all 5 jobs remain, and Production still has its original 5 jobs.
 - If a step fails, record the URL/error code and local time. Do not create repeated test accounts or weaken RLS. The Vercel connector currently cannot fetch the protected Preview itself, so the browser step is required.
 
+
+
+## Signup returns `cognito_link_backend_error` even though staging writes succeeded (25 October 2026, ~21:37 IST)
+
+### User-facing symptom
+- After Cognito signup, the browser returned to the branch Preview login page with `/login?error=cognito_link_backend_error`, showing "The staging account-link service failed while creating or linking the employee profile. The staging backend logs need review."
+- This error key is raised by the frontend when the `POST /auth/cognito/link` response has HTTP 5xx or stable error code `INTERNAL_ERROR`. Vercel runtime log API returns 403 for the connected integration, so the exact callback response and Vercel-side logs could not be retrieved.
+- Do not create another Cognito account or delete this new user yet.
+
+### Evidence from Supabase staging, correlated to 21:37 IST
+Read-only logs for 2026-10-25 16:07:05–16:07:30 UTC (~21:37 IST) show the staging backend's related Supabase operations all returning success:
+- Auth admin create-user: HTTP 200.
+- `POST /rest/v1/profiles?on_conflict=id`: HTTP 200 under service_role JWT.
+- Read-back of the created auth user: HTTP 200.
+- Cognito identity mapping insert: HTTP 201.
+- Profile role update: HTTP 200.
+- No error/permission-denied events were found in the same staging Supabase log window.
+- Current staging database counts: 1 Auth user, 1 profile, 1 Cognito identity mapping, 0 management access requests; 5 jobs and 4 published job cards unchanged.
+- The created profile is active, its email is confirmed, its role is `MANAGEMENT`, `is_management_verified=true`, and it has a Cognito mapping.
+- The original Supabase operations prove the signup's account/profile linkage substantially completed, even though the browser displayed a backend error. This does not prove what HTTP response the Lambda returned after those writes.
+
+### What remains to diagnose
+- AWS CloudWatch is required to inspect the actual API invocation exception. Log group: `/aws/lambda/ewa-cognito-staging-api`; region `ap-south-1`.
+- Correlate log timestamps 2026-10-25 21:37:09–21:37:16 IST (16:07:09–16:07:16 UTC). Inspect the Python/FastAPI exception traceback and HTTP status for the `POST /auth/cognito/link` invocation. Never copy tokens, secrets, authorization headers, or full user PII into chat.
+- Most important distinction: if the error happened after mapping/profile writes (as the database evidence suggests), login may be recoverable by reusing the same Cognito account; the next check should be a **single sign-in attempt using this existing account**, not another signup. If it succeeds, validate dashboard/role and then inspect why the prior link request returned 5xx. If it fails again, share the sanitized CloudWatch exception and status.
+- Potential repeated identity-link requests must be handled idempotently. `CognitoIdentityRepository.create_mapping` is designed to accept an exact existing Cognito-sub/profile pair and reject cross-links; don't remove the mapping or lower security controls to bypass a failure.
