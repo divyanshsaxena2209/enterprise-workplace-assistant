@@ -41,7 +41,11 @@ const cookieOptions = {
   maxAge: 300,
 };
 
-function buildAuthorizationUrl(request: NextRequest, profile?: SignupProfile) {
+function buildAuthorizationUrl(
+  request: NextRequest,
+  profile?: SignupProfile,
+  requestedAccessLevel: "EMPLOYEE" | "MANAGEMENT" = profile?.requested_access_level ?? "EMPLOYEE",
+) {
   const cfg = config();
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
@@ -71,6 +75,7 @@ function buildAuthorizationUrl(request: NextRequest, profile?: SignupProfile) {
   } else {
     response.cookies.set("ewa_cognito_signup_profile", "", { ...cookieOptions, maxAge: 0 });
   }
+  response.cookies.set("ewa_cognito_requested_access_level", requestedAccessLevel, cookieOptions);
   response.headers.set("Cache-Control", "no-store");
   return response;
 }
@@ -120,7 +125,12 @@ function parseSignupProfile(value: unknown): SignupProfile {
 
 export async function GET(request: NextRequest) {
   try {
-    const response = buildAuthorizationUrl(request);
+    const rawAccessLevel = request.nextUrl.searchParams.get("access_level");
+    if (rawAccessLevel !== null && rawAccessLevel !== "EMPLOYEE" && rawAccessLevel !== "MANAGEMENT") {
+      throw new Error("Choose Employee or Management access.");
+    }
+    const accessLevel = rawAccessLevel === "MANAGEMENT" ? "MANAGEMENT" : "EMPLOYEE";
+    const response = buildAuthorizationUrl(request, undefined, accessLevel);
     const body = await response.json();
     const redirect = NextResponse.redirect(body.authorization_url);
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie.name, cookie.value, cookie));
@@ -137,7 +147,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const profile = parseSignupProfile(body?.profile);
-    return buildAuthorizationUrl(request, profile);
+    return buildAuthorizationUrl(request, profile, profile.requested_access_level);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to start Cognito signup.";
     return NextResponse.json({ message }, { status: 400, headers: { "Cache-Control": "no-store" } });
