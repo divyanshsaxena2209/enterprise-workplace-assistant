@@ -337,3 +337,99 @@ def test_existing_allowlisted_employee_can_request_and_receive_management(monkey
         {"role": "MANAGEMENT", "is_management_verified": True},
     )]
     assert audited == ["existing-profile-id"]
+
+
+
+@pytest.mark.parametrize(
+    ("selected_role", "expected_verified"),
+    [("EMPLOYEE", False), ("MANAGEMENT", True)],
+)
+def test_staging_demo_role_selector_switches_application_role_without_allowlist(
+    monkeypatch, selected_role, expected_verified
+):
+    """The login-page role choice only grants roles when the explicit staging demo flag is on."""
+    from app.core.enums import UserRole
+
+    profile = SimpleNamespace(
+        id="demo-profile-id",
+        email="demo.user@example.test",
+        role=UserRole.EMPLOYEE,
+        is_active=True,
+        is_management_verified=False,
+    )
+    updates = []
+    fake_client = SimpleNamespace(
+        auth=SimpleNamespace(
+            admin=SimpleNamespace(
+                get_user_by_id=lambda _profile_id: SimpleNamespace(
+                    user=SimpleNamespace(email="demo.user@example.test")
+                )
+            )
+        )
+    )
+
+    class FakeProfiles:
+        def __init__(self, _client):
+            pass
+
+        def get_by_email(self, _email):
+            return profile
+
+        def update(self, profile_id, payload):
+            updates.append((profile_id, dict(payload)))
+            profile.role = UserRole(payload["role"])
+            profile.is_management_verified = payload["is_management_verified"]
+            return profile
+
+    class FakeMappings:
+        def __init__(self, _client):
+            pass
+
+        def create_mapping(self, _subject, _profile_id):
+            pass
+
+    class FakeRequests:
+        def __init__(self, _client):
+            pass
+
+        def submit(self, *_args, **_kwargs):
+            raise AssertionError("Demo role selection must not create a pending request.")
+
+        def mark_allowlisted_approved(self, *_args, **_kwargs):
+            raise AssertionError("Demo role selection does not rely on an email allowlist.")
+
+    monkeypatch.setattr(auth.settings, "ENVIRONMENT", "staging")
+    monkeypatch.setattr(auth.settings, "COGNITO_ENABLED", True)
+    monkeypatch.setattr(auth.settings, "COGNITO_DEMO_ROLE_SELECTION_ENABLED", True)
+    monkeypatch.setattr(auth.settings, "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST", "")
+    monkeypatch.setattr(auth, "decode_cognito_id_token", lambda _token, _nonce: {
+        "email": "demo.user@example.test",
+        "sub": "demo-cognito-sub",
+    })
+    monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
+    monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
+    monkeypatch.setattr(auth, "ManagementAccessRequestRepository", FakeRequests)
+
+    body = CognitoLinkRequest(
+        id_token="i" * 32,
+        nonce="n" * 24,
+        requested_access_level=selected_role,
+    )
+    result = auth.link_cognito_identity(body)
+
+    assert selected_role in result.message
+    assert profile.role == UserRole(selected_role)
+    assert profile.is_management_verified is expected_verified
+    assert updates == [(
+        "demo-profile-id",
+        {"role": selected_role, "is_management_verified": expected_verified},
+    )]
+
+
+def test_demo_role_selector_cannot_grant_management_outside_staging(monkeypatch):
+    monkeypatch.setattr(auth.settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(auth.settings, "COGNITO_ENABLED", True)
+    monkeypatch.setattr(auth.settings, "COGNITO_DEMO_ROLE_SELECTION_ENABLED", True)
+    monkeypatch.setattr(auth.settings, "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST", "")
+    assert auth.settings.cognito_demo_role_selection_enabled is False
