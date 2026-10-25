@@ -1300,3 +1300,24 @@ Use the staging Preview URL only. Perform one consolidated test:
 - Current READY Preview branch URL (latest docs commit; frontend code is the tested branch build) is `https://enterprise-workplace-assistant-jqi76ogvp-divyansh-50b7.vercel.app/login`. Preview deployment access and Vercel runtime log APIs from the connector have returned 403; use the browser and AWS CloudWatch for live acceptance.
 - Next/only useful user action: open that Preview, complete one signup using a **fresh unique email** (do not retry the email used in the failed attempt), then report the visible result/status. In parallel, correlate the time in Supabase logs. Success requires profile upsert to return success with Authorization role `service_role`, profile present, and subsequent login success. Do not repeat signup multiple times, do not share passwords or tokens, do not alter RLS/grants, and do not touch Production.
 - If the fresh signup works, proceed directly to login and one employee/management access check for the staging demo. If it fails, capture the exact timestamp and error and compare the request's authorization role before proposing any code or database change.
+
+
+## Hotfix checkpoint — Cognito callback invalid due to host-scoped OAuth cookies (25 October 2026)
+
+### User-observed failure
+- User completed the Cognito Management-level signup flow and landed on `/login?error=cognito_callback_invalid`.
+- Screenshot origin was `enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app`, while the URL previously provided in this chat was a per-deployment Preview origin (`enterprise-workplace-assistant-jqi76ogvp-divyansh-50b7.vercel.app`). The callback handler's generic invalid response is emitted before token exchange when the code/state/cookies are absent or mismatched.
+- Root-cause inference: OAuth state, nonce, PKCE verifier and pending signup-profile cookies are host-scoped. Starting OAuth on a deployment-specific Preview hostname and returning to the configured `COGNITO_REDIRECT_URI` hostname means those cookies are not sent to the callback. The screenshot plus callback implementation strongly support this; the missing cookie itself is not proven by logs because Vercel runtime logging access currently returns 403.
+
+### Fix committed
+- `frontend/middleware.ts`: staging Cognito `/login` and `/signup` entries now redirect to the HTTPS origin from `COGNITO_REDIRECT_URI` before the page/form loads, ensuring the OAuth-start request stores cookies on the same host that receives Cognito's callback. This is gated to the Cognito auth provider and validates the configured callback URI's HTTPS protocol and `/auth/callback` path. It does not alter Production or database permissions.
+- `frontend/app/auth/callback/route.ts`: safely logs the validation failure reason and boolean presence flags only (missing code/state/cookie or state mismatch); it does not log OAuth codes, state values, tokens, or cookie values.
+- Commits: middleware redirect `adb0e7ead0781907165cddcc801933ac8976d099`; safe callback diagnostics `71b6325516351be6a57c847767bb4617181f7dca`.
+- CI run #218 for commit `adb0e7e` and latest CI run for `71b6325` have been triggered. Capture their final status before representing the hotfix as validated.
+- The Preview deployment for `adb0e7e` was observed BUILDING, and `71b6325` was QUEUED at initial verification. Wait for the latest `71b6325` Vercel deployment to become READY before another user test.
+- Note that the old callback host can be reached in user's screenshot, but connected Vercel deployment/runtime APIs have returned 403/404. The code cannot currently inspect the actual deployed environment variable value; the configured origin is inferred from the callback handler's `loginError` redirect.
+
+### Next exact live test
+- Do not repeat signup or create a duplicate identity. The Cognito user may already exist even though callback validation failed.
+- Open the **latest READY Preview for branch `cognito-staging-integration`**, visit `/login`, and sign in using the same Cognito account first. Middleware should redirect the login page to the configured callback origin before initiating OAuth. If sign-in succeeds, verify the profile and role access. If it fails with a new error, record the visible code and timestamp.
+- If the first login cannot link the account because the failed signup's pending profile data was lost with the cross-host cookie, use the new safe callback log's reason/result to decide whether a recovery path is needed; do not delete the Cognito identity or weaken RLS.
