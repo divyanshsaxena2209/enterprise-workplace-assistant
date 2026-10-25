@@ -23,6 +23,7 @@ const LOGIN_ERRORS: Record<string, string> = {
 
 export default function CognitoLoginPage() {
   const [error, setError] = useState<string | null>(null);
+  const [requestedAccessLevel, setRequestedAccessLevel] = useState<"EMPLOYEE" | "MANAGEMENT">("EMPLOYEE");
 
   useEffect(() => {
     const key = new URLSearchParams(window.location.search).get("error");
@@ -45,7 +46,45 @@ export default function CognitoLoginPage() {
             {error}
           </div>
         )}
-        <a href="/api/auth/cognito/start" className="flex w-full items-center justify-center gap-2 rounded-lg border border-foreground bg-foreground px-4 py-3 text-xs font-bold uppercase tracking-wider text-background transition-opacity hover:opacity-90">
+        <fieldset className="mb-4 rounded-xl border border-border bg-secondary/30 p-4">
+          <legend className="mb-3 px-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Choose demo access level
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3">
+              <input
+                type="radio"
+                name="requested_access_level"
+                value="EMPLOYEE"
+                checked={requestedAccessLevel === "EMPLOYEE"}
+                onChange={() => setRequestedAccessLevel("EMPLOYEE")}
+                className="mt-1 accent-foreground"
+              />
+              <span>
+                <span className="block text-sm font-bold">Employee</span>
+                <span className="mt-1 block text-[11px] text-muted-foreground">Standard application access.</span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3">
+              <input
+                type="radio"
+                name="requested_access_level"
+                value="MANAGEMENT"
+                checked={requestedAccessLevel === "MANAGEMENT"}
+                onChange={() => setRequestedAccessLevel("MANAGEMENT")}
+                className="mt-1 accent-foreground"
+              />
+              <span>
+                <span className="block text-sm font-bold">Management</span>
+                <span className="mt-1 block text-[11px] text-muted-foreground">Management application access for the staging demo.</span>
+              </span>
+            </label>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            The staging demo can honor this choice only when its server-side demo setting is enabled. This selector never grants AWS IAM credentials and must not be enabled in production.
+          </p>
+        </fieldset>
+        <a href={`/api/auth/cognito/start?access_level=${requestedAccessLevel}`} className="flex w-full items-center justify-center gap-2 rounded-lg border border-foreground bg-foreground px-4 py-3 text-xs font-bold uppercase tracking-wider text-background transition-opacity hover:opacity-90">
           <LockKeyhole className="h-4 w-4" />
           Continue with Cognito
         </a>
