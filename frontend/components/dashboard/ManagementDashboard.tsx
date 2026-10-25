@@ -4,6 +4,7 @@ import { useUser } from "@/lib/context/UserContext";
 import { fetchWithAuth } from "@/lib/api/candidates";
 import Link from "next/link";
 import { Briefcase, Users, FileText, Settings, BookOpen, UserPlus, Loader2, ArrowRight } from "lucide-react";
+import FeaturedJobs from "@/components/jobs/FeaturedJobs";
 export default function ManagementDashboard() {
   const { profile, loading: profileLoading } = useUser();
   const [stats, setStats] = useState({
@@ -58,7 +59,7 @@ export default function ManagementDashboard() {
           </p>
         </div>
       </div>
-      {}
+      <FeaturedJobs />
       <div>
         <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Overview</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
