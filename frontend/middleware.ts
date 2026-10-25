@@ -1,6 +1,35 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
+function canonicalizeCognitoEntry(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  // OAuth state and PKCE cookies are host-scoped. Vercel's per-deployment
+  // preview URLs can differ from the Cognito callback host; start the flow on
+  // the exact configured callback origin so the callback receives its cookies.
+  if (pathname !== "/login" && pathname !== "/signup") return null;
+
+  const callbackUri = process.env.COGNITO_REDIRECT_URI;
+  if (!callbackUri) return null;
+
+  try {
+    const callbackUrl = new URL(callbackUri);
+    if (callbackUrl.protocol !== "https:" || callbackUrl.pathname !== "/auth/callback") {
+      return null;
+    }
+    if (request.nextUrl.origin === callbackUrl.origin) return null;
+
+    const canonicalUrl = request.nextUrl.clone();
+    canonicalUrl.protocol = callbackUrl.protocol;
+    canonicalUrl.host = callbackUrl.host;
+    const response = NextResponse.redirect(canonicalUrl);
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  } catch {
+    // Let the auth route show its existing configuration error if the URI is invalid.
+    return null;
+  }
+}
+
 function updateCognitoSessionGate(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isStaticOrApi =
@@ -40,6 +69,8 @@ function updateCognitoSessionGate(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+    const canonicalEntry = canonicalizeCognitoEntry(request);
+    if (canonicalEntry) return canonicalEntry;
     return updateCognitoSessionGate(request);
   }
   return await updateSession(request);
