@@ -1270,3 +1270,21 @@ Use the staging Preview URL only. Perform one consolidated test:
 - Supabase profile grants/data consistency check: passed.
 - Lambda update, live Cognito browser sign-in/profile verification, application role acceptance and fresh CloudWatch log correlation: **not yet verified**.
 - PR #3 stays draft; Production remains untouched; S3 remains out of scope for this four-service demo checkpoint.
+
+
+## Follow-up after user reports CloudFormation UPDATE_COMPLETE — deployed image still needs refresh
+
+### New evidence discovered after the screenshot
+- User screenshot confirms the existing `ewa-cognito-staging-api` stack reached `UPDATE_COMPLETE` at **2026-10-25 17:08:54 IST**. This proves the CloudFormation operation completed, but the screenshot does not show the deployed `ImageUri`.
+- Supabase staging logs show a subsequent email signup at **2026-10-25 17:39:46 IST** returned Auth `200`, followed by a profile upsert returning `403`. In the corresponding PostgREST log, the API key role was `service_role` but the Authorization JWT role was `authenticated`; PostgreSQL then reported `permission denied for table profiles`. This is the precise shared/session-contamination signature the code fix is meant to prevent.
+- Therefore, do **not** assume the earlier stack update has proved the fix. The failing request occurred before the current image build below and indicates the running path at that time still sent the user JWT on the profile upsert. It may have used a stale image (the screenshot alone cannot prove its image tag).
+- Staging DB privileges remain correct: service_role has SELECT/INSERT/UPDATE on `public.profiles`; authenticated cannot INSERT; there were 0 Auth users without profiles at the read-only health check. Do not widen grants.
+
+### Fresh image now available — needs a second in-place update
+- After the above error timestamp, CI run #19 built and pushed the branch-head backend image successfully: [run #19](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40204959894).
+- Current image tag: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-c9479602cc402971429bd9461d8c7f59d9d62bb8`.
+- Current image digest URI: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:63d92ca62b227d2e8dd340500e19e17b448de7952dcf5a6f0820d07ad3f3158b`.
+- The same commit's CI run #215 passed: **116 tests, 10 warnings**, including frontend build, backend compile, CloudFormation lint and focused regression suite: [run #215](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40204959854).
+- Required next step remains a second change set on the existing staging stack only, updating `ImageUri` to the immutable digest above. Preserve staging secret parameters using previous-value/NoEcho handling. Before execution verify the existing `StagingApi` is changed in place (`Replacement=False`) and no unexpected resources are added/deleted. Production untouched.
+- After `UPDATE_COMPLETE`, perform exactly one fresh test through the currently READY Vercel Preview. Correlate its timestamp with the staging logs. Success criteria are: Auth signup returns 200; following `POST /rest/v1/profiles?on_conflict=id` has Authorization role `service_role` (not `authenticated`) and returns success; the profile exists; then login succeeds. If it still fails, capture the exact time and response/error—do not repeat signups or relax grants.
+- Current Vercel runtime-log/fetch connector access returned HTTP 403, so live end-to-end validation must be done through the preview/browser and AWS CloudWatch until connector access is fixed.
