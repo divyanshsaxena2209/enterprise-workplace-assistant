@@ -1231,3 +1231,42 @@ The previous hosted Cognito test authenticated successfully but redirected to th
 - Prefer one focused regression test plus existing relevant checks over many overlapping tests. Run the narrowest relevant test first, then a broader suite only when risk, dependencies, or CI requirements justify it.
 - Combine related assertions where that improves signal without making failures ambiguous. Avoid redundant test cases, repeated exploratory runs, and expensive full-suite runs after a narrowly scoped change unless necessary.
 - Do not sacrifice meaningful security, data-integrity, or critical-flow coverage just to reduce test count. Record exactly which checks ran, what passed/failed, and what remains unverified; never imply that a test passed if it was not run.
+
+
+## Fast-demo checkpoint — current image built, CI green, AWS update is the only blocker (25 October 2026)
+
+### Verified in this continuation
+- Current source branch at this checkpoint: `cognito-staging-integration`, commit `c9479602cc402971429bd9461d8c7f59d9d62bb8`.
+- [Staging ECR build run #19](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40204959894) completed successfully. The immutable image and registry manifest digest are:
+  - Image tag URI: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-c9479602cc402971429bd9461d8c7f59d9d62bb8`
+  - Preferred immutable digest URI: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:63d92ca62b227d2e8dd340500e19e17b448de7952dcf5a6f0820d07ad3f3158b`
+  - Image configuration digest: `sha256:92dbcecc6b71539b9a188e01b34827a4f74035cfed7df3f784ee6b9e7faf852d`
+- [CI run #215](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40204959854) completed successfully on the same SHA: **116 passed, 10 warnings**. The pre-token-generation trigger tests, Vercel frontend build, backend/test compilation, CloudFormation lint and the targeted regression tests passed. The auth-session/client-separation regression is in `backend/tests/test_cognito_provisioning_errors.py` (not a separate `test_auth_service_client_isolation.py` file).
+- The staging-only ECR workflow now runs automatically on pushes to `cognito-staging-integration` when `backend/**` or the ECR workflow file changes; manual dispatch is still available. It never triggers on `main` or another branch through this new push trigger.
+- Vercel reports the Preview deployment for commit `c9479602cc402971429bd9461d8c7f59d9d62bb8` is READY. Its URL at the time of this check was `https://enterprise-workplace-assistant-mk2fiqoue-divyansh-50b7.vercel.app`. Vercel's deployment fetch/runtime log API returned 403 for this integration, so the page and login flow have not been independently tested through the connector.
+- Supabase project `wxulxcsdpwsyhtpkbazi` (`workplace-assistant-staging`) is `ACTIVE_HEALTHY`. Read-only SQL confirms `service_role` has SELECT/INSERT/UPDATE for `public.profiles`, `authenticated` cannot INSERT profiles, and there are currently **0 auth users without a profile**. Do not change grants or reset database data to address the old 403.
+
+### Exact next step — the user must do this in AWS Console
+The connected GitHub/Vercel/Supabase tools cannot update or inspect the live CloudFormation stack. Do **not** create a second stack or touch Production.
+
+1. Open AWS Console → CloudFormation, region **Asia Pacific (Mumbai), `ap-south-1`**. Select the existing `ewa-cognito-staging-api` stack only. Confirm its status permits an update. If the stack is in a failed/rollback state, stop and share only the stack status and latest event failure reason (no secrets).
+2. Create a **new change set** using the current branch template `infra/aws/cognito-staging-backend.yml` from this branch. Set `ImageUri` to the immutable digest URI above. Preserve `SupabaseServiceRoleKey` and `SupabaseJwtSecret` using the console's **Use previous value**/NoEcho handling; never reveal either secret. Keep `DemoRoleSelectionEnabled=true` for the isolated staging demo, `StorageProvider=supabase`, `DocumentBucketName` blank, and leave `ManagementEmailAllowlist` blank in demo-selector mode unless an allowlisted initial manager is specifically required.
+3. Inspect the change set before execution. Continue only if the expected change is the existing `StagingApi` being modified in place (`Replacement=False`) with no unexpected new resources, deletions, Production resources or cost-bearing services. If the change set says replacement or lists unexpected resources, do not execute it; send the resource/action summary.
+4. Execute the reviewed change set, then wait for `UPDATE_COMPLETE`. Confirm the Lambda image uses the digest above. Do not paste credentials into chat.
+
+### Minimum live acceptance after deployment
+Use the staging Preview URL only. Perform one consolidated test:
+- Open `/login`, select Employee and complete Cognito sign-in/signup through `/auth/callback`.
+- Verify the API returns a successful session and a profile exists for the new staging identity; then sign out and sign in again.
+- Use the Management option and verify the current staging-demo role behavior. Confirm a role-restricted API call is allowed/denied as expected.
+- Confirm the same invocation produces a CloudWatch event in `/aws/lambda/ewa-cognito-staging-api` (7-day retention), without tokens or secrets in logs.
+- Report observed status/results only. If any one step fails, capture the exact error/status and timestamp so we can correlate it without repeating multiple test runs.
+
+### Current truth
+- Source fix: implemented.
+- Automated CI: passed (116 tests, 10 warnings).
+- Staging ECR image: built and pushed with digest above.
+- Vercel branch Preview: READY.
+- Supabase profile grants/data consistency check: passed.
+- Lambda update, live Cognito browser sign-in/profile verification, application role acceptance and fresh CloudWatch log correlation: **not yet verified**.
+- PR #3 stays draft; Production remains untouched; S3 remains out of scope for this four-service demo checkpoint.
