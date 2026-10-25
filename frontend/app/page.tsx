@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import FeaturedJobs from "@/components/jobs/FeaturedJobs";
 import { motion } from "framer-motion";
 import {
   Sparkles,
@@ -95,7 +96,7 @@ export default function Home() {
           {}
         </motion.div>
       </section>
-      {}
+      <FeaturedJobs publicLanding />
       <section className="relative max-w-7xl mx-auto px-6 py-24 border-t border-white/5">
         <div className="mb-16">
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-white/50 inline-block mb-4">
