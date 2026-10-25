@@ -239,3 +239,30 @@ def test_department_assignment_endpoint_is_management_only():
         dependency.call is require_management
         for dependency in route.dependant.dependencies
     )
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    [
+        "2026-10-25T16:07:10.36298+00:00",
+        "2026-10-25T16:07:10.36298Z",
+    ],
+)
+def test_profile_model_parses_supabase_fractional_timestamps_on_python310(timestamp):
+    """Supabase timestamps with 5 fractional digits must not 500 profile lookup."""
+    profile = ProfileModel.from_dict(
+        {
+            "id": PROFILE_ID,
+            "email": "timestamp@example.com",
+            "full_name": "Timestamp User",
+            "role": "MANAGEMENT",
+            "is_active": True,
+            "is_management_verified": True,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+        }
+    )
+
+    assert profile.created_at.microsecond == 362980
+    assert profile.updated_at.microsecond == 362980
+    assert profile.created_at.utcoffset() is not None
