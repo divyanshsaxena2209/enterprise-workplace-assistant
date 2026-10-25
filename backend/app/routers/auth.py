@@ -285,11 +285,12 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     mapping_repo = CognitoIdentityRepository(client)
     mapping_repo.create_mapping(str(claims["sub"]), str(profile.id))
 
-    # Resolve the requested level from the new login-page selector first, while
-    # retaining compatibility with older signup callbacks that only send profile.
+    # Only apply the staging demo selector when a create-account flow explicitly
+    # provided an access-level choice. A normal sign-in must preserve the role
+    # already assigned to the profile rather than defaulting back to EMPLOYEE.
     requested_access_level = (
         body.requested_access_level
-        or (body.profile.requested_access_level if body.profile is not None else "EMPLOYEE")
+        or (body.profile.requested_access_level if body.profile is not None else None)
     )
     requested_management = requested_access_level == UserRole.MANAGEMENT.value
     allowlisted_management_email = (
@@ -299,7 +300,7 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     # Demo shortcut: deliberately limited to an explicitly enabled staging Cognito
     # deployment. Never use this self-service selector in production; the UI value
     # is user-controlled and must not be authoritative outside this isolated demo.
-    if settings.cognito_demo_role_selection_enabled:
+    if settings.cognito_demo_role_selection_enabled and requested_access_level is not None:
         desired_role = UserRole(requested_access_level)
         desired_management_verified = desired_role == UserRole.MANAGEMENT
         current_role = profile.role.value if hasattr(profile.role, "value") else str(profile.role)
