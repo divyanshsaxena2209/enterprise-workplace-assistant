@@ -1183,3 +1183,30 @@ The previous hosted Cognito test authenticated successfully but redirected to th
 - The staging signup flow asks Employee vs Management. New profiles remain Employee by default. A verified email listed in the isolated staging Lambda parameter `ManagementEmailAllowlist` can receive Management application privileges; otherwise a Management selection queues an approval request. `public.profiles.role` remains authoritative for backend authorization.
 - Current Vercel Preview environment variables were inspected read-only and are branch-specific for Cognito, staging Supabase, `/auth/callback`, `/login`, and the staging API/link URL. The latest Ready Preview we could verify has the role-selection UI, but current Lambda image/environment and a real browser E2E are not verified.
 - Still not done: no current ECR image build was triggered, no CloudFormation update was made, no S3 bucket was created, and no Production service/configuration was changed. The manual ECR workflow plus update of the existing isolated staging stack (or create only if absence is confirmed) remains the release gate. Set `ManagementEmailAllowlist` only to the intended verified initial-manager email and preserve the existing staging Supabase secret through CloudFormation `NoEcho`/previous-value flow.
+
+
+## Continuation checkpoint — auth-client isolation fix verified in CI (25 October 2026, 20:20 IST)
+
+### Repository truth checked in this session
+- Repository: `divyanshsaxena2209/enterprise-workplace-assistant`.
+- Working branch: `cognito-staging-integration`; PR #3 remains open and draft, targeting `aws-service-replacements`.
+- Branch head verified through PR #3 and the latest workflow: `e3fb038ba4846d58add5d2a84b9decdb551c058d`.
+- Latest workflow run [#40192528581](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40192528581) completed successfully for that SHA on 25 October 2026. Its steps passed: Cognito pre-token-trigger tests, frontend dependency install/build, backend/test-file compilation, CloudFormation lint, and the isolated service replacement test command. The handoff records the backend test summary as **116 passed, 10 warnings**.
+- Earlier iterations of this fix failed; do not use their results as current status. The final run above is green.
+- The auth isolation test is included in CI via the existing test set/workflow, but there is no separate file named `test_auth_service_client_isolation.py` at the branch head; avoid citing that guessed filename. The behavior is implemented in source and CI is green.
+
+### Confirmed code changes at branch head
+- `backend/app/db/supabase.py` adds `create_supabase_auth_client()`, separate from the cached privileged `get_supabase_client()`.
+- `backend/app/services/auth_service.py` sends session-mutating signup/login/logout through `self._auth` while profile repository reads/writes use the separately provided privileged database client.
+- The candidate-provisioning isolation fix is represented in the branch's tested change set; the final CI run includes backend compilation and the selected regression suite.
+- `backend/check_db.py` now requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from environment variables; it does not hard-code the credential or print profile PII.
+- The repository default branch `main` still has the old shared-client implementation. Do not describe the fix as merged or available in `main`.
+
+### Signup error and remaining release gates
+- Staging evidence recorded above in this handoff identifies signup succeeding in Supabase Auth followed by profile upsert receiving 403 / `permission denied for table profiles`. The privilege checks said `service_role` already had SELECT/INSERT/UPDATE; regular client roles did not. Do not weaken RLS/table grants to bypass the issue.
+- Source + CI fix are complete for this task, but deployment is **not yet verified**. The last recorded running staging image is `cognito-staging-01a284551c7fdfe6c8bf3f53f8995d12b5553cd8`, which predates the branch head `e3fb038`. It must not be treated as containing this fix.
+- Safe next step is a manual build from the exact current branch head using [Build Cognito staging backend image to Amazon ECR](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml). The expected immutable tag pattern is `cognito-staging-e3fb038ba4846d58add5d2a84b9decdb551c058d`; use the tag actually emitted by the successful run, not this expectation alone.
+- Then create a **new** change set for the already-existing `ewa-cognito-staging-api` stack in `ap-south-1`, changing only the image URI. Preserve both staging Supabase secret parameters with the console's previous-value / NoEcho mechanism. Retain staging demo role selection only for this isolated stack, `StorageProvider=supabase`, and blank `DocumentBucketName`. Review that `StagingApi` is in-place modify with `Replacement=False` before execution; don't reuse any stale/failed change set.
+- After update completes, verify deployed image URI/digest, `/health`, then test signup with a fresh unique email, confirm profile creation and returned session, test login, and inspect the correlated sanitized CloudWatch invocation. A prior failed signup might have left an Auth identity without a profile.
+- Keep PR #3 draft; do not change Production, loosen database permissions, or provision a new stack/resource for this checkpoint.
+- Security follow-up remains: rotate the old-project Supabase service-role JWT if it is still active because a hard-coded value existed in Git history. Never put the key in chat or reuse it for staging.
