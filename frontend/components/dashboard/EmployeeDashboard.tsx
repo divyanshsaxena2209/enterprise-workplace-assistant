@@ -5,6 +5,7 @@ import { fetchWithAuth } from "@/lib/api/candidates";
 import { getMyApplications } from "@/lib/api/applications";
 import Link from "next/link";
 import { ArrowRight, CheckCircle, PlayCircle, Loader2, BookOpen, FileText, Settings, User } from "lucide-react";
+import FeaturedJobs from "@/components/jobs/FeaturedJobs";
 export default function EmployeeDashboard() {
   const { profile, loading: profileLoading } = useUser();
   const [progressData, setProgressData] = useState<any[]>([]);
@@ -71,6 +72,7 @@ export default function EmployeeDashboard() {
         </div>
       </div>
       {}
+      <FeaturedJobs />
       <div className="bg-card border border-border p-6 md:p-8 rounded-3xl shadow-sm relative overflow-hidden group">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 relative z-10">
           <div>
