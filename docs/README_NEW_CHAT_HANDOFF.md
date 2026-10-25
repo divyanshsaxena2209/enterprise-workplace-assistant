@@ -1403,3 +1403,28 @@ Read-only logs for 2026-10-25 16:07:05–16:07:30 UTC (~21:37 IST) show the stag
 - Correlate log timestamps 2026-10-25 21:37:09–21:37:16 IST (16:07:09–16:07:16 UTC). Inspect the Python/FastAPI exception traceback and HTTP status for the `POST /auth/cognito/link` invocation. Never copy tokens, secrets, authorization headers, or full user PII into chat.
 - Most important distinction: if the error happened after mapping/profile writes (as the database evidence suggests), login may be recoverable by reusing the same Cognito account; the next check should be a **single sign-in attempt using this existing account**, not another signup. If it succeeds, validate dashboard/role and then inspect why the prior link request returned 5xx. If it fails again, share the sanitized CloudWatch exception and status.
 - Potential repeated identity-link requests must be handled idempotently. `CognitoIdentityRepository.create_mapping` is designed to accept an exact existing Cognito-sub/profile pair and reject cross-links; don't remove the mapping or lower security controls to bypass a failure.
+
+## Root cause found in CloudWatch; datetime parser hotfix pending deployment (25 October 2026)
+
+### Exact failure from the latest user-provided CloudWatch export
+- The browser showed /login?error=cognito_link_backend_error.
+- CloudWatch traceback identifies POST /api/v1/auth/cognito/link → backend/app/routers/auth.py:185 → ProfileRepository.get_by_email → ProfileModel.from_dict → _parse_dt.
+- Exact exception: ValueError: Invalid isoformat string: '2026-10-25T16:07:10.36298+00:00'. The timestamp has 5 fractional-second digits. The running backend uses Python 3.10; datetime.fromisoformat in this runtime does not accept all fractional precision shapes returned by Supabase. This caused a 5xx during the profile lookup after the signup writes had already completed. This is the root cause of the displayed backend error—not a Cognito password, RLS, or table-grant failure.
+- The screenshot logs correspond to 2026-10-25 21:46 IST (16:16 UTC). The earlier successful profile creation/mapping occurred around 21:37 IST. Do not repeat signup or delete the newly created Management account.
+
+### Code fix and focused regression test
+- backend/app/models/profile.py now normalizes a timestamp's fractional seconds to Python datetime microsecond precision (pad fractions shorter than 6 digits, truncate beyond 6) before calling datetime.fromisoformat; supports Z and timezone offsets.
+- backend/tests/test_profile_employee_id.py now tests the exact five-digit timestamp with both +00:00 and Z suffixes and asserts the parsed microsecond value.
+- Code commits: f41ff38e0b3b8bf1fbf6db42850abef4090c26ef (initial parser patch), e33ac52d4cd8e85a02017f6d32f1c9e348d37ba5 (regression test), and 2000b19f267a3b89950fb69fd89f5a52176c041d (corrected regex matcher after source inspection). Use only the branch head/current run outputs as authoritative.
+- CI run #40211125450 tests commit 2000b19f; ECR build run #40211125436 builds its staging-only backend image. Both were running at the time this section was first written; refresh their final status before calling the fix CI-verified/deployed.
+
+### Current staging data truth
+- One staging Supabase Auth user, one profile, one Cognito identity mapping; profile is active, email-confirmed, MANAGEMENT, and management-verified. The account-link endpoint may have returned 5xx only after database writes, so the existing account may work when signing in again after deploying the fix.
+- Staging jobs: 5 total, 4 published; public view returns 4 job cards. Production jobs remain untouched.
+- The expected current pre-fix Lambda image was the earlier digest sha256:ed28449a1fa356535acca64b698f4fbad2cb4e5be8381f9502e539f866cac0a2. The new parser fix is in the newer branch-head image, not that previous image.
+
+### Next steps after CI and build
+1. Refresh CI run #40211125450 and ECR build run #40211125436. Confirm the latest head commit tests pass and get the actual newly pushed image tag/digest from build logs.
+2. Ask user to update only ImageUri of the existing ewa-cognito-staging-api stack with that newly built digest, through a reviewed change set with Replacement=False; preserve all secrets/configuration, don't alter Production.
+3. Once the new image is deployed, attempt sign-in with the existing Cognito Management account first. If successful, verify dashboard and Management role, then run the same /auth/cognito/link path only if necessary. Avoid another signup because the profile/mapping already exist.
+4. Verify CloudWatch has no new ValueError in ProfileModel._parse_dt, and confirm sign-in succeeds. Then test Employee signup once with a fresh email, and finally recheck public jobs, employee access, and management access.
