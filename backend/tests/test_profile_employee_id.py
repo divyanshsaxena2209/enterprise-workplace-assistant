@@ -141,7 +141,13 @@ def test_public_signup_ignores_caller_supplied_employee_id(monkeypatch):
             self.upsert_payload = payload
             return self.profile
 
-    client = FakeClient()
+    auth_client = FakeClient()
+    database_client = object()
+    monkeypatch.setattr(
+        auth_service_module,
+        "create_supabase_auth_client",
+        lambda: auth_client,
+    )
     repository = FakeSignupRepository()
     monkeypatch.setattr(
         auth_service_module,
@@ -159,9 +165,9 @@ def test_public_signup_ignores_caller_supplied_employee_id(monkeypatch):
     })
     assert "employee_id" not in SignupRequest.model_fields
 
-    response = AuthService(client).signup(request)
+    response = AuthService(database_client).signup(request)
 
-    metadata = client.auth.signup_payload["options"]["data"]
+    metadata = auth_client.auth.signup_payload["options"]["data"]
     assert "employee_id" not in metadata
     assert "employee_id" not in repository.upsert_payload
     assert response.user.employee_id == "EMP-000123"
