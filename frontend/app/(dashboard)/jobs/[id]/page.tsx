@@ -124,7 +124,7 @@ export default function JobDetailPage() {
           </div>
           <div>
             <span className={`px-4 py-2 text-xs uppercase tracking-widest font-black rounded-xl border shadow-sm backdrop-blur-md ${
-              job.status === "PUBLISHED" 
+              job.status === "Published" || job.status === "PUBLISHED" 
                 ? "bg-white/15 text-white border-white/20 shadow-[0_0_15px_rgba(255,255,255,0.1)]" 
                 : "bg-black/50 text-muted-foreground border-white/10"
             }`}>
