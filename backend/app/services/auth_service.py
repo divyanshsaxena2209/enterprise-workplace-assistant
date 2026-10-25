@@ -23,6 +23,7 @@ from supabase import Client
 from supabase_auth.errors import AuthApiError
 
 from app.core.config import settings
+from app.db.supabase import create_supabase_auth_client
 from app.core.enums import UserRole
 from app.core.exceptions import (
     AuthenticationError,
@@ -42,7 +43,9 @@ class AuthService:
     """Handles signup, login, logout, and token management via Supabase Auth."""
 
     def __init__(self, client: Client) -> None:
-        self._db = client
+        # Auth sign-up/sign-in changes the client's current JWT. Keep that state
+        # separate from the shared service-role client used for database queries.
+        self._auth = create_supabase_auth_client()
         self._repo = ProfileRepository(client)
 
     
@@ -83,7 +86,7 @@ class AuthService:
         }
 
         try:
-            auth_response = self._db.auth.sign_up(
+            auth_response = self._auth.auth.sign_up(
                 {
                     "email": data.email,
                     "password": data.password,
@@ -144,7 +147,7 @@ class AuthService:
         Returns tokens and the full profile on success.
         """
         try:
-            auth_response = self._db.auth.sign_in_with_password(
+            auth_response = self._auth.auth.sign_in_with_password(
                 {"email": data.email, "password": data.password}
             )
         except AuthApiError as exc:
@@ -188,7 +191,7 @@ class AuthService:
         token revocation is enabled, or for refresh token invalidation.
         """
         try:
-            self._db.auth.admin.sign_out(access_token)
+            self._auth.auth.admin.sign_out(access_token)
         except Exception as exc:
             
             logger.warning("Logout call failed (token may already be expired): %s", exc)
