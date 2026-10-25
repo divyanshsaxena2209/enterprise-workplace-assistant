@@ -1210,3 +1210,24 @@ The previous hosted Cognito test authenticated successfully but redirected to th
 - After update completes, verify deployed image URI/digest, `/health`, then test signup with a fresh unique email, confirm profile creation and returned session, test login, and inspect the correlated sanitized CloudWatch invocation. A prior failed signup might have left an Auth identity without a profile.
 - Keep PR #3 draft; do not change Production, loosen database permissions, or provision a new stack/resource for this checkpoint.
 - Security follow-up remains: rotate the old-project Supabase service-role JWT if it is still active because a hard-coded value existed in Git history. Never put the key in chat or reuse it for staging.
+
+
+## Standing execution rules for every continuation chat
+
+### ChatGPT owns routine GitHub, Vercel, and Supabase work
+- ChatGPT should perform all feasible repository/GitHub, Vercel, and Supabase investigation and implementation directly using the connected tools: inspect code/configuration/logs, edit files, create commits/branches/PRs when appropriate, run or inspect CI/builds, review deployment status, query Supabase metadata/logs, and apply safe database/configuration changes when authorized by the existing project scope.
+- Do not ask the user to do work that ChatGPT can perform through the connected tools. Do not stop merely to ask permission for ordinary, reversible repository edits or routine verification within the existing staging/development scope.
+- Inspect the available connector capabilities and use them; if a particular action is not supported or lacks authorization, state that precise limitation and choose the safest useful alternative. Never claim an action was completed unless tool results verify it.
+- Preserve the existing safety boundaries: Production must remain untouched unless the user explicitly changes that instruction. Avoid destructive changes, secret disclosure, broad permission grants, and unnecessary resource creation. For sensitive/high-impact changes, review the scope and consequences before acting.
+
+### Ask the user only for AWS-console actions or real-world/manual tests
+- The expected reason to pause and ask the user to act is when a step genuinely requires their AWS console/credential/approval access, or when a live browser/device/manual test must be performed by them and ChatGPT cannot execute it with available tools.
+- Before asking, exhaust safe GitHub/Vercel/Supabase-side investigation and automation. Ask for one precise action at a time, explain exactly where to go and what to do, and specify the evidence/result to report back. Do not ask the user to perform Git, Vercel, or Supabase work that connected tools can handle.
+- Continue independently after receiving the requested result. Do not treat a deployment as verified until the running environment and its behavior have actually been checked.
+
+### Minimal, high-information testing strategy
+- Keep tests lean and targeted. Prefer a small number of high-value regression tests that distinguish the plausible root causes, cover the changed behavior/security boundary, and fail clearly if the bug returns.
+- First inspect existing test coverage, CI configuration, logs, and related call paths; infer what can be established from those sources before adding new tests. Reuse existing fixtures and tests rather than duplicating coverage.
+- Prefer one focused regression test plus existing relevant checks over many overlapping tests. Run the narrowest relevant test first, then a broader suite only when risk, dependencies, or CI requirements justify it.
+- Combine related assertions where that improves signal without making failures ambiguous. Avoid redundant test cases, repeated exploratory runs, and expensive full-suite runs after a narrowly scoped change unless necessary.
+- Do not sacrifice meaningful security, data-integrity, or critical-flow coverage just to reduce test count. Record exactly which checks ran, what passed/failed, and what remains unverified; never imply that a test passed if it was not run.
