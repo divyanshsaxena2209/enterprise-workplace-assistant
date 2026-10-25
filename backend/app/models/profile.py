@@ -65,7 +65,7 @@ class ProfileModel:
             # which otherwise raises ValueError after the profile has been saved.
             # Normalize the fraction to datetime's microsecond precision first.
             timestamp = val.strip()
-            fractional = re.search(r"(\\.)(\\d+)(Z|[+-]\\d{2}:?\\d{2})?$", timestamp)
+            fractional = re.search(r"(\.)(\d+)(Z|[+-]\d{2}:?\d{2})?$", timestamp)
             if fractional:
                 digits = fractional.group(2)[:6].ljust(6, "0")
                 timezone = fractional.group(3) or ""
