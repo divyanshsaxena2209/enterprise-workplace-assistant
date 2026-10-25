@@ -4,7 +4,7 @@ Resume request and response schemas, including structured outputs for AI parsing
 
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 
@@ -47,15 +47,20 @@ class ParsedResumeData(BaseModel):
 
 
 class ResumeResponse(BaseModel):
-    """Safe representation of a resume record."""
+    """Safe API representation of a resume row (supports current and legacy column names)."""
     id: str
     candidate_id: str
     file_url: str
-    parsed_data: ParsedResumeData
-    status: str
-    created_at: datetime
+    parsed_data: ParsedResumeData = Field(
+        validation_alias=AliasChoices("parsed_data", "parsed_json")
+    )
+    # The current schema has no status column; expose a stable API default.
+    status: str = "UPLOADED"
+    created_at: datetime = Field(
+        validation_alias=AliasChoices("created_at", "uploaded_at")
+    )
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class ResumeUploadResponse(BaseModel):

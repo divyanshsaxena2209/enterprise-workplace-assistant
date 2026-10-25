@@ -222,3 +222,115 @@ def test_candidate_detail_converts_supabase_resume_locator_to_signed_url(monkeyp
     assert details.resume is not None
     assert details.resume.file_url == "https://signed.invalid/resume?token=short-lived"
     assert signed_calls == [("resumes_uuid_resume.pdf", "supabase")]
+
+class _ResumePersistenceQuery:
+    def __init__(self, client, table_name):
+        self.client = client
+        self.table_name = table_name
+        self.action = None
+        self.payload = None
+        self.filters = {}
+
+    def insert(self, payload):
+        self.action = "insert"
+        self.payload = payload
+        self.client.inserted_payloads[self.table_name] = payload
+        return self
+
+    def delete(self):
+        self.action = "delete"
+        return self
+
+    def eq(self, key, value):
+        self.filters[key] = value
+        return self
+
+    def execute(self):
+        if self.action == "delete" and self.table_name == "candidates":
+            self.client.deleted_candidate_ids.append(self.filters.get("id"))
+            return SimpleNamespace(data=[])
+        if self.action == "insert" and self.table_name == "candidates":
+            return SimpleNamespace(data=[{"id": "candidate-test-id"}])
+        if self.action == "insert" and self.table_name == "resumes":
+            if self.client.fail_resume_insert:
+                raise RuntimeError("PGRST204")
+            return SimpleNamespace(data=[{"id": "resume-test-id"}])
+        raise AssertionError(f"Unexpected query: {self.table_name} / {self.action}")
+
+
+class _ResumePersistenceClient:
+    def __init__(self, fail_resume_insert=False):
+        self.fail_resume_insert = fail_resume_insert
+        self.inserted_payloads = {}
+        self.deleted_candidate_ids = []
+
+    def table(self, table_name):
+        return _ResumePersistenceQuery(self, table_name)
+
+
+def test_candidate_resume_insert_matches_live_supabase_schema():
+    from app.repositories.candidate_repository import CandidateRepository
+
+    client = _ResumePersistenceClient()
+    candidate_id, resume_id = CandidateRepository(client).create_candidate_with_resume(
+        candidate_data={"full_name": "Test Candidate", "email": "candidate@example.invalid"},
+        resume_data={
+            "file_name": "resume.pdf",
+            "file_url": "supabase://resumes_test_resume.pdf",
+            "parsed_json": {"full_name": "Test Candidate", "skills": ["Python"]},
+        },
+    )
+
+    assert candidate_id == "candidate-test-id"
+    assert resume_id == "resume-test-id"
+    assert client.inserted_payloads["resumes"] == {
+        "candidate_id": "candidate-test-id",
+        "file_name": "resume.pdf",
+        "file_url": "supabase://resumes_test_resume.pdf",
+        "parsed_json": {"full_name": "Test Candidate", "skills": ["Python"]},
+    }
+
+
+def test_failed_resume_insert_rolls_back_new_candidate():
+    from app.repositories.candidate_repository import CandidateRepository
+
+    client = _ResumePersistenceClient(fail_resume_insert=True)
+    with pytest.raises(DatabaseError, match="Failed to save candidate and resume data"):
+        CandidateRepository(client).create_candidate_with_resume(
+            candidate_data={"full_name": "Test Candidate", "email": "candidate@example.invalid"},
+            resume_data={
+                "file_name": "resume.pdf",
+                "file_url": "supabase://resumes_test_resume.pdf",
+                "parsed_json": {"full_name": "Test Candidate"},
+            },
+        )
+
+    assert client.deleted_candidate_ids == ["candidate-test-id"]
+
+
+def test_resume_response_accepts_current_supabase_resume_columns():
+    from app.schemas.resume import ResumeResponse
+
+    response = ResumeResponse.model_validate({
+        "id": "resume-test-id",
+        "candidate_id": "candidate-test-id",
+        "file_name": "resume.pdf",
+        "file_url": "supabase://resumes_test_resume.pdf",
+        "parsed_json": {
+            "full_name": "Test Candidate",
+            "email": None,
+            "phone": None,
+            "skills": ["Python"],
+            "experience": [],
+            "education": [],
+            "certifications": [],
+            "projects": [],
+            "previous_companies": [],
+        },
+        "uploaded_at": "2026-10-25T19:33:00Z",
+    })
+
+    assert response.parsed_data.full_name == "Test Candidate"
+    assert response.status == "UPLOADED"
+    assert response.created_at.isoformat().startswith("2026-10-25T19:33:00")
+

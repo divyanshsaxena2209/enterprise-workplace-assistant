@@ -58,3 +58,27 @@ The three successful answers demonstrated that the chatbot can retrieve the uplo
 - [Gemini API troubleshooting](https://ai.google.dev/gemini-api/docs/troubleshooting) — Google recommends bounded exponential backoff for retryable 429/5xx errors and distinguishes service-capacity errors from invalid-key/project configuration errors.
 - [Gemini API errors](https://ai.google.dev/gemini-api/docs/api-errors) — reference for authentication, quota, rate-limit, and service-unavailable codes.
 
+## Resume application failure — root cause confirmed and fix prepared (26 October 2026)
+
+### User-visible errors
+The employee Apply for Position modal showed two failures during resume submission:
+- `Failed to structure the resume data.`
+- `Failed to save candidate and resume records after upload; object cleanup was attempted.`
+
+### Evidence and root cause
+- The first error occurred before storage/database persistence, while the resume parser called Gemini. CloudWatch showed several model availability failures (503) and legacy/unavailable model IDs (404); the model fallback chain is corrected in this staging change.
+- Supabase staging edge logs at `2026-10-25T19:33:27Z` show the resume PDF upload to the private `resumes` bucket succeeded (HTTP 200), the candidate insert succeeded (HTTP 201), the resume insert failed with HTTP 400 / PostgREST `PGRST204`, and storage cleanup returned HTTP 200.
+- The live staging `public.resumes` schema uses `id, candidate_id, file_name, file_url, parsed_json, uploaded_at`. The backend was incorrectly sending `parsed_data` (not a live column) and omitting required `file_name`. This explains the second failure.
+- The failed attempt left one candidate row created at `2026-10-25T19:33:27.947654Z` with no resume and no application. That staging test orphan is scheduled for narrowly scoped cleanup after a final recheck.
+- No Production resources or data were modified.
+
+### Code changes prepared for staging
+- Send `file_name` and `parsed_json` from the resume-upload route.
+- Build an explicit DB insert payload in `CandidateRepository` using actual schema columns, and roll back the just-created candidate if resume insert fails.
+- Make the API response schema read both current `parsed_json/uploaded_at` fields and legacy `parsed_data/created_at` fields, with a stable `UPLOADED` API status default.
+- Replace unsupported/stale fallback IDs with currently documented stable Gemini model IDs, preferring Flash-Lite first to reduce cost. Official model list: https://ai.google.dev/gemini-api/docs/models. Google recommends bounded fallback/backoff for 429/5xx and checking model/API compatibility: https://ai.google.dev/gemini-api/docs/troubleshooting.
+- Add regression tests for the live database payload, candidate rollback, and schema compatibility.
+
+### Release status
+These changes must pass the staging branch GitHub Actions test workflow and ECR image build. The new image must then be deployed to the existing `ewa-cognito-staging-api` CloudFormation stack through a reviewed, modify-in-place change set. Production stays untouched. After deployment, verify one real PDF upload succeeds, creates the application, and can be reopened/downloaded from the candidate details route. Do not repeat uploads before the new image is live.
+

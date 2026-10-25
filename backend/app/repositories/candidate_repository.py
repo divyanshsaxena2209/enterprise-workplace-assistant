@@ -3,12 +3,16 @@ Candidate Repository
 Handles database operations for candidates and resumes.
 """
 
+import logging
 from typing import Dict, Any, List, Optional
 from supabase import Client
 
 from app.core.exceptions import DatabaseError, NotFoundError
 from app.schemas.candidate import CandidateResponse, CandidateDetailResponse
 from app.schemas.resume import ResumeResponse
+
+
+logger = logging.getLogger(__name__)
 
 
 class CandidateRepository:
@@ -26,23 +30,56 @@ class CandidateRepository:
         Creates a candidate and their resume.
         Returns the new candidate ID and resume ID.
         """
+        candidate_id = None
         try:
-            
             candidate_res = self._db.table("candidates").insert(candidate_data).execute()
             if not candidate_res.data:
                 raise DatabaseError("Failed to insert candidate.")
             candidate_id = candidate_res.data[0]["id"]
 
-            
-            resume_data["candidate_id"] = candidate_id
+            # The live Supabase schema uses file_name, file_url, parsed_json and
+            # uploaded_at. Build an explicit payload with actual database columns.
+            file_name = resume_data.get("file_name") or resume_data.get("filename")
+            file_url = resume_data.get("file_url")
+            if not isinstance(file_name, str) or not file_name.strip():
+                raise ValueError("Resume file name is required.")
+            if not isinstance(file_url, str) or not file_url.strip():
+                raise ValueError("Resume file URL is required.")
+            parsed_json = resume_data.get("parsed_json")
+            if parsed_json is None:
+                parsed_json = resume_data.get("parsed_data", {})
 
-            
-            resume_res = self._db.table("resumes").insert(resume_data).execute()
+            resume_record = {
+                "candidate_id": candidate_id,
+                "file_name": file_name,
+                "file_url": file_url,
+                "parsed_json": parsed_json,
+            }
+            resume_res = self._db.table("resumes").insert(resume_record).execute()
+            if not resume_res.data:
+                raise DatabaseError("Failed to insert resume.")
             resume_id = resume_res.data[0]["id"]
 
             return candidate_id, resume_id
         except Exception as exc:
-            raise DatabaseError(f"Failed to save candidate data to database: {exc}") from exc
+            # Supabase REST calls are separate transactions. If resume persistence
+            # fails after candidate creation, remove the candidate to avoid an orphan.
+            if candidate_id is not None:
+                try:
+                    self._db.table("candidates").delete().eq("id", candidate_id).execute()
+                except Exception as cleanup_exc:
+                    logger.error(
+                        "Candidate rollback after resume persistence failure failed (exception_type=%s).",
+                        type(cleanup_exc).__name__,
+                    )
+            logger.error(
+                "Candidate/resume persistence failed (exception_type=%s, code=%s).",
+                type(exc).__name__,
+                getattr(exc, "code", None),
+            )
+            raise DatabaseError(
+                f"Failed to save candidate and resume data to database ({type(exc).__name__})."
+            ) from exc
 
     def get_candidates(self, skip: int = 0, limit: int = 20, search: Optional[str] = None) -> List[CandidateResponse]:
         """

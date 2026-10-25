@@ -108,8 +108,9 @@ def upload_resume(
     }
     
     resume_data = {
+        "file_name": file.filename,
         "file_url": file_url,
-        "parsed_data": parsed_data.model_dump(),
+        "parsed_json": parsed_data.model_dump(),
     }
     
     try:
