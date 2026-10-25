@@ -110,7 +110,8 @@ class CandidateRepository:
             candidate = CandidateResponse.model_validate(cand_res.data[0])
 
             
-            resume_res = self._db.table("resumes").select("*").eq("candidate_id", candidate_id).order("created_at", desc=True).limit(1).execute()
+            # The staging resumes table uses uploaded_at, not created_at.
+            resume_res = self._db.table("resumes").select("*").eq("candidate_id", candidate_id).order("uploaded_at", desc=True).limit(1).execute()
             resume = None
             if resume_res.data:
                 resume_row = dict(resume_res.data[0])

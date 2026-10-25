@@ -169,8 +169,9 @@ def test_candidate_detail_converts_supabase_resume_locator_to_signed_url(monkeyp
     resume = {
         "id": "resume-1",
         "candidate_id": "candidate-1",
+        "file_name": "resume.pdf",
         "file_url": stored_locator,
-        "parsed_data": {
+        "parsed_json": {
             "full_name": "Test Candidate",
             "email": "candidate@example.invalid",
             "phone": None,
@@ -181,9 +182,10 @@ def test_candidate_detail_converts_supabase_resume_locator_to_signed_url(monkeyp
             "projects": [],
             "previous_companies": [],
         },
-        "status": "UPLOADED",
-        "created_at": "2026-10-24T00:00:00+00:00",
+        "uploaded_at": "2026-10-24T00:00:00+00:00",
     }
+
+    order_calls = []
 
     class FakeQuery:
         def __init__(self, rows):
@@ -195,7 +197,8 @@ def test_candidate_detail_converts_supabase_resume_locator_to_signed_url(monkeyp
         def eq(self, *_args, **_kwargs):
             return self
 
-        def order(self, *_args, **_kwargs):
+        def order(self, column, **kwargs):
+            order_calls.append((column, kwargs.get("desc", False)))
             return self
 
         def limit(self, *_args, **_kwargs):
@@ -222,6 +225,7 @@ def test_candidate_detail_converts_supabase_resume_locator_to_signed_url(monkeyp
     assert details.resume is not None
     assert details.resume.file_url == "https://signed.invalid/resume?token=short-lived"
     assert signed_calls == [("resumes_uuid_resume.pdf", "supabase")]
+    assert order_calls == [("uploaded_at", True)]
 
 class _ResumePersistenceQuery:
     def __init__(self, client, table_name):

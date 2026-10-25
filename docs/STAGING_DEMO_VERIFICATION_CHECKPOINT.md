@@ -106,3 +106,10 @@ The CloudFormation staging template now owns the `GEMINI_API_KEY`, `QDRANT_URL` 
 
 ### Manual acceptance still required
 After the change set is executed and stack update completes, confirm that the Lambda image digest above is active and run one resume upload through the staging Job Details → Apply for Position flow. A complete pass means: Gemini parsing succeeds; the resume file is stored; `public.candidates` and `public.resumes` are both created with schema-correct fields; the application record is created; the UI reports success; and management/candidate views can retrieve the application and resume. Don't retry uploads until the updated image and template are deployed.
+
+
+## Follow-up resume detail error — root cause and fix (26 October 2026)
+
+The latest screenshot showed the candidate/apply flow failing with Postgres error `42703`: `column resumes.created_at does not exist`. The staging `public.resumes` table uses `uploaded_at`; candidate retrieval was still ordering by `created_at`. This query failed while fetching a candidate's resume, so the API surfaced an error even after the resume row could be present.
+
+Fix committed on `cognito-staging-integration`: `CandidateRepository.get_candidate_by_id` orders resume records by `uploaded_at DESC`. The existing candidate-detail regression test now uses the real staging row shape (`file_name`, `file_url`, `parsed_json`, `uploaded_at`) and asserts the query orders by `uploaded_at`, so a nonexistent `created_at` column is not hidden by a permissive mock. Re-run the CI suite and build a new immutable ECR image; deploy through the existing staging CloudFormation stack only. Production is untouched.
