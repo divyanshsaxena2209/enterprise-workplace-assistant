@@ -3,7 +3,7 @@
 Repository: `divyanshsaxena2209/enterprise-workplace-assistant`  
 Branch: `cognito-staging-integration`  
 Environment: isolated staging only  
-Status: **PARTIAL PASS — the Knowledge Base chatbot's document retrieval and policy answering are demonstrated, but the whole application is not fully verified.**
+Status: **Knowledge Base chatbot functional verification DONE for the tested behaviors; overall demo verification remains PARTIAL because provider reliability and other application workflows are not fully verified.**
 
 ## User-observed Knowledge Base chatbot results
 
@@ -14,15 +14,16 @@ The user manually tested the chatbot in the staging Vercel branch preview with t
 | Annual leave: “How many annual leave days does a full-time employee receive per year?” | Returned 18 working days per completed leave year, accruing at 1.5 days per month, with a caveat for applicable law/individual terms. | **PASS** — consistent with the tested handbook |
 | Parental leave: “What parental leave benefits are available to employees, and what eligibility conditions must they meet?” | Said the document did not specify parental leave; then listed annual, sick and casual leave information from the handbook. | **PASS** — appropriate abstention rather than inventing a parental entitlement |
 | Overtime: “If an employee works extra hours over the weekend to finish a project, are they automatically entitled to overtime pay?” | Said no automatic entitlement; described prior manager approval, an emergency exception, and legal requirements. | **PASS** — consistent with the answer observed from the handbook |
-| Confidentiality incident: “I accidentally sent a confidential company document to my personal email address. What should I do?” | Returned: “The AI model is currently experiencing exceptionally high demand. This is a temporary spike. Please wait a moment and try your query again.” | **FAILED ATTEMPT / RETEST REQUIRED** — no policy answer was generated; this does not by itself establish a retrieval failure |
+| Confidentiality incident: “I accidentally sent a confidential company document to my personal email address. What should I do?” | Returned a Gemini high-demand message. CloudWatch later showed HTTP 503 responses for several models, followed by HTTP 404 responses for legacy/unavailable model IDs; all fallback models were exhausted. | **Provider availability failure identified** — not a successful policy-answering test; model fallback configuration fix committed for staging, but deployment/runtime verification remains pending |
 
-The three successful answers showed that the chatbot could retrieve the uploaded handbook and answer both direct policy questions and a question whose answer was absent from the document. The fourth attempt was not a policy-answering pass. Retry it once and compare any answer to the actual handbook text.
+The three successful answers demonstrated that the chatbot can retrieve the uploaded handbook, cite its PDF pages, answer policy questions, and abstain when the handbook does not specify an answer. **Mark the Knowledge Base chatbot's functional/document-retrieval verification DONE for these tested behaviors.** This is a bounded verification result, not a claim that every chatbot edge case or service-availability condition is verified. One response failed because Gemini returned provider errors, so operational resilience is tracked separately below.
 
 ## Gemini key and service-error follow-up
 
-- On 26 October, the user created a new Gemini API key in Google AI Studio. At the time of this report, the user explicitly said the new key had **not yet been copied into the staging Lambda environment**.
-- Do not mark the new key as deployed or tested until the user updates `GEMINI_API_KEY` on the existing staging Lambda and a fresh request succeeds.
-- The displayed “exceptionally high demand” message is consistent with a transient Gemini service-capacity error, but the UI message alone does not establish the exact HTTP status or root cause. Inspect the corresponding CloudWatch invocation for a sanitized provider status/error. Follow Google’s transient-error guidance (bounded retry with exponential backoff for 429/5xx); do not keep creating keys for a service-capacity error.
+- On 26 October, the user confirmed the newly created Gemini API key was pasted into the existing staging Lambda before the latest logs were captured. The key value is intentionally not recorded.
+- CloudWatch now confirms the failing request reached Gemini and received HTTP 503 `UNAVAILABLE` / high-demand responses from multiple model IDs. The logs also show HTTP 404 errors for `gemini-1.5-flash` and `gemini-2.5-flash` in this project/API context. These errors are not evidence of a bad API key.
+- Code change committed on `cognito-staging-integration`: `f7bbbe5c7258879213bdf6fc53442715cc1db01c` updates `backend/app/services/llm_fallback.py` to prefer documented model IDs (`gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`) and remove the known 404 fallback IDs. Google’s current model list documents these IDs. This commit has **not yet been confirmed built/deployed to Lambda**, and its fallback models have not yet been live-smoke-tested.
+- Operational resilience remains open: once CI/build/deployment is complete, make one chatbot request and confirm a successful answer or a clear bounded provider error. Do not keep creating API keys for HTTP 503 service-capacity errors.
 - Earlier CloudWatch evidence included a Lambda invocation that timed out after 60 seconds during `get_session_messages` for session `b806d9c9-7393-47e6-a5f8-0e1fd81e6f3a`. That is a separate backend/session-retrieval concern to investigate if it recurs; do not assume the Gemini key fixes it.
 - Keep secrets, API keys, access tokens and authorization codes out of this file and all screenshots/messages.
 
@@ -34,21 +35,23 @@ The three successful answers showed that the chatbot could retrieve the uploaded
 | Staging Lambda health | User loaded the staging `/health` endpoint and observed `status=ok`, `environment=staging`; CloudWatch showed a successful short invocation with no traceback in that health request. | **PASS for health endpoint only** |
 | CloudWatch logs | User shared successful invocation START/END/REPORT entries; another request later timed out after 60 seconds. | **PARTIAL** — logs are delivered, but timeout diagnosis remains open if reproducible |
 | Knowledge Base document upload and indexing | A handbook PDF was indexed and appeared in cited records for three generated answers. | **PARTIAL PASS** — these observations demonstrate retrieval; storage-provider migration and delete/download lifecycle still need their own tests |
-| Knowledge Base question answering | Three observed answers were grounded in the cited handbook; one question hit a provider-style high-demand message. | **PARTIAL PASS** |
-| Gemini replacement key | Key created in AI Studio, but not yet copied to Lambda at the time recorded. | **PENDING** |
+| Knowledge Base question answering | Three observed answers were grounded in the cited handbook; one question hit Gemini HTTP 503 errors and stale fallback model IDs (404). | **FUNCTIONAL VERIFICATION DONE for tested behaviors; provider resilience fix pending deployment and smoke test** |
+| Gemini replacement key | User confirmed the new key was copied into the staging Lambda before the latest logs. Requests reach Gemini but provider/model errors persist. | **CONFIGURATION UPDATED; functional success after key change not demonstrated** |
 | Qdrant staging connection | User reported adding `QDRANT_URL` and `QDRANT_API_KEY` to staging configuration. The successful indexed/cited responses are positive functional evidence, but configuration values must never be recorded here. | **Functionally demonstrated for those successful queries** |
 | Jobs & hiring, onboarding, resume processing/evaluation, management/employee restrictions across all routes | No complete end-to-end evidence recorded in this checkpoint. | **NOT FULLY VERIFIED** |
 | S3 document storage | Staging provider was previously confirmed as `STORAGE_PROVIDER=supabase` with `AWS_S3_BUCKET` empty. | **NOT ACTIVE; separate optional migration** |
 | Production isolation | Project process requires Production remain unchanged; this checkpoint documents staging observations only. | Continue to verify no Production changes before release |
 
-## Decision: is the application completely verified?
+## Decision: chatbot verification vs. overall demo verification
 
-**No.** Mark only the observed chatbot cases and staging health/authentication evidence above at their stated level. A few successful chatbot responses do not establish complete application verification. Outstanding acceptance work includes:
-1. Update the newly created Gemini key in the existing staging Lambda, then retry the failed confidentiality question once.
-2. If the chatbot hangs or returns another provider error, correlate that attempt with sanitized CloudWatch logs and diagnose any repeated session-message timeout.
-3. Complete a small, targeted staging smoke test for Jobs & Hiring, onboarding, resume/evaluation workflow if used in the demo, and Employee-vs-Management authorization boundaries.
-4. Confirm document upload/index, question answering, download and deletion/cleanup behavior appropriate to the currently active Supabase storage provider. S3 is not required for the current demo unless explicitly chosen as a separate scope.
-5. Keep Production untouched and do not merge draft migration PRs merely because this partial demo checkpoint passes.
+**Knowledge Base chatbot functional verification: DONE for the behaviors tested.** The evidence confirms successful document retrieval/citations, a correct direct policy answer, appropriate abstention for an absent policy, and a relevant overtime answer. Record the Gemini 503 failure separately as an operational reliability issue; it does not erase the successful functional checks.
+
+**Overall application/demo verification: NOT COMPLETE.** Remaining work:
+1. Run CI/build for commit `f7bbbe5c7258879213bdf6fc53442715cc1db01c`, then deploy the resulting staging image through the existing staging-only process. Do not change Production.
+2. After deployment, make one low-volume chatbot request to verify the new model fallback chain. If Gemini still returns 503, capture the sanitized error and treat it as provider availability rather than creating more keys. Investigate the earlier `get_session_messages` 60-second timeout if it recurs.
+3. Complete a targeted staging smoke test for Jobs & Hiring, onboarding, resume/evaluation workflow if used in the demo, and Employee-vs-Management authorization boundaries.
+4. Confirm document upload/index, question answering, download and deletion/cleanup behavior for the currently active Supabase storage provider. S3 is not active and is not required for the current demo unless explicitly chosen.
+5. Keep Production untouched and do not merge draft migration PRs merely because these chatbot checks pass.
 
 ## Official Gemini error handling reference
 
