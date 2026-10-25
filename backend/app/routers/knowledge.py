@@ -10,7 +10,7 @@ import tempfile
 UPLOAD_DIR = tempfile.gettempdir()
 
 from fastapi import Depends
-from app.dependencies.auth import require_authenticated_user
+from app.dependencies.auth import require_authenticated_user, require_management
 from app.schemas.profile import ProfileResponse
 from app.schemas.knowledge_chat import ChatSessionCreate, ChatSessionUpdate
 from app.services import knowledge_chat_service
@@ -20,7 +20,11 @@ class QueryRequest(BaseModel):
     session_id: str | None = None
 
 @router.post("/upload")
-async def upload_document(request: Request, file: UploadFile = File(...)):
+async def upload_document(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: ProfileResponse = Depends(require_management),
+):
     
     ALLOWED_TYPES = [
         "application/pdf", 
@@ -29,13 +33,11 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed.")
 
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    
     import uuid
-    from app.db.supabase import get_supabase_client
-    
+    safe_filename = os.path.basename(file.filename or "document").replace("/", "_").replace("\\\\", "_")
+    file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{safe_filename}")
     file_bytes = await file.read()
-    
+
     with open(file_path, "wb") as buffer:
         buffer.write(file_bytes)
 
@@ -50,18 +52,24 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=str(e))
         
+    storage_provider = None
+    file_key = None
+    file_url = None
     try:
-        client = get_supabase_client()
-        unique_filename = f"knowledge_{uuid.uuid4()}_{file.filename.replace(' ', '_')}"
-        client.storage.from_("resumes").upload(
-            path=unique_filename,
-            file=file_bytes,
-            file_options={"content-type": file.content_type}
-        )
-        file_url = client.storage.from_("resumes").get_public_url(unique_filename)
+        from app.services.object_storage import upload_knowledge_document
+        stored = upload_knowledge_document(safe_filename, file_bytes, file.content_type or "application/octet-stream")
+        storage_provider = stored["storage_provider"]
+        file_key = stored["file_key"]
+        file_url = stored["file_url"]
     except Exception as exc:
-        print(f"Failed to upload to storage: {exc}")
-        file_url = None
+        # Keep the historical best-effort behavior for Supabase mode. In S3 mode,
+        # fail loudly rather than claim a private document was stored when it was not.
+        print(f"Failed to upload to object storage: {type(exc).__name__}")
+        from app.core.config import settings
+        if settings.STORAGE_PROVIDER.strip().lower() == "s3":
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            raise HTTPException(status_code=500, detail="Document indexing finished, but storage upload failed. Check S3 bucket and Lambda IAM permissions.")
 
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -72,6 +80,8 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
         "pages": result.get("pages", 0),
         "chunks": result.get("chunks", 0),
         "file_url": file_url,
+        "file_key": file_key,
+        "storage_provider": storage_provider,
         "message": "Document uploaded and indexed successfully."
     }
 
@@ -158,9 +168,31 @@ def query_documents(
 class DeleteDocumentRequest(BaseModel):
     filename: str
     file_url: str | None = None
+    file_key: str | None = None
+    storage_provider: str | None = None
+
+
+@router.get("/document/download")
+def get_document_download_url(
+    file_key: str,
+    current_user: ProfileResponse = Depends(require_authenticated_user),
+):
+    from app.services.object_storage import create_knowledge_document_download_url
+    try:
+        return {"file_url": create_knowledge_document_download_url(file_key)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        print(f"Failed to create document download URL: {type(exc).__name__}")
+        raise HTTPException(status_code=500, detail="Unable to create a temporary download URL.") from exc
+
 
 @router.delete("/document")
-async def delete_document_endpoint(request: Request, body: DeleteDocumentRequest):
+async def delete_document_endpoint(
+    request: Request,
+    body: DeleteDocumentRequest,
+    current_user: ProfileResponse = Depends(require_management),
+):
     try:
         from app.services.knowledge_rag import delete_document
         import asyncio
@@ -170,15 +202,12 @@ async def delete_document_endpoint(request: Request, body: DeleteDocumentRequest
         deleted_chunks = await loop.run_in_executor(None, func)
         
         
-        if body.file_url:
-            from app.db.supabase import get_supabase_client
-            
+        if body.file_url or body.file_key:
+            from app.services.object_storage import delete_knowledge_document_object
             try:
-                storage_filename = body.file_url.split('/')[-1]
-                client = get_supabase_client()
-                client.storage.from_("resumes").remove([storage_filename])
+                delete_knowledge_document_object(body.storage_provider, body.file_key, body.file_url)
             except Exception as e:
-                print(f"Failed to remove from storage: {e}")
+                print(f"Failed to remove document object: {type(e).__name__}")
                 
         return {"success": True, "deleted_chunks": deleted_chunks, "message": f"Document '{body.filename}' deleted successfully."}
     except Exception as e:

@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, UploadFile, File, status
 
 from app.db.supabase import get_supabase_client
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import require_management_or_employee
 from app.schemas.profile import ProfileResponse
 from app.schemas.resume import ResumeUploadResponse
 from app.schemas.common import ErrorResponse
@@ -38,12 +38,12 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 )
 def upload_resume(
     file: UploadFile = File(...),
-    current_user: ProfileResponse = Depends(get_current_user)
+    current_user: ProfileResponse = Depends(require_management_or_employee)
 ) -> ResumeUploadResponse:
     """
     **Uploads a candidate resume.**
     - Validates file type and size.
-    - Uploads raw file to Supabase Storage.
+    - Uploads raw file through the configured private object storage provider (Supabase during rollback; S3 after cutover).
     - Extracts raw text using PyPDF2 / docx2txt.
     - Parses text into structured JSON via Gemini AI.
     - Saves Candidate and Resume to database.
@@ -73,20 +73,26 @@ def upload_resume(
     client = get_supabase_client()
     
     
-    unique_filename = f"{uuid.uuid4()}_{file.filename.replace(' ', '_')}"
-    
     try:
-        
-        client.storage.from_("resumes").upload(
-            path=unique_filename,
-            file=file_bytes,
-            file_options={"content-type": file.content_type}
+        from app.core.config import settings
+        from app.services.object_storage import upload_knowledge_document
+
+        stored = upload_knowledge_document(
+            file.filename,
+            file_bytes,
+            file.content_type or "application/octet-stream",
+            prefix="resumes",
         )
-        
-        
-        file_url = client.storage.from_("resumes").get_public_url(unique_filename)
+        # Persist a stable S3 object key rather than an expiring presigned URL.
+        # CandidateRepository signs it when an authorised user requests details.
+        if stored["storage_provider"] == "s3":
+            file_url = f"s3://{stored['file_key']}"
+        else:
+            file_url = stored["file_url"]
     except Exception as exc:
-        raise DatabaseError(f"Failed to upload resume to storage: {exc}") from exc
+        raise DatabaseError(
+            f"Failed to upload resume to {settings.STORAGE_PROVIDER} object storage: {type(exc).__name__}"
+        ) from exc
 
     
     repo = CandidateRepository(client)

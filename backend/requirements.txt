@@ -27,3 +27,5 @@ langchain-qdrant
 gotrue
 mangum>=0.19.0
 awslambdaric>=3.1.1
+
+boto3>=1.34.0

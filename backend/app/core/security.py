@@ -1,9 +1,9 @@
 """
 JWT verification and low-level token utilities.
 
-This module is intentionally thin — it only handles token cryptography.
-Authorization logic (role checks) lives in app/dependencies/auth.py.
-Database queries live in app/repositories/.
+Supabase currently issues HS256 tokens for this application. Verify the
+signature and expiry before the profile's database-backed role is trusted.
+The Cognito migration will replace this verifier with issuer/JWKS validation.
 """
 
 import jwt
@@ -14,54 +14,38 @@ from typing import Any
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 
-
-
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def decode_jwt(token: str) -> dict[str, Any]:
-    """
-    Decode and verify a Supabase-issued JWT.
-
-    Returns the decoded payload dict on success.
-    Raises AuthenticationError on any failure.
-    """
-    if not settings.SUPABASE_JWT_SECRET:
-        
-        
-        if settings.is_production:
-            raise AuthenticationError("JWT secret not configured on server.")
-        try:
-            return jwt.decode(
-                token,
-                options={"verify_signature": False, "verify_aud": False},
-                algorithms=["HS256"],
-            )
-        except jwt.DecodeError as exc:
-            raise AuthenticationError(f"Malformed JWT: {exc}") from exc
+    """Decode a Supabase-issued JWT only after cryptographic verification."""
+    secret = settings.SUPABASE_JWT_SECRET
+    if not secret:
+        # Failing closed is essential: unsigned tokens must never identify a user.
+        raise AuthenticationError("JWT verification is not configured on the server.")
 
     try:
-        
-        print("DEBUG TOKEN HEADER:", jwt.get_unverified_header(token))
+        # Supabase's legacy JWT secret signs HS256 tokens. Do not accept asymmetric
+        # algorithms here: an HMAC secret must not be interpreted as an RSA/ECDSA key.
         payload = jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256", "RS256", "ES256"],
-            options={"verify_aud": False, "verify_signature": False},
+            key=secret,
+            algorithms=["HS256"],
+            options={"verify_signature": True, "verify_exp": True, "verify_aud": False},
         )
+        if not payload.get("sub"):
+            raise AuthenticationError("Token payload is missing the user identifier (sub).")
         return payload
-    except jwt.ExpiredSignatureError:
-        raise AuthenticationError("Token has expired. Please log in again.")
+    except AuthenticationError:
+        raise
+    except jwt.ExpiredSignatureError as exc:
+        raise AuthenticationError("Token has expired. Please log in again.") from exc
     except jwt.InvalidTokenError as exc:
-        try:
-            header = jwt.get_unverified_header(token)
-        except Exception:
-            header = "Could not parse header"
-        raise AuthenticationError(f"Invalid authentication token: {exc}. Header: {header}")
+        raise AuthenticationError("Invalid authentication token.") from exc
 
 
 def extract_user_id(payload: dict[str, Any]) -> str:
-    """Extract the user UUID (sub claim) from a decoded JWT payload."""
+    """Extract the user UUID (sub claim) from a verified JWT payload."""
     user_id = payload.get("sub")
     if not user_id:
         raise AuthenticationError("Token payload is missing the user identifier (sub).")
@@ -71,18 +55,7 @@ def extract_user_id(payload: dict[str, Any]) -> str:
 def verify_token(
     credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
 ) -> dict[str, Any]:
-    """
-    FastAPI security dependency — extracts and verifies the Bearer token.
-
-    Usage::
-
-        @router.get("/protected")
-        def protected(payload: dict = Security(verify_token)):
-            ...
-
-    Prefer using the higher-level dependencies in app/dependencies/auth.py
-    which also load the full user profile.
-    """
+    """FastAPI dependency returning a verified JWT payload."""
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -96,4 +69,4 @@ def verify_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=exc.message,
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc

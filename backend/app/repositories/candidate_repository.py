@@ -74,7 +74,15 @@ class CandidateRepository:
 
             
             resume_res = self._db.table("resumes").select("*").eq("candidate_id", candidate_id).order("created_at", desc=True).limit(1).execute()
-            resume = ResumeResponse.model_validate(resume_res.data[0]) if resume_res.data else None
+            resume = None
+            if resume_res.data:
+                resume_row = dict(resume_res.data[0])
+                file_url = resume_row.get("file_url") or ""
+                if file_url.startswith("s3://"):
+                    from app.services.object_storage import create_resume_download_url
+                    resume_key = file_url.removeprefix("s3://")
+                    resume_row["file_url"] = create_resume_download_url(resume_key)
+                resume = ResumeResponse.model_validate(resume_row)
 
             return CandidateDetailResponse(
                 candidate=candidate,

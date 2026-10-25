@@ -79,9 +79,10 @@ def get_current_user(
             id="00000000-0000-0000-0000-000000000000",
             email="guest@workforceos.internal",
             full_name="Guest Administrator",
-            role=UserRole.MANAGEMENT,
+            # Guest mode may read published content but must not inherit manager permissions.
+            role=UserRole.EMPLOYEE,
             is_active=True,
-            is_management_verified=True,
+            is_management_verified=False,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -146,6 +147,17 @@ def require_management(
     return current_user
 
 
+def require_management_or_employee(
+    current_user: ProfileResponse = Depends(get_current_user),
+) -> ProfileResponse:
+    """Require a real, active application user, excluding the read-only guest identity."""
+    if str(current_user.id) == "00000000-0000-0000-0000-000000000000":
+        raise AuthorizationError("Guest mode is read-only. Sign in to perform this action.")
+    if current_user.role not in (UserRole.MANAGEMENT, UserRole.EMPLOYEE):
+        raise AuthorizationError("This action requires a Management or Employee account.")
+    return current_user
+
+
 def require_employee(
     current_user: ProfileResponse = Depends(get_current_user),
 ) -> ProfileResponse:
@@ -157,6 +169,9 @@ def require_employee(
     Raises:
         AuthorizationError: if the user's role is not EMPLOYEE.
     """
+    if str(current_user.id) == "00000000-0000-0000-0000-000000000000":
+        raise AuthorizationError("Guest mode is read-only. Sign in with an employee account to perform this action.")
+
     if current_user.role not in UserRole.employee_roles():
         raise AuthorizationError(
             "This action is only available to Employee-level accounts."

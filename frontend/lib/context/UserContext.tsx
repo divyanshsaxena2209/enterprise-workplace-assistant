@@ -27,7 +27,7 @@ const guestProfile: UserProfile = {
   id: "guest-id",
   email: "guest@company.com",
   full_name: "Guest User",
-  role: "Management",
+  role: "GUEST",
   employee_id: "GUEST-001",
   department: "Testing",
   job_title: "Guest Tester",

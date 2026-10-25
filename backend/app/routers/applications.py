@@ -40,7 +40,7 @@ from fastapi import BackgroundTasks
 def create_application(
     application: ApplicationCreate,
     background_tasks: BackgroundTasks,
-    current_user: ProfileResponse = Depends(require_authenticated_user),
+    current_user: ProfileResponse = Depends(require_employee),
     service: ApplicationService = Depends(get_application_service)
 ):
     return service.create_application(application, user_id=current_user.id, background_tasks=background_tasks)

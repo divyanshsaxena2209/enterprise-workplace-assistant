@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.core.security import require_role, supabase_admin
+from app.core.security import supabase_admin
+from app.dependencies.auth import require_management
+from app.schemas.profile import ProfileResponse
 from app.schemas.hiring import ScreenResumeRequest, ScreenResumeResponse
 from app.services.resume_parser import ResumeParserService
 from app.services.candidate_evaluator import CandidateEvaluatorService
@@ -10,10 +12,10 @@ router = APIRouter()
 @router.post("/screen-resume", response_model=ScreenResumeResponse, status_code=status.HTTP_201_CREATED)
 def screen_resume(
     payload: ScreenResumeRequest,
-    current_user: Dict[str, Any] = Depends(require_role(["HR_ADMIN", "SUPER_ADMIN"]))
+    current_user: ProfileResponse = Depends(require_management)
 ):
     """
-    Downloads a candidate's resume from Supabase storage, extracts its text,
+    Downloads a candidate's resume from the configured private storage provider, extracts its text,
     screens it using Gemini AI against the specified Job, scores it,
     saves the parsed details into the PostgreSQL candidates table, and returns the result.
     """
@@ -39,13 +41,21 @@ def screen_resume(
 
     
     try:
-        
-        file_data = supabase_admin.storage.from_("resumes").download(resume_file_path)
+        if resume_file_path.startswith("s3://"):
+            from app.services.object_storage import download_s3_object_bytes
+            s3_key = resume_file_path.removeprefix("s3://")
+            file_data = download_s3_object_bytes(s3_key, prefix="resumes")
+        elif resume_file_path.startswith("resumes/"):
+            from app.services.object_storage import download_s3_object_bytes
+            file_data = download_s3_object_bytes(resume_file_path, prefix="resumes")
+        else:
+            # Backward compatibility for resumes uploaded before the S3 cutover.
+            file_data = supabase_admin.storage.from_("resumes").download(resume_file_path)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to download resume from Storage: {str(e)}. Ensure the file exists in the 'resumes' bucket."
-        )
+            detail="Failed to download resume. Check the private storage key and execution-role permissions.",
+        ) from e
 
     
     try:
