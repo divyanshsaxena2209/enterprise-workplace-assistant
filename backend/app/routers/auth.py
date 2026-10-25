@@ -19,7 +19,7 @@ from app.core.exceptions import AuthenticationError, AuthorizationError, Conflic
 from app.repositories.cognito_identity_repository import CognitoIdentityRepository
 from app.repositories.management_access_request_repository import ManagementAccessRequestRepository
 from app.repositories.profile_repository import ProfileRepository
-from app.db.supabase import get_supabase_client
+from app.db.supabase import create_supabase_auth_client, get_supabase_client
 from app.dependencies.auth import get_current_user
 from app.schemas.auth import CognitoLinkRequest, LoginRequest, SignupRequest, TokenResponse
 from app.schemas.common import ErrorResponse, SuccessResponse
@@ -180,6 +180,7 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     cognito_email = str(claims["email"]).strip().lower()
 
     client = get_supabase_client()
+    auth_client = create_supabase_auth_client()
     profile_repo = ProfileRepository(client)
     profile = profile_repo.get_by_email(cognito_email)
     if profile is None:
@@ -204,7 +205,7 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
             "is_management_verified": False,
         }
         try:
-            created = client.auth.admin.create_user({
+            created = auth_client.auth.admin.create_user({
                 "email": cognito_email,
                 "password": secrets.token_urlsafe(48),
                 "email_confirm": True,
@@ -265,7 +266,7 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     # the actual Supabase Auth identity so an editable/stale profile email can
     # never be used to attach Cognito to a different account.
     try:
-        auth_record = client.auth.admin.get_user_by_id(str(profile.id))
+        auth_record = auth_client.auth.admin.get_user_by_id(str(profile.id))
         auth_user = getattr(auth_record, "user", None) or auth_record
         auth_email = getattr(auth_user, "email", None)
     except Exception as exc:
