@@ -1,3 +1,32 @@
+# CURRENT DEMO VERIFICATION — COMPLETE (26 October 2026, Asia/Kolkata)
+
+This section is the current source of truth for the staging demo checklist. The user has confirmed the listed application flows work, including a successful resume submission after the latest backend fix. This marks the **current demo verification** complete; it does not mean every broader AWS migration or production-readiness item is complete.
+
+## Demo acceptance checklist — user-confirmed PASS
+
+- [x] Cognito signup/sign-in and account/profile linking.
+- [x] Session refresh and logout.
+- [x] Employee versus Management access behavior, as exercised in the staging demo.
+- [x] Jobs & Hiring workflows.
+- [x] Onboarding workflows.
+- [x] Knowledge Base chatbot retrieval from uploaded policy content. The user tested policy questions; answers cited the uploaded handbook. Gemini may still occasionally return temporary 503/high-demand errors, so this is a successful functional demo check, not a guarantee of provider availability.
+- [x] Resume application flow: the user retested after the candidate-details schema fix and confirmed it is now working. The failure was a query for nonexistent `resumes.created_at`; the backend now uses the actual `uploaded_at` field. The fix is on the staging branch in commit `cf92329e31e46bc6f8a4bfa5eaa94edf33a5e50a`.
+- [x] Automated regression/CI checks for the resume fix: **122 passed, 10 warnings**. Frontend build, backend/test compilation, CloudFormation template lint, and isolated service replacement tests passed in [CI run #40228553521](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40228553521).
+- [x] Staging backend image built and pushed successfully for the resume fix in [ECR build #40228553514](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40228553514). The user completed the required staging deployment and confirmed the resume flow works.
+
+## Still outside the completed demo checklist
+
+- S3 document storage is intentionally deferred; current document/resume storage provider remains Supabase. No S3 bucket was created or storage cutover performed.
+- Moving frontend hosting from Vercel to S3 is a separate, optional migration decision and has not been performed.
+- This is not a claim that Production is verified or ready for cutover. Production resources remain untouched, and PR #3 must remain draft until any broader migration/release gates are explicitly completed.
+- The broader AWS migration still has separate IAM least-privilege review, CloudWatch operational checks, and rollout/rollback readiness to track. Do not reopen already user-verified demo flows unless a later regression appears.
+
+## Next step
+
+Treat the staging demo verification as complete. Continue only with the separately scoped next migration task (currently evaluating whether frontend hosting can move from Vercel to S3 safely and cost-effectively). Preserve Production and avoid creating AWS resources without checking the user's budget first.
+
+---
+
 # LATEST VERIFIED STAGING CHECKPOINT — 25 October 2026, ~22:03 IST (Asia/Kolkata)
 
 **This checkpoint supersedes older sections below that say the timestamp-parser/account-link fix is not deployed or that the final Cognito browser test is still pending.** Keep older entries as history, but use this section as the current state.
