@@ -6,7 +6,7 @@ This section supersedes any conflicting older scope notes below. The user has cl
 
 1. **Amazon Cognito — application identity/authentication**
    - Use the staging Cognito User Pool for sign-up/sign-in, OAuth authorization-code + PKCE callback, token validation, session refresh/logout, and mapping Cognito subject to the existing application profile.
-   - Employee/Management is an application authorization choice, not an AWS IAM identity. New users default to Employee. Management must be granted only through the trusted verified-email allowlist or a Management approval flow. Never trust a role sent by the browser.
+   - Employee/Management is an application authorization choice, not an AWS IAM identity. New users default to Employee. Outside the demo exception, Management requires the trusted verified-email allowlist or a Management approval flow; never trust a browser role choice. For the staging demo only, `COGNITO_DEMO_ROLE_SELECTION_ENABLED` defaults false and is effective only when `COGNITO_ENABLED=true` and `ENVIRONMENT=staging`; it deliberately enables self-service role switching for the demo and must never be enabled in Production.
    - Acceptance: real staging browser sign-in reaches `/auth/callback`, creates/loads the correct profile mapping, and protected API calls work.
 
 2. **AWS IAM — permissions and least privilege**
@@ -24,7 +24,7 @@ This section supersedes any conflicting older scope notes below. The user has cl
    - Acceptance: a staging invocation produces logs and metrics; errors can be diagnosed without logging tokens, passwords, authorization codes, or secrets.
 
 ## Scope and safety rules
-- Main priority is the four services above and one end-to-end staging test covering Cognito login/callback, profile mapping, Employee authorization, Management allowlist/request/approval, refresh/logout, Lambda runtime and CloudWatch evidence.
+- Main priority is the four services above and one end-to-end staging test covering the login-page Employee/Management selector, Cognito callback/profile mapping, role-bound authorization, refresh/logout, Lambda runtime, IAM configuration and one correlated CloudWatch log/metric.
 - Keep the staging storage provider as Supabase while completing these four services; no S3 bucket creation or storage cutover is required to validate this four-service milestone. Track the previously requested S3 storage migration separately as a remaining requirement unless the user explicitly removes it.
 - Do not modify Production, merge PR #3 before staging acceptance tests, use Production secrets, or share secrets in chat.
 - Avoid unnecessary infrastructure, repeated console retries, unrelated refactors, dashboards, or other scope creep. If a manual AWS console step is required, ask for only the single next piece of evidence needed.
@@ -64,7 +64,7 @@ Planning estimate, not measured code coverage:
 - Added `COGNITO_DEMO_ROLE_SELECTION_ENABLED` and a strict server-side guard: demo role switching is active only when Cognito is enabled, the flag is explicitly true, and `ENVIRONMENT=staging`. Default is false. Do not enable it in Production.
 - When enabled in the isolated staging demo, selecting Employee or Management changes the existing mapped `public.profiles.role` and `is_management_verified`. When disabled, the pre-existing safe flow remains: Employee by default, trusted server-side allowlist for immediate Manager bootstrap, or a Management access request requiring approval. Browser role selection never grants AWS IAM credentials.
 - Added CloudFormation parameter `DemoRoleSelectionEnabled`, default `false`, with an environment variable mapping to `COGNITO_DEMO_ROLE_SELECTION_ENABLED`. It can be set to `true` only for the dedicated staging demo.
-- Added regression tests for promotion/demotion by the staging demo selector and for the guard requiring the staging environment. Test suite execution/green CI still must be confirmed for the final branch head; do not report this as passed until a matching Actions run is verified.
+- Added regression tests for promotion/demotion by the staging demo selector and for the guard requiring the staging environment. CI run [#202](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40183070271) passed on code SHA `8d1058becb5103cd1193e85f9ee3f2ac96aa8bb4` (frontend build, backend compile/tests and CloudFormation lint). The later signup-copy clarification commit `5696ffb411606c28f6e1c857babd208b4afb0141` is being checked by run #203; verify that run before building the final image.
 
 ### Important current deployment facts
 - User-confirmed successful earlier ECR build: workflow run #17 for commit `7d881ef`, tag `cognito-staging-7d881efbfb623e9b2f7d9f1f55b6257ff76922ea`, digest `sha256:b544a52a05be5473a2af70f43507791f2779b32500cd7cd6fa93442de19f7cec`.
