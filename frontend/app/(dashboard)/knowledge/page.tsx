@@ -154,17 +154,6 @@ export default function KnowledgeDashboard() {
         <div className="flex gap-3">
           {profile?.role === "MANAGEMENT" && (
             <div className="flex items-center gap-2 flex-wrap">
-              <input
-                type="text"
-                value={uploadDepartmentScope}
-                onChange={(event) => setUploadDepartmentScope(event.target.value)}
-                aria-label="Knowledge document department scope"
-                title="Use ALL for a company-wide policy, or enter the department name exactly as used in employee profiles."
-                placeholder="ALL or department"
-                maxLength={100}
-                className="w-36 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
-                disabled={isUploading}
-              />
               <input 
                 type="file" 
                 id="file-upload" 
