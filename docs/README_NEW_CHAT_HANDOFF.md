@@ -52,18 +52,46 @@ Planning estimate, not measured code coverage:
 **Purpose:** Current source of truth to paste into a new ChatGPT conversation. Verify live branch/resource state before making changes. This replaces the older October 21 snapshot where it conflicts with this document.
 
 
-> **CURRENT SCOPE OVERRIDE — 25 October 2026 (read this first; supersedes older migration plans below).**
->
-> The user has explicitly reduced scope due to time constraints. The deliverable is **Cognito authentication + IAM/access control only**, with the existing Lambda/backend reused if it is confirmed to be the intended staging runtime. **S3 storage migration and new CloudWatch work are out of scope.** Do not create an S3 bucket, migrate files, change `STORAGE_PROVIDER` from `supabase`, add S3 permissions, build dashboards/alarms, or undertake unrelated storage/logging work. Lambda is believed to already be integrated; verify the existing resource before deciding any update is necessary.
->
-> The user reports that CloudFormation stack `ewa-cognito-staging-api` **exists**, but has not inspected its details. Treat existence as user-reported, not yet technically verified. Inspect that stack and its existing Lambda before any changes. Never create a duplicate stack/function. Confirm the current image tag/digest, stack status, Cognito and staging Supabase environment, execution role and Function URL. If configuration is already correct, do not redeploy. If an update is genuinely required, update the existing staging stack only, use the immutable image tag built by the successful current-branch workflow, preserve existing secret parameters through CloudFormation previous-value/NoEcho handling, and do not expose secrets in chat.
->
-> **Current successful image build:** user-confirmed manual workflow run **#17**, branch `cognito-staging-integration`, commit `7d881ef`, completed successfully in 51 seconds. Expected immutable image tag for that SHA is `cognito-staging-7d881efbfb623e9b2f7d9f1f55b6257ff76922ea`; verify the workflow summary/ECR before using it. A successful ECR build alone does not prove Lambda is running that image.
->
-> **Application role vs AWS IAM:** Employee/Management are application roles stored in `public.profiles.role` and enforced by FastAPI. Do not give browser users AWS IAM credentials. IAM work in this scope means ensuring the existing Lambda execution role and deployment/publishing role have least-privilege permissions needed for Cognito/backend operation. Cognito User Pools handle app sign-up/sign-in; Cognito does not automatically grant application Management access. The trusted Management allowlist/request/approval flow remains subject to the current implementation described below.
->
-> **Fastest safe completion path:** (1) inspect existing stack and Lambda in AWS Console, (2) compare current stack parameters/environment and deployed image to the successful build, (3) change only what is demonstrably missing, (4) run one end-to-end staging check for signup/sign-in, callback/session, `/api/v1/auth/me`, Employee authorization, Management grant/request, refresh and logout, (5) update this handoff with the exact observed results. Keep PR #3 draft until those tests pass. Do not touch Production, the protected `busted` project, S3, or unrelated CloudWatch work.
+> **HISTORICAL SCOPE NOTE — superseded by the current four-service requirements at the top of this file.** Do not follow the older Cognito/IAM-only restriction below. The current requirement is to complete Cognito, IAM, Lambda, and CloudWatch integrations in staging; S3 migration stays separately deferred unless explicitly re-scoped.
 
+
+
+## Latest source milestone — staging demo role selector (25 October 2026)
+
+### Implemented on `cognito-staging-integration`
+- Added an Employee/Management selector to the Cognito login page. The chosen level is preserved through the OAuth start flow in a short-lived HttpOnly cookie and passed to the backend only after the callback has validated OAuth state, nonce and PKCE.
+- Added backend request schema support for the selected application access level.
+- Added `COGNITO_DEMO_ROLE_SELECTION_ENABLED` and a strict server-side guard: demo role switching is active only when Cognito is enabled, the flag is explicitly true, and `ENVIRONMENT=staging`. Default is false. Do not enable it in Production.
+- When enabled in the isolated staging demo, selecting Employee or Management changes the existing mapped `public.profiles.role` and `is_management_verified`. When disabled, the pre-existing safe flow remains: Employee by default, trusted server-side allowlist for immediate Manager bootstrap, or a Management access request requiring approval. Browser role selection never grants AWS IAM credentials.
+- Added CloudFormation parameter `DemoRoleSelectionEnabled`, default `false`, with an environment variable mapping to `COGNITO_DEMO_ROLE_SELECTION_ENABLED`. It can be set to `true` only for the dedicated staging demo.
+- Added regression tests for promotion/demotion by the staging demo selector and for the guard requiring the staging environment. Test suite execution/green CI still must be confirmed for the final branch head; do not report this as passed until a matching Actions run is verified.
+
+### Important current deployment facts
+- User-confirmed successful earlier ECR build: workflow run #17 for commit `7d881ef`, tag `cognito-staging-7d881efbfb623e9b2f7d9f1f55b6257ff76922ea`, digest `sha256:b544a52a05be5473a2af70f43507791f2779b32500cd7cd6fa93442de19f7cec`.
+- AWS Lambda was later inspected and still showed the OLD digest `sha256:fb2fe145a2821db094a0886927a7e80a2e617fb535ff61e7769bd8ba19039698`.
+- The change set `ewa-cognito-hiz8yhphf7-ukxhbznvt4p` was created with the earlier image/template, before the demo-role selector code and `DemoRoleSelectionEnabled` parameter existed. **Do not execute that pending change set.** The last attempt to execute an older change set showed “Failed to execute change set,” but AWS Events could only be fetched for the prior 24 October operation; root failure is still unknown.
+- These new source/template commits occurred after the successful image build. A **fresh manual ECR build from the final branch head is required**; the previous tag/image cannot contain the new login selector/backend flag. After a successful new build, create a fresh change set against the existing stack `ewa-cognito-staging-api`. Preserve both staging Supabase secret parameters with CloudFormation “Use previous value”; never paste them in chat.
+- For the demo change set: set `ImageUri` to the immutable tag/digest from that new successful build, `DemoRoleSelectionEnabled=true`, leave `ManagementEmailAllowlist` blank (not needed in this demo mode), keep `StorageProvider=supabase`, and keep `DocumentBucketName` blank. Review the change set and ensure only `StagingApi` is modified in place (Replacement=False) before executing.
+- After deployment, verify stack `UPDATE_COMPLETE`, check Lambda's running image digest, check environment variable names (never values for secrets), invoke staging health, confirm CloudWatch logs for that invocation, then perform a login-page role-selection test for Employee and Management.
+- Lambda IAM execution role, log group `/aws/lambda/ewa-cognito-staging-api` and 7-day retention exist in the template/stack evidence, but their live policy/log-delivery correctness and correlated invocation evidence remain unverified.
+- S3 storage cutover remains out of this four-service staging milestone. Keep `StorageProvider=supabase`; no bucket creation required.
+
+### Updated planning estimate (not measured code coverage)
+- Cognito source/UI/role path: ~88% implemented; real browser session remains unverified.
+- IAM: ~65%; role template/configuration exists; live least-privilege verification remains open.
+- Lambda: ~72%; stack/function exists and a prior image build succeeded, but deployed image is stale relative to newest code.
+- CloudWatch: ~50%; log group/retention are configured in the template and Lambda emits standard metrics, but a fresh correlated staging invocation has not been verified.
+- Four-service end-to-end acceptance: ~25% until the live role-switch/login flow and correlated Lambda log are demonstrated.
+- Rough overall four-service completion: ~62–65%, with deployment and E2E evidence as the critical remaining gates.
+
+### Immediate continuation — no unnecessary code work
+1. Confirm the latest matching GitHub Actions CI status on final branch head.
+2. If green, the user runs the manual workflow at [Build Cognito staging backend image to Amazon ECR](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml), using branch `cognito-staging-integration`.
+3. Verify the exact successful image URI/digest in ECR, then create a new CloudFormation change set as specified above.
+4. Deploy and test login/role changes and CloudWatch; update the handoff with evidence.
+5. Keep PR #3 draft and do not merge or touch Production until staging acceptance tests pass.
+
+---
 
 **Snapshot:** 25 October 2026 (Asia/Kolkata)  
 **Repository:** https://github.com/divyanshsaxena2209/enterprise-workplace-assistant  
