@@ -10,6 +10,7 @@ from supabase import Client
 
 from fastapi import BackgroundTasks
 from app.core.exceptions import ValidationError, DatabaseError, AuthorizationError
+from app.db.supabase import create_supabase_auth_client
 from app.repositories.application_repository import ApplicationRepository
 from app.repositories.job_repository import JobRepository
 from app.repositories.candidate_repository import CandidateRepository
@@ -253,7 +254,7 @@ class ApplicationService:
             
             try:
                 emp_id_str = f"EMP-{str(candidate_id)[:8].upper()}"
-                new_user = self.client.auth.admin.create_user({
+                new_user = create_supabase_auth_client().auth.admin.create_user({
                     "email": candidate_email,
                     "password": secrets.token_urlsafe(48),
                     "email_confirm": True,
