@@ -1,14 +1,8 @@
 """
-AuthMiddleware — pre-populates request.state.user for every authenticated request.
+AuthMiddleware pre-populates request.state.user after JWT verification.
 
-Design decisions:
-- This middleware does NOT block unauthenticated requests.
-  Blocking is the responsibility of route-level dependencies (require_management, etc.).
-- If the token is valid, request.state.user = ProfileResponse.
-- If the token is missing or invalid, request.state.user = None.
-- This allows public routes (health, docs) to work without a token.
-- Route dependencies check request.state.user before decoding again (fast path).
-- Implemented as a raw ASGI middleware to prevent deadlocks on POST/PUT body reading.
+The middleware never grants access based on a magic guest token. Public routes
+remain public; protected routes use route-level dependencies for authorization.
 """
 
 import logging
@@ -21,16 +15,11 @@ from app.schemas.profile import ProfileResponse
 
 logger = logging.getLogger(__name__)
 
-
 _SKIP_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/health")
 
 
 class AuthMiddleware:
-    """
-    ASGI middleware that resolves the current user on every request.
-
-    Sets request.state.user to ProfileResponse (if authenticated) or None.
-    """
+    """Resolve a valid user's profile when a verifiable bearer token is present."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -47,47 +36,28 @@ class AuthMiddleware:
         scope["state"]["user"] = None
 
         path = scope.get("path", "")
-        
-        if path == "/api/v1/jobs" and scope["method"] == "POST":
-            logger.info(f"HEADERS FOR POST /api/v1/jobs: {scope.get('headers', [])}")
-
         if not any(path.startswith(prefix) for prefix in _SKIP_PREFIXES):
-            
             auth_header = ""
             for key, val in scope.get("headers", []):
                 if key == b"authorization":
                     try:
                         auth_header = val.decode("latin1")
-                    except Exception:
-                        pass
+                    except UnicodeDecodeError:
+                        auth_header = ""
                     break
 
             if auth_header.startswith("Bearer "):
                 token = auth_header.removeprefix("Bearer ").strip()
-                if token == "guest":
-                    from datetime import datetime
-                    from app.core.enums import UserRole
-                    scope["state"]["user"] = ProfileResponse(
-                        id="00000000-0000-0000-0000-000000000000",
-                        email="guest@workforceos.internal",
-                        full_name="Guest Administrator",
-                        role=UserRole.MANAGEMENT,
-                        is_active=True,
-                        is_management_verified=True,
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
-                    )
-                else:
+                if token:
                     try:
                         payload = decode_jwt(token)
                         user_id = extract_user_id(payload)
                         profile = self._repo.get_by_id(user_id)
-                        if profile and profile.is_active:
+                        if profile is not None and profile.is_active:
                             scope["state"]["user"] = ProfileResponse.from_model(profile)
                     except Exception:
-                        logger.debug(
-                            "AuthMiddleware: could not resolve user",
-                            exc_info=False,
-                        )
+                        # Do not log the token or exception details, which may contain
+                        # sensitive auth context. Protected dependencies will return 401.
+                        logger.debug("AuthMiddleware: token could not be resolved")
 
         await self.app(scope, receive, send)

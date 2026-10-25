@@ -1,7 +1,8 @@
 """
 JWT verification and low-level token utilities.
 
-This module is intentionally thin — it only handles token cryptography.
+Supabase-issued access tokens are signed credentials. This module verifies the
+signature and expiry before a caller may use the `sub` claim to resolve a user.
 Authorization logic (role checks) lives in app/dependencies/auth.py.
 Database queries live in app/repositories/.
 """
@@ -14,54 +15,37 @@ from typing import Any
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 
-
-
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def decode_jwt(token: str) -> dict[str, Any]:
     """
-    Decode and verify a Supabase-issued JWT.
+    Verify a Supabase-issued JWT with the configured server-side signing secret.
 
-    Returns the decoded payload dict on success.
-    Raises AuthenticationError on any failure.
+    This application currently supports HS256 Supabase JWTs. If Supabase has
+    been configured to use asymmetric signing keys, replace this with issuer-
+    configured JWKS validation rather than disabling signature verification.
     """
-    if not settings.SUPABASE_JWT_SECRET:
-        
-        
-        if settings.is_production:
-            raise AuthenticationError("JWT secret not configured on server.")
-        try:
-            return jwt.decode(
-                token,
-                options={"verify_signature": False, "verify_aud": False},
-                algorithms=["HS256"],
-            )
-        except jwt.DecodeError as exc:
-            raise AuthenticationError(f"Malformed JWT: {exc}") from exc
+    secret = settings.SUPABASE_JWT_SECRET
+    if not secret:
+        # Never accept an unsigned/unverified token, including in development.
+        raise AuthenticationError("JWT verification is not configured on the server.")
 
     try:
-        
-        print("DEBUG TOKEN HEADER:", jwt.get_unverified_header(token))
-        payload = jwt.decode(
+        return jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256", "RS256", "ES256"],
-            options={"verify_aud": False, "verify_signature": False},
+            secret,
+            algorithms=["HS256"],
+            options={"verify_signature": True, "verify_exp": True, "verify_aud": False},
         )
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise AuthenticationError("Token has expired. Please log in again.")
+    except jwt.ExpiredSignatureError as exc:
+        raise AuthenticationError("Token has expired. Please log in again.") from exc
     except jwt.InvalidTokenError as exc:
-        try:
-            header = jwt.get_unverified_header(token)
-        except Exception:
-            header = "Could not parse header"
-        raise AuthenticationError(f"Invalid authentication token: {exc}. Header: {header}")
+        raise AuthenticationError("Invalid authentication token.") from exc
 
 
 def extract_user_id(payload: dict[str, Any]) -> str:
-    """Extract the user UUID (sub claim) from a decoded JWT payload."""
+    """Extract the user UUID (sub claim) from a verified JWT payload."""
     user_id = payload.get("sub")
     if not user_id:
         raise AuthenticationError("Token payload is missing the user identifier (sub).")
@@ -71,18 +55,7 @@ def extract_user_id(payload: dict[str, Any]) -> str:
 def verify_token(
     credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
 ) -> dict[str, Any]:
-    """
-    FastAPI security dependency — extracts and verifies the Bearer token.
-
-    Usage::
-
-        @router.get("/protected")
-        def protected(payload: dict = Security(verify_token)):
-            ...
-
-    Prefer using the higher-level dependencies in app/dependencies/auth.py
-    which also load the full user profile.
-    """
+    """FastAPI security dependency that returns only a verified JWT payload."""
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -96,4 +69,4 @@ def verify_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=exc.message,
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc
