@@ -165,9 +165,10 @@ Resources:
       Role: !GetAtt StagingApiExecutionRole.Arn
       MemorySize: 1024
       Timeout: 60
-      # This public staging endpoint is intentionally low-concurrency to limit
-      # accidental or abusive parallel compute spend during validation.
-      ReservedConcurrentExecutions: 2
+      # Do not set ReservedConcurrentExecutions here: this AWS account's
+      # available concurrency quota cannot preserve Lambda's required
+      # unreserved pool if this function reserves concurrency. Keep the
+      # staging demo within account defaults instead.
       Architectures:
         - x86_64
       Environment:
