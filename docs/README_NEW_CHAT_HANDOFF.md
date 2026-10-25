@@ -1,3 +1,36 @@
+# LATEST VERIFIED STAGING CHECKPOINT — 25 October 2026, ~22:03 IST (Asia/Kolkata)
+
+**This checkpoint supersedes older sections below that say the timestamp-parser/account-link fix is not deployed or that the final Cognito browser test is still pending.** Keep older entries as history, but use this section as the current state.
+
+## User-confirmed end-to-end result
+- The user reports the staging Cognito flow is now working flawlessly after executing the CloudFormation change set. Treat the browser flow as **user-confirmed PASS** for this checkpoint.
+- CloudFormation stack: `ewa-cognito-staging-api`, region `ap-south-1`.
+- Executed change set: `fix-cognito-account-link-staging` (the screenshot first showed it as `CREATE_COMPLETE` / `AVAILABLE`; that was the plan, not the deployment. The user subsequently confirmed executing it).
+- Lambda now displays the image digest matching the latest successful timestamp-parser hotfix ECR build:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:ba441a30e7714b87742b24142ae8146af93cb0410e70715c62c4bf1345a63020`.
+- This matches the digest recorded in the successful ECR build for commit `2000b19f267a3b89950fb69fd89f5a52176c041d`. The fix normalizes Supabase timestamp fractions before Python 3.10 `datetime.fromisoformat`, resolving the observed `cognito_link_backend_error` caused by a five-digit fractional-second timestamp.
+- Previous CI for that code commit passed: **119 tests passed, 10 warnings**, frontend build, backend/test compilation, CloudFormation lint and focused regression tests.
+- The user deleted/recreated the staging Cognito user pool during troubleshooting; current user pool shown in AWS was `ap-south-1_89s6YRnwQ`. Do not delete the pool or users again without a specific need.
+- Production remains untouched. Keep PR #3 draft until the remaining acceptance and migration work below is complete.
+
+## Current completion estimate (planning estimate, not measured code coverage)
+- Cognito source + real staging browser flow: **~95%** — user confirms the flow works; record exact refresh/logout and role-bound authorization checks separately if not explicitly exercised.
+- Lambda staging deployment: **~90%** — the running Lambda screenshot shows the expected immutable hotfix digest; a separate post-deployment health/log correlation record should still be retained.
+- IAM: **~70%** — staging execution/publishing roles exist, but a full least-privilege/trust-policy audit and denied-operation check remain.
+- CloudWatch: **~70%** — log group/retention and logging configuration exist; preserve evidence of a fresh invocation correlated to sanitized logs and check actionable error/throttle/duration monitoring requirements.
+- Four-service staging integration (Cognito + IAM + Lambda + CloudWatch): **~85%** overall. This is a practical project-planning estimate, not a measured metric.
+- Broader AWS migration beyond this milestone: **~65–70%**. S3 migration for resume and knowledge/policy documents remains unimplemented/deferred; final IAM/CloudWatch hardening, end-to-end authorization regression checks, and rollout/rollback readiness remain.
+
+## Next steps — continue without repeating the successful signup
+1. Do not create another Cognito user, delete the pool, or rerun the same change set.
+2. Preserve this as a successful staging Cognito/account-link milestone. If useful, run only non-destructive checks for refresh/logout and Employee-vs-Management route enforcement, using existing staging test identities.
+3. Verify one fresh staging Lambda invocation and its sanitized CloudWatch log entry; do not copy tokens, auth codes, secrets or full PII into notes.
+4. Audit the staging Lambda execution role and GitHub OIDC/ECR publishing role for least privilege and repository/branch-scoped trust.
+5. Continue remaining migration items in priority order: route-level authorization regression checks; CloudWatch operational monitoring; S3 resume/knowledge storage migration only as a separately tracked scope; then documented staging cutover/rollback readiness.
+6. Keep Production and its resources, secrets, callbacks, database and storage untouched. Do not merge PR #3 until its remaining acceptance gates are satisfied.
+
+---
+
 # CURRENT REQUIREMENTS OVERRIDE — 25 October 2026: four-service AWS integration
 
 This section supersedes any conflicting older scope notes below. The user has clarified that **all four services must be integrated into the application as replacements for the existing equivalent capabilities**: **Amazon Cognito, AWS IAM, AWS Lambda, and Amazon CloudWatch**. Do not narrow the goal to Cognito/IAM only or label Lambda/CloudWatch out of scope. Keep work minimal and focused on a demonstrably working staging path; do not claim completion from source code or a successful image build alone.
