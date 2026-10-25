@@ -71,6 +71,17 @@ Parameters:
       Management application access. Leave empty to require approval by an existing
       Management user. This does not grant browser users AWS IAM credentials.
 
+  DemoRoleSelectionEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      DEMO ONLY: allow the staging login role selector to change application-level
+      Employee/Management access. Keep false outside a disposable staging demo.
+      Does not grant or change AWS IAM credentials.
+
   PreviewOrigin:
     Type: String
     Default: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
@@ -168,6 +179,7 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           COGNITO_APP_CLIENT_ID: !Ref CognitoAppClientId
           COGNITO_MANAGEMENT_EMAIL_ALLOWLIST: !Ref ManagementEmailAllowlist
+          COGNITO_DEMO_ROLE_SELECTION_ENABLED: !Ref DemoRoleSelectionEnabled
           STORAGE_PROVIDER: !Ref StorageProvider
           AWS_S3_BUCKET: !Ref DocumentBucketName
           S3_PRESIGNED_URL_TTL_SECONDS: "900"
