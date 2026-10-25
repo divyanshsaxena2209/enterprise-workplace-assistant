@@ -155,16 +155,16 @@ export async function GET(request: NextRequest) {
     const requestedAccessLevel =
       requestedAccessCookie === "MANAGEMENT" || requestedAccessCookie === "EMPLOYEE"
         ? requestedAccessCookie
-        : profile?.requested_access_level === "MANAGEMENT"
-          ? "MANAGEMENT"
-          : "EMPLOYEE";
+        : profile?.requested_access_level === "MANAGEMENT" || profile?.requested_access_level === "EMPLOYEE"
+          ? profile.requested_access_level
+          : undefined;
     const linkResponse = await fetch(linkUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id_token: tokenResponse.id_token,
         nonce,
-        requested_access_level: requestedAccessLevel,
+        ...(requestedAccessLevel ? { requested_access_level: requestedAccessLevel } : {}),
         ...(profile ? { profile } : {}),
       }),
       cache: "no-store",
