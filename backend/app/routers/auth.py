@@ -284,16 +284,47 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     mapping_repo = CognitoIdentityRepository(client)
     mapping_repo.create_mapping(str(claims["sub"]), str(profile.id))
 
-    requested_management = (
-        body.profile is not None
-        and body.profile.requested_access_level == "MANAGEMENT"
+    # Resolve the requested level from the new login-page selector first, while
+    # retaining compatibility with older signup callbacks that only send profile.
+    requested_access_level = (
+        body.requested_access_level
+        or (body.profile.requested_access_level if body.profile is not None else "EMPLOYEE")
     )
+    requested_management = requested_access_level == UserRole.MANAGEMENT.value
     allowlisted_management_email = (
         cognito_email in settings.cognito_management_email_allowlist
     )
 
+    # Demo shortcut: deliberately limited to an explicitly enabled staging Cognito
+    # deployment. Never use this self-service selector in production; the UI value
+    # is user-controlled and must not be authoritative outside this isolated demo.
+    if settings.cognito_demo_role_selection_enabled:
+        desired_role = UserRole(requested_access_level)
+        desired_management_verified = desired_role == UserRole.MANAGEMENT
+        current_role = profile.role.value if hasattr(profile.role, "value") else str(profile.role)
+        current_management_verified = bool(getattr(profile, "is_management_verified", False))
+        if current_role != desired_role.value or current_management_verified != desired_management_verified:
+            profile_repo.update(
+                str(profile.id),
+                {
+                    "role": desired_role.value,
+                    "is_management_verified": desired_management_verified,
+                },
+            )
+        logger.warning(
+            "Staging demo role selector applied application access level=%s",
+            desired_role.value,
+        )
+        return SuccessResponse(
+            message=(
+                f"Cognito identity linked. Staging demo role selection applied: {desired_role.value}. "
+                "This self-service role switch is for demonstration only."
+            )
+        )
+
     # A verified email on a trusted server-side allowlist can receive Management
-    # application permissions immediately. Browser selection alone is never enough.
+    # application permissions immediately. Browser selection alone is never enough
+    # unless the explicitly staging-only demo switch above is enabled.
     if requested_management and allowlisted_management_email:
         if profile.role != UserRole.MANAGEMENT or not profile.is_management_verified:
             profile = profile_repo.update(
