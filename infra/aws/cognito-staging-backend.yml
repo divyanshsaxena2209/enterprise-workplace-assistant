@@ -157,6 +157,10 @@ Resources:
       - StagingApiLogGroup
     Properties:
       Description: Isolated backend API for Cognito staging only; Production Lambda is unchanged.
+      # Explicitly route to the stack-managed 7-day-retention log group. The
+      # generated physical Lambda name differs from the stable logical log group name.
+      LoggingConfig:
+        LogGroup: !Ref StagingApiLogGroup
       PackageType: Image
       Code:
         ImageUri: !Ref ImageUri
