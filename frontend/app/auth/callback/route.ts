@@ -152,11 +152,12 @@ export async function GET(request: NextRequest) {
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid signup profile.");
       profile = parsed as Record<string, string>;
     }
+    const profileAccessLevel = profile?.requested_access_level;
     const requestedAccessLevel =
       requestedAccessCookie === "MANAGEMENT" || requestedAccessCookie === "EMPLOYEE"
         ? requestedAccessCookie
-        : profile?.requested_access_level === "MANAGEMENT" || profile?.requested_access_level === "EMPLOYEE"
-          ? profile.requested_access_level
+        : profileAccessLevel === "MANAGEMENT" || profileAccessLevel === "EMPLOYEE"
+          ? profileAccessLevel
           : undefined;
     const linkResponse = await fetch(linkUrl, {
       method: "POST",
