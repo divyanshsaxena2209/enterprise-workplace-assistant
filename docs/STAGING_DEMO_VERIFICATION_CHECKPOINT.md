@@ -86,3 +86,23 @@ These changes must pass the staging branch GitHub Actions test workflow and ECR 
 
 ### CloudFormation configuration drift prevention — added to the same staging fix
 The existing staging Lambda had manually added `GEMINI_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` environment variables, but the CloudFormation template did not declare them. A future stack update could overwrite that manual Lambda environment configuration. The template now declares `GeminiApiKey`, `QdrantUrl`, and `QdrantApiKey` parameters and maps them into Lambda's environment. During the next reviewed stack change set, the user must enter the actual current staging values directly in the AWS Console parameter form (not in chat), while preserving existing Supabase NoEcho parameters via “Use previous value.” This keeps configuration managed by CloudFormation and prevents the fix deployment from unintentionally dropping AI/vector settings.
+
+
+## Resume-upload fix — CI and ECR build passed; staging deployment is the remaining step (26 October 2026)
+
+Latest source commit: `0ac2fb565052b9d7482ad99849ea55c5d1042fa1`  
+- [CI run #40227387607](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40227387607): **success**, 122 tests passed, 10 warnings; frontend build, backend compile, CloudFormation lint, and targeted service-replacement regression tests passed.
+- [ECR build #40227387701](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40227387701): **success**.
+- Immutable staging image tag:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-0ac2fb565052b9d7482ad99849ea55c5d1042fa1`
+- Immutable image digest:
+  `sha256:669211703e0b3db6a582b40fd9d480d8d565c7dd4237595043fb50a67a880e90`
+- Full immutable digest URI:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:669211703e0b3db6a582b40fd9d480d8d565c7dd4237595043fb50a67a880e90`
+- Image config digest: `sha256:5113047b8d8881ed3084a2de83f733ddbe4589832aba6ae378665c9e2491a387`.
+
+### Deployment safety
+The CloudFormation staging template now owns the `GEMINI_API_KEY`, `QDRANT_URL` and `QDRANT_API_KEY` Lambda environment variables. These were previously added manually, outside the template; a stack update without this declaration could have removed them. The next reviewed change set must use the image digest above and must supply the three corresponding staging parameter values directly in the AWS Console parameter form. Never paste credentials into chat or GitHub. For existing `SupabaseServiceRoleKey` and `SupabaseJwtSecret`, use CloudFormation's “Use previous value” option; keep `StorageProvider=supabase`, `DocumentBucketName` blank and preserve the current staging Cognito/demo configuration. Review the change set: only the existing `StagingApi` should be modified in place, with no replacement or unexpected resources. Do not update Production.
+
+### Manual acceptance still required
+After the change set is executed and stack update completes, confirm that the Lambda image digest above is active and run one resume upload through the staging Job Details → Apply for Position flow. A complete pass means: Gemini parsing succeeds; the resume file is stored; `public.candidates` and `public.resumes` are both created with schema-correct fields; the application record is created; the UI reports success; and management/candidate views can retrieve the application and resume. Don't retry uploads until the updated image and template are deployed.
