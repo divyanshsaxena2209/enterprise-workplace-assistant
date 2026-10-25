@@ -8,6 +8,7 @@ Pydantic schemas (in app/schemas/) handle serialization to/from the API.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import re
 from typing import Optional
 
 from app.core.enums import UserRole
@@ -57,7 +58,24 @@ class ProfileModel:
                 return datetime.utcnow()
             if isinstance(val, datetime):
                 return val
-            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+
+            # Python 3.10's fromisoformat accepts only the fractional-second
+            # shapes emitted by its own isoformat(). Supabase/Postgres may return
+            # any 1-6 digit fractional precision (for example ".36298+00:00"),
+            # which otherwise raises ValueError after the profile has been saved.
+            # Normalize the fraction to datetime's microsecond precision first.
+            timestamp = val.strip()
+            fractional = re.search(r"(\\.)(\\d+)(Z|[+-]\\d{2}:?\\d{2})?$", timestamp)
+            if fractional:
+                digits = fractional.group(2)[:6].ljust(6, "0")
+                timezone = fractional.group(3) or ""
+                timestamp = (
+                    timestamp[:fractional.start()]
+                    + "."
+                    + digits
+                    + timezone
+                )
+            return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
 
         return cls(
             id=data["id"],
