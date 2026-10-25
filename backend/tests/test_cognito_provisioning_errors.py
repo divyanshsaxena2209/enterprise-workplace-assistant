@@ -34,6 +34,7 @@ def test_shadow_user_creation_failure_is_not_mislabeled_as_conflict(monkeypatch)
         },
     )
     monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "create_supabase_auth_client", lambda: fake_client)
     monkeypatch.setattr(auth, "ProfileRepository", FakeProfileRepository)
 
     body = CognitoLinkRequest(
@@ -100,6 +101,7 @@ def test_management_access_choice_creates_request_without_elevating_profile(monk
         "sub": "synthetic-cognito-sub",
     })
     monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "create_supabase_auth_client", lambda: fake_client)
     monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
     monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
     monkeypatch.setattr(auth, "ManagementAccessRequestRepository", FakeManagementRequests)
@@ -171,6 +173,7 @@ def test_employee_choice_does_not_create_management_request(monkeypatch):
         "sub": "synthetic-cognito-sub",
     })
     monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "create_supabase_auth_client", lambda: fake_client)
     monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
     monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
     monkeypatch.setattr(auth, "ManagementAccessRequestRepository", FakeManagementRequests)
@@ -256,6 +259,7 @@ def test_allowlisted_management_signup_is_assigned_management_by_server(monkeypa
         "sub": "trusted-cognito-sub",
     })
     monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "create_supabase_auth_client", lambda: fake_client)
     monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
     monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
     monkeypatch.setattr(auth, "ManagementAccessRequestRepository", FakeRequests)
@@ -409,6 +413,7 @@ def test_staging_demo_role_selector_switches_application_role_without_allowlist(
         "sub": "demo-cognito-sub",
     })
     monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "create_supabase_auth_client", lambda: fake_client)
     monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
     monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
     monkeypatch.setattr(auth, "ManagementAccessRequestRepository", FakeRequests)
@@ -435,3 +440,22 @@ def test_demo_role_selector_cannot_grant_management_outside_staging(monkeypatch)
     monkeypatch.setattr(auth.settings, "COGNITO_DEMO_ROLE_SELECTION_ENABLED", True)
     monkeypatch.setattr(auth.settings, "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST", "")
     assert auth.settings.cognito_demo_role_selection_enabled is False
+
+
+
+def test_auth_service_keeps_auth_session_separate_from_database_client(monkeypatch):
+    """Signup/login session state must not alter the privileged PostgREST client."""
+    from app.services import auth_service as auth_service_module
+
+    db_client = object()
+    dedicated_auth_client = object()
+    monkeypatch.setattr(
+        auth_service_module,
+        "create_supabase_auth_client",
+        lambda: dedicated_auth_client,
+    )
+
+    service = auth_service_module.AuthService(db_client)
+
+    assert service._auth is dedicated_auth_client
+    assert service._repo._db is db_client
