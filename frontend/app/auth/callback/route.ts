@@ -9,6 +9,7 @@ const temporaryCookieNames = [
   "ewa_cognito_pkce_verifier",
   "ewa_cognito_redirect_uri",
   "ewa_cognito_signup_profile",
+  "ewa_cognito_requested_access_level",
 ];
 
 function redirectUriFromEnv() {
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
   const verifier = store.get("ewa_cognito_pkce_verifier")?.value;
   const savedRedirectUri = store.get("ewa_cognito_redirect_uri")?.value;
   const pendingProfileEncoded = store.get("ewa_cognito_signup_profile")?.value;
+  const requestedAccessCookie = store.get("ewa_cognito_requested_access_level")?.value;
 
   if (oauthError || !code || !returnedState || !expectedState || returnedState !== expectedState ||
       !nonce || !verifier || !savedRedirectUri) {
@@ -123,10 +125,21 @@ export async function GET(request: NextRequest) {
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid signup profile.");
       profile = parsed as Record<string, string>;
     }
+    const requestedAccessLevel =
+      requestedAccessCookie === "MANAGEMENT" || requestedAccessCookie === "EMPLOYEE"
+        ? requestedAccessCookie
+        : profile?.requested_access_level === "MANAGEMENT"
+          ? "MANAGEMENT"
+          : "EMPLOYEE";
     const linkResponse = await fetch(linkUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id_token: tokenResponse.id_token, nonce, ...(profile ? { profile } : {}) }),
+      body: JSON.stringify({
+        id_token: tokenResponse.id_token,
+        nonce,
+        requested_access_level: requestedAccessLevel,
+        ...(profile ? { profile } : {}),
+      }),
       cache: "no-store",
     });
     if (!linkResponse.ok) {
