@@ -214,7 +214,11 @@ class CognitoLinkRequest(BaseModel):
     )
     profile: Optional[CognitoSignupProfile] = Field(
         default=None,
-        description="Employee profile fields supplied during Cognito signup. Roles are never accepted from this request.",
+        description="Profile fields supplied during Cognito signup. Any role selection remains non-authoritative unless the staging-only demo switch is enabled.",
+    )
+    requested_access_level: Optional[Literal["EMPLOYEE", "MANAGEMENT"]] = Field(
+        default=None,
+        description="Requested application role for the staging demo selector; ignored for grants unless the staging-only server flag is enabled or trusted authorization applies.",
     )
 
 
