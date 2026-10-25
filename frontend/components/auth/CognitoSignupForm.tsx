@@ -136,13 +136,13 @@ export default function CognitoSignupForm() {
                 <span>
                   <span className="block text-sm font-bold">Management</span>
                   <span className="mt-1 block text-[11px] text-muted-foreground">
-                    Request Management access; trusted administrator-approved emails can be assigned immediately.
+                    The staging demo can grant Management directly when its server-side demo switch is enabled; otherwise approval is required.
                   </span>
                 </span>
               </label>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              A verified email must be explicitly approved for immediate Management access. Otherwise, this choice submits a request and your account keeps Employee permissions until an existing manager approves it.
+              On the staging demo, the backend may honor this selection when demo role switching is enabled. Outside demo mode, Management requires trusted administrator authorization or approval; this browser choice alone is not authorization.
             </p>
           </fieldset>
           <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg border border-foreground bg-foreground px-4 py-3 text-xs font-bold uppercase tracking-wider text-background transition-opacity hover:opacity-90 disabled:opacity-50">
