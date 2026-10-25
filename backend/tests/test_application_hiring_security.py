@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from app.services import application_service as application_service_module
 from app.services.application_service import ApplicationService
 
 
@@ -60,8 +61,9 @@ class _FakePipelineRepository:
         return None
 
 
-def test_hiring_provisioning_never_uses_a_shared_default_password():
+def test_hiring_provisioning_never_uses_a_shared_default_password(monkeypatch):
     client = _FakeClient()
+    monkeypatch.setattr(application_service_module, "create_supabase_auth_client", lambda: client)
     service = ApplicationService(_FakeApplicationRepository(), client)
     service.pipeline_repo = _FakePipelineRepository()
 
