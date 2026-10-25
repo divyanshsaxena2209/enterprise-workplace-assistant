@@ -90,7 +90,6 @@ class CandidateEvaluatorService:
                 config=genai.types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=EvaluationResult,
-                    temperature=0.0,
                 )
             )
             
