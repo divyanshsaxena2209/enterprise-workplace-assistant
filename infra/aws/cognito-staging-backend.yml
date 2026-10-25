@@ -104,7 +104,14 @@ Parameters:
   PreviewOrigin:
     Type: String
     Default: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
-    Description: Exact HTTPS Vercel preview branch alias. Update if that alias changes.
+    Description: Exact HTTPS Vercel preview branch alias. Keep this allowed when testing alternate hosts.
+
+  AdditionalFrontendOrigin:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^https://[A-Za-z0-9.-]+$"
+    ConstraintDescription: Leave blank or enter an HTTPS origin containing only scheme and hostname, without a path.
+    Description: Optional second staging frontend origin (for AWS Amplify). Leave blank until its exact branch domain is known.
 
 Rules:
   S3StorageRequiresBucketName:
@@ -122,6 +129,7 @@ Rules:
 
 Conditions:
   UseS3DocumentStorage: !Equals [!Ref StorageProvider, "s3"]
+  HasAdditionalFrontendOrigin: !Not [!Equals [!Ref AdditionalFrontendOrigin, ""]]
 
 Resources:
   StagingApiLogGroup:
@@ -208,7 +216,10 @@ Resources:
           STORAGE_PROVIDER: !Ref StorageProvider
           AWS_S3_BUCKET: !Ref DocumentBucketName
           S3_PRESIGNED_URL_TTL_SECONDS: "900"
-          FRONTEND_URLS: !Ref PreviewOrigin
+          FRONTEND_URLS: !If
+            - HasAdditionalFrontendOrigin
+            - !Sub "${PreviewOrigin},${AdditionalFrontendOrigin}"
+            - !Ref PreviewOrigin
       EphemeralStorage:
         Size: 512
 
@@ -230,8 +241,11 @@ Resources:
           - PUT
           - PATCH
           - DELETE
-        AllowOrigins:
-          - !Ref PreviewOrigin
+        AllowOrigins: !If
+          - HasAdditionalFrontendOrigin
+          - - !Ref PreviewOrigin
+            - !Ref AdditionalFrontendOrigin
+          - - !Ref PreviewOrigin
         MaxAge: 300
 
   AllowPublicHttpInvocationThroughFunctionUrl:
@@ -270,3 +284,13 @@ Outputs:
   PreviewSignOutUrl:
     Description: Set as Cognito allowed sign-out URL.
     Value: !Sub "${PreviewOrigin}/login"
+
+  AmplifyCallbackUrl:
+    Condition: HasAdditionalFrontendOrigin
+    Description: Add this URL to the staging Cognito app client's allowed callback URLs.
+    Value: !Sub "${AdditionalFrontendOrigin}/auth/callback"
+
+  AmplifySignOutUrl:
+    Condition: HasAdditionalFrontendOrigin
+    Description: Add this URL to the staging Cognito app client's allowed sign-out URLs.
+    Value: !Sub "${AdditionalFrontendOrigin}/login"

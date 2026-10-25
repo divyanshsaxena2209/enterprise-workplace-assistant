@@ -1,0 +1,22 @@
+version: 1
+applications:
+  - appRoot: frontend
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - |
+              : > .env.production
+              env | grep -E '^(COGNITO_DOMAIN|COGNITO_APP_CLIENT_ID|COGNITO_REDIRECT_URI|COGNITO_SIGN_OUT_URI|COGNITO_LINK_API_URL|COGNITO_REFRESH_TOKEN_MAX_AGE_SECONDS|NEXT_PUBLIC_[A-Z0-9_]+)=' >> .env.production || true
+              npm run build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - .next/cache/**/*

@@ -25,6 +25,21 @@ This section is the current source of truth for the staging demo checklist. The 
 
 Treat the staging demo verification as complete. Continue only with the separately scoped next migration task (currently evaluating whether frontend hosting can move from Vercel to S3 safely and cost-effectively). Preserve Production and avoid creating AWS resources without checking the user's budget first.
 
+## AWS frontend-hosting POC checkpoint — 26 October 2026
+
+A separate branch `aws-frontend-hosting-staging` is being prepared to test AWS-hosted frontend delivery while preserving the current Vercel deployment. The code inspection found that direct S3 static export is incompatible with the current Next.js app without rewriting server-side auth routes, cookie/session handlers and middleware. The low-risk AWS path is Amplify Hosting Compute, which supports Next.js 15 SSR/middleware and manages S3/CloudFront asset delivery. See `docs/AWS_FRONTEND_HOSTING_STAGING.md`.
+
+Vercel rollback baseline recorded before any AWS hosting changes:
+- Project: `enterprise-workplace-assistant`, ID `prj_ap3BHcwJymfIxo2ABdaBegLJRLBh`.
+- READY immutable preview: https://enterprise-workplace-assistant-ps805if6u-divyansh-50b7.vercel.app
+- Deployment ID: `dpl_HcyeaVFZcjHVyRydRzgWA5Ut9XQU`
+- Source commit: `921f844c4f70609fe31a57ff89767dd9b9c2aa74`.
+No Vercel project setting, variable, domain, or deployment was changed.
+
+Prepared: root `amplify.yml`, Amplify setup/cost/verification runbook, and optional CloudFormation parameter `AdditionalFrontendOrigin` so the staging Lambda can allow both Vercel and the eventual Amplify branch origin. This parameter is blank by default; no AWS resource/update has been applied. After Amplify allocates a domain, the staging Cognito callback/sign-out URLs and Lambda CORS must be updated through the AWS Console using a reviewed, in-place change set, preserving the Vercel origin and Production isolation.
+
+Current status: repository preparation only. Next action requiring the user is creating the Amplify app in AWS Console and connecting this branch; then pass back the allocated Amplify URL for the remaining staging configuration and live test.
+
 ---
 
 # LATEST VERIFIED STAGING CHECKPOINT — 25 October 2026, ~22:03 IST (Asia/Kolkata)

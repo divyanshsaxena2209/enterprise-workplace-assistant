@@ -6,6 +6,7 @@ on:
       - aws-service-replacements
       - aws-service-review-fixes
       - cognito-staging-integration
+      - aws-frontend-hosting-staging
     paths:
       - "backend/**"
       - ".github/workflows/test-service-replacements.yml"
@@ -15,6 +16,8 @@ on:
       - "docs/S3_STAGING_SETUP.md"
       - "supabase/migrations/**"
       - "frontend/**"
+      - "amplify.yml"
+      - "docs/AWS_FRONTEND_HOSTING_STAGING.md"
       - "infra/cognito/**"
       - "infra/aws/**"
   workflow_dispatch:
