@@ -44,14 +44,17 @@ const cookieOptions = {
 function buildAuthorizationUrl(
   request: NextRequest,
   profile?: SignupProfile,
-  requestedAccessLevel: "EMPLOYEE" | "MANAGEMENT" = profile?.requested_access_level ?? "EMPLOYEE",
+  requestedAccessLevel?: "EMPLOYEE" | "MANAGEMENT",
+  flow: "signin" | "signup" = "signin",
 ) {
   const cfg = config();
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const state = randomBytes(32).toString("base64url");
   const nonce = randomBytes(32).toString("base64url");
-  const url = new URL("/oauth2/authorize", cfg.domain);
+  // Cognito's /signup endpoint opens account creation; /oauth2/authorize
+  // routes regular sign-in through managed login. Both preserve OAuth protections.
+  const url = new URL(flow === "signup" ? "/signup" : "/oauth2/authorize", cfg.domain);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", cfg.clientId);
   url.searchParams.set("redirect_uri", cfg.redirectUri);
@@ -75,7 +78,12 @@ function buildAuthorizationUrl(
   } else {
     response.cookies.set("ewa_cognito_signup_profile", "", { ...cookieOptions, maxAge: 0 });
   }
-  response.cookies.set("ewa_cognito_requested_access_level", requestedAccessLevel, cookieOptions);
+  if (requestedAccessLevel) {
+    response.cookies.set("ewa_cognito_requested_access_level", requestedAccessLevel, cookieOptions);
+  } else {
+    // Sign-in must not inherit an access-level choice from a previous signup.
+    response.cookies.set("ewa_cognito_requested_access_level", "", { ...cookieOptions, maxAge: 0 });
+  }
   response.headers.set("Cache-Control", "no-store");
   return response;
 }
@@ -125,12 +133,8 @@ function parseSignupProfile(value: unknown): SignupProfile {
 
 export async function GET(request: NextRequest) {
   try {
-    const rawAccessLevel = request.nextUrl.searchParams.get("access_level");
-    if (rawAccessLevel !== null && rawAccessLevel !== "EMPLOYEE" && rawAccessLevel !== "MANAGEMENT") {
-      throw new Error("Choose Employee or Management access.");
-    }
-    const accessLevel = rawAccessLevel === "MANAGEMENT" ? "MANAGEMENT" : "EMPLOYEE";
-    const response = buildAuthorizationUrl(request, undefined, accessLevel);
+    // This route is sign-in only. Access-level selection belongs on /signup.
+    const response = buildAuthorizationUrl(request, undefined, undefined, "signin");
     const body = await response.json();
     const redirect = NextResponse.redirect(body.authorization_url);
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie.name, cookie.value, cookie));
@@ -147,7 +151,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const profile = parseSignupProfile(body?.profile);
-    return buildAuthorizationUrl(request, profile, profile.requested_access_level);
+    return buildAuthorizationUrl(request, profile, profile.requested_access_level, "signup");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to start Cognito signup.";
     return NextResponse.json({ message }, { status: 400, headers: { "Cache-Control": "no-store" } });
