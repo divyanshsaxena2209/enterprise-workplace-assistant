@@ -459,3 +459,64 @@ def test_auth_service_keeps_auth_session_separate_from_database_client(monkeypat
 
     assert service._auth is dedicated_auth_client
     assert service._repo._db is db_client
+
+
+def test_regular_cognito_signin_without_access_choice_preserves_management_role(monkeypatch):
+    """A sign-in without the create-account selector must not demote Management."""
+    from app.core.enums import UserRole
+
+    profile = SimpleNamespace(
+        id="existing-management-profile",
+        email="manager@example.test",
+        role=UserRole.MANAGEMENT,
+        is_active=True,
+        is_management_verified=True,
+    )
+    fake_client = SimpleNamespace(
+        auth=SimpleNamespace(
+            admin=SimpleNamespace(
+                get_user_by_id=lambda _profile_id: SimpleNamespace(
+                    user=SimpleNamespace(email="manager@example.test")
+                )
+            )
+        )
+    )
+    mappings = []
+
+    class FakeProfiles:
+        def __init__(self, _client):
+            pass
+
+        def get_by_email(self, _email):
+            return profile
+
+        def update(self, *_args, **_kwargs):
+            raise AssertionError("Regular sign-in must not change the stored role.")
+
+    class FakeMappings:
+        def __init__(self, _client):
+            pass
+
+        def create_mapping(self, subject, profile_id):
+            mappings.append((subject, profile_id))
+
+    monkeypatch.setattr(auth.settings, "ENVIRONMENT", "staging")
+    monkeypatch.setattr(auth.settings, "COGNITO_ENABLED", True)
+    monkeypatch.setattr(auth.settings, "COGNITO_DEMO_ROLE_SELECTION_ENABLED", True)
+    monkeypatch.setattr(auth.settings, "COGNITO_MANAGEMENT_EMAIL_ALLOWLIST", "")
+    monkeypatch.setattr(auth, "decode_cognito_id_token", lambda _token, _nonce: {
+        "email": "manager@example.test",
+        "sub": "existing-management-sub",
+    })
+    monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "create_supabase_auth_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
+    monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
+
+    body = CognitoLinkRequest(id_token="i" * 32, nonce="n" * 24)
+    result = auth.link_cognito_identity(body)
+
+    assert result.message == "Cognito identity linked to the existing profile."
+    assert profile.role == UserRole.MANAGEMENT
+    assert profile.is_management_verified is True
+    assert mappings == [("existing-management-sub", "existing-management-profile")]
