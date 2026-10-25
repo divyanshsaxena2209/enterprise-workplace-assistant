@@ -350,12 +350,14 @@ def test_staging_demo_role_selector_switches_application_role_without_allowlist(
     """The login-page role choice only grants roles when the explicit staging demo flag is on."""
     from app.core.enums import UserRole
 
+    # Start from the opposite role so each parameterized case verifies a real switch.
+    starting_role = UserRole.MANAGEMENT if selected_role == "EMPLOYEE" else UserRole.EMPLOYEE
     profile = SimpleNamespace(
         id="demo-profile-id",
         email="demo.user@example.test",
-        role=UserRole.EMPLOYEE,
+        role=starting_role,
         is_active=True,
-        is_management_verified=False,
+        is_management_verified=starting_role == UserRole.MANAGEMENT,
     )
     updates = []
     fake_client = SimpleNamespace(
