@@ -153,8 +153,6 @@ Resources:
 
   StagingApi:
     Type: AWS::Lambda::Function
-    DependsOn:
-      - StagingApiLogGroup
     Properties:
       Description: Isolated backend API for Cognito staging only; Production Lambda is unchanged.
       # Explicitly route to the stack-managed 7-day-retention log group. The
