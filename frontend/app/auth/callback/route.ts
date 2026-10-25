@@ -55,6 +55,33 @@ export async function GET(request: NextRequest) {
 
   if (oauthError || !code || !returnedState || !expectedState || returnedState !== expectedState ||
       !nonce || !verifier || !savedRedirectUri) {
+    const validationReason = oauthError
+      ? "oauth_error"
+      : !code
+        ? "code_missing"
+        : !returnedState
+          ? "state_parameter_missing"
+          : !expectedState
+            ? "state_cookie_missing"
+            : returnedState !== expectedState
+              ? "state_mismatch"
+              : !nonce
+                ? "nonce_cookie_missing"
+                : !verifier
+                  ? "pkce_verifier_cookie_missing"
+                  : !savedRedirectUri
+                    ? "redirect_uri_cookie_missing"
+                    : "validation_failed";
+    // Never log OAuth codes, state values, tokens, profile details, or cookies.
+    console.warn("[cognito-staging] callback rejected before token exchange", {
+      reason: validationReason,
+      hasCode: Boolean(code),
+      hasReturnedState: Boolean(returnedState),
+      hasStateCookie: Boolean(expectedState),
+      hasNonceCookie: Boolean(nonce),
+      hasPkceVerifier: Boolean(verifier),
+      hasRedirectUriCookie: Boolean(savedRedirectUri),
+    });
     const response = loginError(request, oauthError ? "cognito_signin_cancelled" : "cognito_callback_invalid");
     clearTemporaryCookies(response);
     return response;
