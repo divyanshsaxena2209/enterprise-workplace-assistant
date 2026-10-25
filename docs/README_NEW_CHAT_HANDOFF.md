@@ -1329,3 +1329,51 @@ Use the staging Preview URL only. Perform one consolidated test:
 - [CI run #217](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40206164895) for `71b6325516351be6a57c847767bb4617181f7dca` completed successfully: frontend compiled, backend/test files compiled, both CloudFormation templates passed lint, and the focused regression suite passed **116 tests with 10 warnings**.
 - For recovery after the user's failed Management signup, do **not** tell them to create another Cognito user. The failed OAuth callback probably lost the pending profile cookie. To carry the profile data to the corrected callback host, open the READY Preview URL above, go to `/signup`, re-enter the same profile fields and select Management, then continue to Cognito and **sign in with the existing Cognito account** if Cognito says that email already exists. This creates a fresh pending profile cookie on the canonical host and lets the backend link/provision profile from that flow.
 - After that flow succeeds, verify one profile exists, the Cognito identity mapping is present, sign-in reaches the dashboard, and a Management-restricted action behaves as expected in the staging demo. If it fails, capture the exact error code and time; the callback now logs safe flags/reason only, no tokens/cookie contents.
+
+
+## Demo readiness checkpoint — jobs, account-role flow, and staging reset (25 October 2026)
+
+### Repository and CI state
+- Current implementation checkpoint: `23607f685bc76da8189ad6989ad10b810a7a220b` on `cognito-staging-integration`.
+- [CI run #40207696582](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40207696582) passed. It completed the frontend build, backend/test-file compilation, both CloudFormation template lint checks and focused backend regression suite: **117 passed, 10 warnings**.
+- Current Ready Vercel Preview for the code checkpoint: `https://enterprise-workplace-assistant-jot79f948-divyansh-50b7.vercel.app`. Vercel's direct preview-fetch connector denied access to this deployment (deployment protection); user must open it in their own browser.
+- Keep PR #3 draft; no Production resource was changed.
+
+### Existing jobs copied into staging and made visible safely
+- Production Supabase project `ybkfkdcdhrnjmjvavyhb` was queried read-only and still has **5 job rows: 4 Published, 1 Draft**. This count was rechecked after the staging seed; Production rows/content were not changed.
+- The five job rows were copied into the isolated staging project `wxulxcsdpwsyhtpkbazi`, preserving their IDs, titles, long-form descriptions, departments, status, location, employment type, requirements, responsibilities, pay fields, and timestamps. `created_by` was set to NULL only in the staging copy because its original creator profile belongs to the other database; no cross-environment user foreign key was imported.
+- Applied migration `supabase/migrations/20261025120000_public_jobs_read_view_and_staging_seed.sql` to staging. It creates `public.published_job_cards` as a restricted read-only view containing only Published, non-deleted public fields. Verified: anon/authenticated can SELECT the view, while anon cannot SELECT raw `public.jobs`. The view returns **4 published cards**, excluding the draft.
+- `frontend/components/jobs/FeaturedJobs.tsx` now fetches the view and renders up to four roles. It is inserted on the public landing page, Employee dashboard and Management dashboard. Public CTA goes to account creation; signed-in CTA opens requisition details.
+- Jobs list refreshes the API cache on initial load. The job details page accepts both `Published` and `PUBLISHED` status values when rendering the published indicator.
+
+### Authentication/access-level changes
+- `frontend/components/auth/CognitoLoginPage.tsx`: removed the Employee/Management selector from sign-in. Sign-in starts `/api/auth/cognito/start` without an access-level query.
+- `frontend/app/api/auth/cognito/start/route.ts`: regular sign-in goes to Cognito `/oauth2/authorize`; the create-account form POST preserves the user-entered profile and requested access level and goes to Cognito's `/signup` page. OAuth state, nonce and PKCE protections remain.
+- `frontend/app/auth/callback/route.ts`: sends a requested access level only when one was actually selected during account creation; normal sign-in no longer invents an `EMPLOYEE` selection.
+- `backend/app/routers/auth.py`: the staging demo role selector only applies when a create-account request explicitly included an access level. A normal sign-in must preserve the profile's existing role. Added focused regression `test_regular_cognito_signin_without_access_choice_preserves_management_role` in `backend/tests/test_cognito_provisioning_errors.py`.
+- Prior callback-origin cookie canonicalization and safe validation diagnostics remain in `frontend/middleware.ts` and `frontend/app/auth/callback/route.ts`.
+
+### Staging Supabase users cleared; job data retained
+- User expressly requested a clean account reset. Executed `DELETE FROM auth.users` against **staging project only**; 5 staging Auth users were deleted. Cascades removed the 5 staging profiles and 3 Cognito-to-profile mappings.
+- Post-delete verification: `auth.users=0`, `profiles=0`, `cognito_identity_mappings=0`; staging `jobs=5`, `published_job_cards=4`. `applications=0`, `candidates=0`, `resumes=0`, and `management_access_requests=0` remain empty.
+- Production jobs were rechecked after deletion and remain 5 total (4 Published, 1 Draft). Do not delete Production users or touch Production jobs.
+- This SQL reset does **not** delete users in Amazon Cognito's separate user pool. The user must complete the staging-only Cognito reset below before new signups can reuse the same emails.
+
+### One remaining AWS-console step before final testing
+1. Open AWS Console → Cognito → User pools in `ap-south-1`. Confirm the exact user-pool ID wired to the existing `ewa-cognito-staging-api` stack. The repository template's default is `ap-south-1_89s6YRnwQ`; only use it if the staging stack confirms that value.
+2. Delete the existing **users inside that staging Cognito pool** (not the user pool itself). Do not delete accounts from any other pool and do not touch Production.
+3. Verify the staging Lambda image. The backend role-preservation changes are included in the successful staging ECR image built at CI commit `0e0dc3894dfd2e086472f08f6151cefe8b977c87`:
+   - Image tag: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-0e0dc3894dfd2e086472f08f6151cefe8b977c87`
+   - Immutable digest URI: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:ed28449a1fa356535acca64b698f4fbad2cb4e5be8381f9502e539f866cac0a2`
+   - [Successful ECR build](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40207525223).
+   - If the existing Lambda is not already using that digest, create a new change set for the existing `ewa-cognito-staging-api` stack and update only `ImageUri`; preserve NoEcho staging secrets and execute only if `StagingApi` is modified in place (`Replacement=False`) with no unexpected resource changes.
+
+### Final consolidated test flow (after the staging Cognito pool reset and image check)
+1. Open the Ready Preview. From the public home page, verify **four published roles** appear; the Draft must not be visible. Click Create Account.
+2. Complete signup with a fresh test email, choosing Employee on the create-account form. Verify Cognito opens its account-creation/registration UI (not the normal sign-in UI), completes the configured verification, returns through `/auth/callback`, creates one profile/mapping, and lands on `/dashboard`.
+3. Sign out. Use Sign In; verify Cognito opens the sign-in UI (no Employee/Management selector), then successfully returns to the app. Verify the Employee role remains Employee.
+4. Sign out and create a second fresh test account, selecting Management only on the create-account page. Verify the configured staging-only demo grants Management; then sign out/in again and verify the role persists (login must not demote it).
+5. In both roles, open Jobs & Candidates. Management can see all 5 requisitions (including the draft); Employee can see only the 4 Published requisitions. Verify the public home, Employee home and Management home all show the published job cards. Do not create/publish/edit/delete a requisition just for testing.
+6. Confirm staging database ends with exactly the new test accounts/profiles/mappings expected, all 5 jobs remain, and Production still has its original 5 jobs.
+- If a step fails, record the URL/error code and local time. Do not create repeated test accounts or weaken RLS. The Vercel connector currently cannot fetch the protected Preview itself, so the browser step is required.
+
