@@ -1,3 +1,52 @@
+# CURRENT REQUIREMENTS OVERRIDE — 25 October 2026: four-service AWS integration
+
+This section supersedes any conflicting older scope notes below. The user has clarified that **all four services must be integrated into the application as replacements for the existing equivalent capabilities**: **Amazon Cognito, AWS IAM, AWS Lambda, and Amazon CloudWatch**. Do not narrow the goal to Cognito/IAM only or label Lambda/CloudWatch out of scope. Keep work minimal and focused on a demonstrably working staging path; do not claim completion from source code or a successful image build alone.
+
+## Required target architecture and acceptance criteria
+
+1. **Amazon Cognito — application identity/authentication**
+   - Use the staging Cognito User Pool for sign-up/sign-in, OAuth authorization-code + PKCE callback, token validation, session refresh/logout, and mapping Cognito subject to the existing application profile.
+   - Employee/Management is an application authorization choice, not an AWS IAM identity. New users default to Employee. Management must be granted only through the trusted verified-email allowlist or a Management approval flow. Never trust a role sent by the browser.
+   - Acceptance: real staging browser sign-in reaches `/auth/callback`, creates/loads the correct profile mapping, and protected API calls work.
+
+2. **AWS IAM — permissions and least privilege**
+   - IAM is integrated through service roles/policies, not by handing employees or managers AWS credentials. Verify the staging Lambda execution role, its permission to write CloudWatch logs, and only the resource access the backend actually requires. Verify the separate GitHub OIDC/ECR publishing role used by the manual image workflow.
+   - Keep application `EMPLOYEE`/`MANAGEMENT` authorization in `public.profiles.role` and FastAPI route/data-scope checks. These are not interchangeable with AWS IAM.
+   - Acceptance: roles have appropriate trust relationships and least-privilege policies; no public/browser AWS keys; denied operations stay denied.
+
+3. **AWS Lambda — staging backend runtime**
+   - The existing isolated stack is `ewa-cognito-staging-api` in `ap-south-1`; inspect/update this stack and its existing Lambda only. Never create a duplicate function or touch Production.
+   - Verify the deployed container image URI/digest matches the successful current-branch ECR build, the environment points to the isolated staging Supabase project and correct Cognito configuration, the Function URL/API route responds, and the new Management access logic is in the running image.
+   - Acceptance: live health/auth/profile endpoints work against staging. A built/pushed ECR image does not prove Lambda is running it.
+
+4. **Amazon CloudWatch — runtime observability**
+   - Integrate and verify Lambda log delivery, a bounded log-retention policy, and useful invocation/error/duration metrics. Confirm at least one real staging invocation can be correlated to sanitized logs. Add only minimal, cost-conscious monitoring needed for the migration; do not create paid dashboards/alarms unless cost and necessity are checked.
+   - Acceptance: a staging invocation produces logs and metrics; errors can be diagnosed without logging tokens, passwords, authorization codes, or secrets.
+
+## Scope and safety rules
+- Main priority is the four services above and one end-to-end staging test covering Cognito login/callback, profile mapping, Employee authorization, Management allowlist/request/approval, refresh/logout, Lambda runtime and CloudWatch evidence.
+- Keep the staging storage provider as Supabase while completing these four services; no S3 bucket creation or storage cutover is required to validate this four-service milestone. Track the previously requested S3 storage migration separately as a remaining requirement unless the user explicitly removes it.
+- Do not modify Production, merge PR #3 before staging acceptance tests, use Production secrets, or share secrets in chat.
+- Avoid unnecessary infrastructure, repeated console retries, unrelated refactors, dashboards, or other scope creep. If a manual AWS console step is required, ask for only the single next piece of evidence needed.
+
+## Progress estimate as of 25 October 2026
+Planning estimate, not measured code coverage:
+- Cognito/source and role-flow implementation: **~85%**; real browser E2E still unverified.
+- IAM integration: **~65%**; role templates/configuration exist, but live execution-role/policy alignment still needs verification.
+- Lambda integration: **~75%**; isolated function/stack exists and an image was built, but the latest intended image and config were not confirmed deployed. The latest change-set console showed blank status metadata and a failed execution attempt; resolve by checking stack state/Events and current deployed image, not by repeatedly executing the same change set.
+- CloudWatch integration: **~45%**; Lambda log-group/retention and automatic Lambda metrics are expected/configured in the template, but real runtime log delivery/correlation and alarms/alerts are not confirmed.
+- Four-service staging E2E/release acceptance: **~25%** until a real browser session and one correlated invocation are demonstrated.
+- Four-service overall: **~60–65%** as a rough weighted planning estimate. Do not present this as verified completion. S3 storage migration remains a separate, uncompleted item from the older broad migration plan.
+
+## Immediate next actions — keep minimal
+1. Inspect current AWS stack status and deployed Lambda image URI/digest (do not rely on stale handoff tags).
+2. Inspect the current change-set list/stack Events for the exact failed-update status reason. If the AWS console still says “Failed to fetch,” use the stack's current Stack info/Resources and Lambda Image URI as independent evidence rather than refreshing repeatedly.
+3. If the image/config is stale, build only from the current branch head and update the existing stack with the immutable tag actually produced by the successful workflow; preserve secret parameters using the console's previous-value/NoEcho handling.
+4. Verify IAM execution role + CloudWatch log delivery; invoke a safe staging endpoint and inspect one sanitized log event.
+5. Perform one consolidated staging browser test. Record exact observed pass/fail results here; keep PR #3 draft until accepted.
+
+---
+
 # Enterprise Workplace Assistant — Migration Continuation Handoff
 
 **Purpose:** Current source of truth to paste into a new ChatGPT conversation. Verify live branch/resource state before making changes. This replaces the older October 21 snapshot where it conflicts with this document.
