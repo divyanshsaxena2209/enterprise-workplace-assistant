@@ -26,9 +26,29 @@ class ApplicationRepository:
             return None
         resume_row = dict(row)
         file_url = resume_row.get("file_url") or ""
-        if file_url.startswith("s3://"):
+        if file_url.startswith(("s3://", "supabase://")):
             from app.services.object_storage import create_resume_download_url
-            resume_row["file_url"] = create_resume_download_url(file_url.removeprefix("s3://"))
+
+            storage_provider, resume_key = file_url.split("://", 1)
+            resume_row["file_url"] = create_resume_download_url(
+                resume_key, storage_provider=storage_provider
+            )
+        else:
+            # Legacy records may contain a Supabase Storage URL instead of the
+            # provider-qualified key written by current uploads. Convert only
+            # recognized resume-bucket URLs into fresh, short-lived signed URLs.
+            from app.services.object_storage import (
+                create_resume_download_url,
+                extract_supabase_object_key_from_url,
+            )
+
+            legacy_key = extract_supabase_object_key_from_url(
+                file_url, prefix="resumes"
+            )
+            if legacy_key:
+                resume_row["file_url"] = create_resume_download_url(
+                    legacy_key, storage_provider="supabase"
+                )
         return ResumeResponse.model_validate(resume_row)
 
     def create_application(self, application_data: Dict[str, Any]) -> ApplicationResponse:
