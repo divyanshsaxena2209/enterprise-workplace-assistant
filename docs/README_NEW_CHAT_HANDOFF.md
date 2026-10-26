@@ -1,29 +1,31 @@
-# VERIFIED RESUME PREVIEW DIAGNOSIS AND READY STAGING FIX (26 October 2026, Asia/Kolkata)
+# STAGING DELETE CONTROLS AND RESUME STORAGE CLEANUP — UPDATE (26 October 2026, Asia/Kolkata)
 
-## Root cause confirmed
-- Staging Supabase database has 5 resume records total: 2 S3 references and 3 Supabase references.
-- Latest resume is a DOCX with `s3://resumes/...`, uploaded `2026-10-26 16:19:06 UTC`; linked application is `70dc0e4c-d413-4f4a-ac9e-f9282a00cdfc`, job `14e08742-9dde-4084-8401-8480c099a3f5`.
-- The screenshot URL `/candidates/d24e02f5-d9c1-4da1-83fd-b7fd0cad8241` identifies an older application whose linked resume is a PDF saved with a Supabase reference (uploaded Oct 25 20:05 UTC). It is not the latest S3-backed upload.
-- `ApplicationRepository._resume_from_row` signed only `s3://` references. Supabase references and recognized legacy HTTP storage URLs passed through as raw URLs, so the application detail iframe receives a non-browser `supabase://` URL and appears blank.
-- The upload route stores to selected provider before inserting metadata; latest DB record's `s3://` reference strongly indicates the S3 PutObject path succeeded. This session could not independently call S3 HeadObject/ListObjects via tools.
+## Confirmed AWS deployment from the user's console screenshots
+- Existing CloudFormation stack `ewa-cognito-staging-api` reached `UPDATE_COMPLETE`.
+- The change set modified only logical resource `StagingApi` (`AWS::Lambda::Function`) in place; `Replacement=False`.
+- The Lambda console Image URI matched the immutable digest:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:ea21b32df3da77d9f90fb9a0ebae7cf9c1fa3fffca792600602c4a8474d5750f`.
+- A Lambda test invocation displayed `Executing function: succeeded`. The screenshot showed the dropdown on `staging-smoke-test`, so record invocation success only; do not overstate which saved event was run or claim end-to-end API/S3 verification.
+- Production and `main` were not changed.
 
-## Compatibility fix now implemented
-- Code commit: `276be405b35e0ea81faca9ad05d92f00337267a9` — application detail now creates a short-lived signed URL for `s3://`, `supabase://`, and recognized legacy Supabase HTTP Storage URLs.
-- Regression test commit: `6bc082f19bcae426d2b29a542d8b72659a08d004` — test cases exercise all three URL formats.
-- CI: [run #40359067054](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40359067054) **success**, `129 passed, 10 warnings`. Frontend production build, Python compile, Cognito pre-token tests, CloudFormation lint, and selected backend tests all passed.
-- ECR build: [run #40359066968](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40359066968) **success**.
-- **New immutable staging image**:
-  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:ea21b32df3da77d9f90fb9a0ebae7cf9c1fa3fffca792600602c4a8474d5750f`
-- Tag:
-  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-6bc082f19bcae426d2b29a542d8b72659a08d004`
-- This newer image has **not yet been confirmed deployed** to Lambda. Update existing `ewa-cognito-staging-api` only through a reviewed CloudFormation change set, using the immutable digest above. Preserve `StorageProvider=s3`, `DocumentBucketName=ewa-private-documents-staging-cadvitdiv`, all secrets, Cognito parameters, Qdrant settings and other values. Check `StagingApi` is Modify with Replacement=False, no unrelated resource changes.
-- Never touch Production or `main`.
+## Delete controls and storage cleanup implemented on `cognito-staging-integration`
+- Application repository now loads the resume storage reference and checks whether another active application still uses the same resume.
+- Application deletion remains management-only and soft-deletes the application. When the resume is not shared, the backend deletes its S3/Supabase object; if storage deletion fails, it attempts to restore the application so Management can retry.
+- The application detail page now shows a clear **Delete Application & Resume** control to Management/HR/Admin and confirms before deletion.
+- The frontend application API now calls `DELETE /applications/{application_id}`; the shared fetch helper handles the endpoint's `204 No Content` response correctly.
+- The Knowledge Base delete button has been made visually explicit for Management/HR/Admin. Its existing backend endpoint removes the registered document from the configured object store, removes its Qdrant source chunks, and deletes the registry record.
+- The staging CloudFormation template `infra/aws/cognito-staging-backend.yml` already defines conditional `StagingApiS3ObjectPolicy` with `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` limited to `knowledge/*` and `resumes/*`. The live role/policy and actual deletion behavior still require verification.
+- Changes were committed to the staging branch only. The latest frontend preview was observed in Vercel state `READY` for commit `1d11277db936f8a825013dcbc406702ebe75a987`, alias:
+  `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app`.
+- Backend code changes trigger `.github/workflows/build-cognito-staging-ecr.yml` and `.github/workflows/test-service-replacements.yml` on this branch. The resulting build/CI status and new immutable ECR digest are **not yet confirmed**. The previously deployed digest above predates the new backend delete behavior and must not be treated as containing it.
 
-## Next manual acceptance
-1. Deploy the image digest above to the existing staging Lambda using the CloudFormation change-set process. Wait for `UPDATE_COMPLETE`; preserve all parameters except ImageUri.
-2. Open the latest S3-backed application at `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/candidates/70dc0e4c-d413-4f4a-ac9e-f9282a00cdfc` and verify the DOCX preview or download.
-3. Return to the older application `d24e02f5-d9c1-4da1-83fd-b7fd0cad8241` and verify its legacy Supabase PDF now receives a fresh signed URL too.
-4. Do not copy/delete legacy objects as part of this fix. Presigned URLs are short-lived bearer links; never share full URLs. AWS docs: https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html
+## Next actions — do not skip these
+1. Check the newest [Cognito staging ECR build](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml) and [service replacement CI](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/test-service-replacements.yml) for branch `cognito-staging-integration`. Confirm the tests and build finish successfully.
+2. Use the **new** immutable image digest from that build in a reviewed change set for the existing `ewa-cognito-staging-api` stack. Preserve every other parameter; verify only `StagingApi` is modified in place (`Replacement=False`) and no unrelated resources change. Do not change Production.
+3. In the staging frontend, verify the Knowledge Base **Delete** button is visible to Management; upload a small synthetic PDF, confirm it appears in S3 under `knowledge/`, then delete it and confirm the S3 object, Qdrant source chunks, and registry row are removed.
+4. Submit one synthetic resume through the application flow; confirm an S3 object under `resumes/`, that authorized candidate detail/download still works, then delete its application and verify the application disappears and the S3 object is removed. If a resume is referenced by another active application, its object must remain.
+5. If deletion returns `AccessDenied`, inspect the staging Lambda execution role and the live `StagingApiS3ObjectPolicy` conditional resource. Do not broaden permissions to `s3:*`; the required scope is only `knowledge/*` and `resumes/*`.
+6. Keep PR #3 draft. Do not merge, touch `main`, change Production, or bulk-delete existing data.
 
 ---
 
