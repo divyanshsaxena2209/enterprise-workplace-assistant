@@ -1,3 +1,18 @@
+# LATEST S3 DATA-MIGRATION IMPLEMENTATION CHECKPOINT (26 October 2026, Asia/Kolkata)
+
+- After source review, added guarded, Management-only staging endpoint `POST /api/v1/knowledge/storage/migrate-existing-to-s3`. It supports dry-run first, validates source-key prefixes, writes to S3 and confirms SHA-256 by reading the object back, then conditionally updates the DB reference. It does not delete Supabase source files or modify Qdrant.
+- Latest backend code commit: `87497dd6ad27782ad062ad3abeb5028db5aaf75c`.
+- Latest immutable image build has succeeded: [ECR build workflow run #40335544384](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40335544384).
+  - Image URI: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:f883b2a643a31d0df3695ea7ae95e1911fd6015b238347894e6e59133910f924`.
+  - Tag: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-87497dd6ad27782ad062ad3abeb5028db5aaf75c`.
+  - Image config digest: `sha256:d8c5688b20e51bae49a54d23d19175d6365d874511068bbee0c338e139b33407`.
+- Added `backend/tests/test_storage_migration.py` to the explicit pytest allowlist in `.github/workflows/test-service-replacements.yml` (commit `61e602ae913cf353b9ba106fe86c35b4cf027dc1`). The subsequent latest-source CI run is [#40335542752](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40335542752), which was still in progress at the last check; do not claim it passed until its final status is green.
+- **Not deployed yet:** user must update only `ImageUri` of the existing `ewa-cognito-staging-api` stack using a reviewed change set with the digest above. Keep `StorageProvider=s3`, `DocumentBucketName=ewa-private-documents-staging-cadvitdiv`, every existing secret/parameter, and `StagingApi` must be Modify with Replacement=False and no unexpected changes.
+- After that stack update reaches `UPDATE_COMPLETE`, use staging Swagger `/docs` with the user's existing staging Management token (never share it) to run `POST /api/v1/knowledge/storage/migrate-existing-to-s3` first with `{"dry_run": true}`. Expected eligible inventory is one knowledge document and three resumes. Inspect the result and do not proceed if any unsupported/missing-reference errors are returned. Only then run `{"dry_run": false}` once, verify 1 knowledge + 3 resumes migrated and 0 failed, and test knowledge retrieval and resume download. Source Supabase files stay intact.
+- AWS S3 storage stack remains `CREATE_COMPLETE`; existing staging backend S3 configuration stack update remains `UPDATE_COMPLETE`; no object data migration has yet been executed.
+
+---
+
 # EXISTING FILE MIGRATION CODE ADDED — DEPLOYMENT AND EXECUTION STILL PENDING (26 October 2026, Asia/Kolkata)
 
 ## Database/storage inventory read (staging project only)
