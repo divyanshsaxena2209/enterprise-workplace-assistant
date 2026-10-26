@@ -1,3 +1,32 @@
+# RESUME PREVIEW DIAGNOSIS — LATEST UPLOAD IS S3-BACKED; OLDER DETAIL PAGE USES SUPABASE (26 October 2026, Asia/Kolkata)
+
+## Read-only staging database evidence
+- Resume table inventory: 5 records total; 2 `file_url` references begin `s3://resumes/`, 3 begin `supabase://`.
+- Newest resume upload timestamp: `2026-10-26 16:19:06 UTC` (21:49 IST), file extension DOCX, provider-qualified DB reference `s3://resumes/...`.
+- That newest resume has application ID `70dc0e4c-d413-4f4a-ac9e-f9282a00cdfc` and job ID `14e08742-9dde-4084-8401-8480c099a3f5`.
+- User's screenshot URL was application ID `d24e02f5-d9c1-4da1-83fd-b7fd0cad8241`; read-only SQL join shows this is a different, older application whose linked resume was uploaded `2026-10-25 20:05:16 UTC`, is a PDF, and has a Supabase reference.
+- Resume upload implementation calls the selected object-storage provider before inserting the resume record; a new row with `s3://resumes/...` is evidence the upload route's S3 PutObject path returned successfully. No direct AWS object-list API was available to this session, so don't claim the object was independently HEAD-verified.
+
+## Root cause
+- The screenshot was showing an older application, not the latest S3-backed resume.
+- `backend/app/repositories/application_repository.py` helper `_resume_from_row` converted `s3://` references into time-limited download URLs but left `supabase://` and recognized legacy Supabase Storage URLs unchanged. The frontend therefore received a non-browser `supabase://` scheme for the old PDF and rendered a blank iframe.
+- S3 is selected for recent uploads on the deployed staging stack; old Supabase-backed resumes remain in the same DB and should stay compatible. No files were deleted or modified during this diagnosis.
+
+## Fix committed on staging (tests/build in progress at this checkpoint)
+- Code fix commit: `276be405b35e0ea81faca9ad05d92f00337267a9` changes `_resume_from_row` to sign S3 and `supabase://` references, plus recognized legacy Supabase HTTP storage URLs, using the correct provider and a fresh short-lived URL.
+- Regression tests added to `backend/tests/test_object_storage.py`, commit `6bc082f19bcae426d2b29a542d8b72659a08d004`; tests cover S3, provider-qualified Supabase, and legacy HTTP Supabase URL handling.
+- CI run: [#40359067054](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40359067054) was still in progress at the last check; frontend build and pre-token test had passed; dependency installation was in progress. Wait for the final result before claiming CI is green.
+- Staging image build: [#40359066968](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40359066968) succeeded. Immutable image:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:ea21b32df3da77d9f90fb9a0ebae7cf9c1fa3fffca792600602c4a8474d5750f`
+  Tag: `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-6bc082f19bcae426d2b29a542d8b72659a08d004`
+- The new image has not yet been confirmed deployed. After the test workflow succeeds, review and execute a CloudFormation change set for existing `ewa-cognito-staging-api` only, changing `ImageUri` to the immutable digest above. Preserve `StorageProvider=s3`, `DocumentBucketName=ewa-private-documents-staging-cadvitdiv`, all secrets and all Cognito/Qdrant parameters. Verify `StagingApi` is Modify with Replacement=False and no unrelated changes. Do not touch Production or `main`.
+- Once deployed, the user can test the latest S3-backed application at:
+  `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/candidates/70dc0e4c-d413-4f4a-ac9e-f9282a00cdfc`
+  (if URL alias changed, open the application from the same requisition's Candidates list). To validate older Supabase resume display, revisit the older application after deployment.
+- Security note: a pre-signed S3 URL is a time-limited bearer link; never log or share the full URL. AWS reference: https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html
+
+---
+
 # MILESTONE UPDATE — MANAGEMENT RESUME INGESTION AUTHORIZATION (26 October 2026, Asia/Kolkata)
 
 This update supersedes the earlier code-head references below for the specific resume-ingestion change. Production and `main` remain untouched.
