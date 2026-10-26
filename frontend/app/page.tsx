@@ -93,7 +93,19 @@ export default function Home() {
           transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
         >
-          {}
+          <Link
+            href="/login"
+            className="group inline-flex items-center justify-center gap-2 rounded-lg bg-white px-7 py-3.5 text-xs font-black uppercase tracking-widest text-black transition-all hover:bg-white/90 active:scale-95"
+          >
+            Sign In
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+          </Link>
+          <Link
+            href="/signup"
+            className="inline-flex items-center justify-center rounded-lg border border-white/30 px-7 py-3.5 text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-white/10 active:scale-95"
+          >
+            Create an account
+          </Link>
         </motion.div>
       </section>
       <FeaturedJobs publicLanding />
