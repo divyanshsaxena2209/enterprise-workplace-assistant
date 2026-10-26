@@ -32,6 +32,10 @@ def _validated_source_key(value: str | None, *, prefix: str) -> str | None:
             )
         except ValueError:
             return None
+    else:
+        # knowledge_documents.file_key stores a bucket-relative key, not a URL.
+        # The strict prefix/path validation below prevents arbitrary references.
+        key = value
 
     expected = f"{prefix}_"
     if (
