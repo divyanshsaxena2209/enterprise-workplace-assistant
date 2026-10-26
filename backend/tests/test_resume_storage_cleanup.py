@@ -338,3 +338,86 @@ def test_resume_response_accepts_current_supabase_resume_columns():
     assert response.status == "UPLOADED"
     assert response.created_at.isoformat().startswith("2026-10-25T19:33:00")
 
+
+
+@pytest.mark.parametrize("has_other_active_application, expected_delete_calls", [(False, 1), (True, 0)])
+def test_application_delete_removes_only_unshared_resume_object(
+    monkeypatch, has_other_active_application, expected_delete_calls
+):
+    from app.services.application_service import ApplicationService
+
+    class FakeApplicationRepository:
+        def __init__(self):
+            self.calls = []
+
+        def get_resume_storage_for_deletion(self, application_id):
+            self.calls.append(("lookup", application_id))
+            return {
+                "resume_id": "resume-1",
+                "file_url": "s3://resumes/test-resume.pdf",
+                "has_other_active_applications": has_other_active_application,
+            }
+
+        def soft_delete_application(self, application_id):
+            self.calls.append(("soft_delete", application_id))
+
+        def restore_application(self, application_id):
+            self.calls.append(("restore", application_id))
+
+    repository = FakeApplicationRepository()
+    delete_calls = []
+    monkeypatch.setattr(
+        object_storage,
+        "delete_resume_object",
+        lambda provider, key, url=None: delete_calls.append((provider, key, url)),
+    )
+
+    service = ApplicationService(repository, object())
+    service.delete_application("application-1")
+
+    assert repository.calls[:2] == [
+        ("lookup", "application-1"),
+        ("soft_delete", "application-1"),
+    ]
+    assert len(delete_calls) == expected_delete_calls
+    if expected_delete_calls:
+        assert delete_calls == [("s3", "resumes/test-resume.pdf", "s3://resumes/test-resume.pdf")]
+
+
+def test_application_delete_restores_application_if_resume_storage_delete_fails(monkeypatch):
+    from app.services.application_service import ApplicationService
+
+    class FakeApplicationRepository:
+        def __init__(self):
+            self.calls = []
+
+        def get_resume_storage_for_deletion(self, application_id):
+            self.calls.append(("lookup", application_id))
+            return {
+                "resume_id": "resume-1",
+                "file_url": "s3://resumes/test-resume.pdf",
+                "has_other_active_applications": False,
+            }
+
+        def soft_delete_application(self, application_id):
+            self.calls.append(("soft_delete", application_id))
+
+        def restore_application(self, application_id):
+            self.calls.append(("restore", application_id))
+
+    repository = FakeApplicationRepository()
+    monkeypatch.setattr(
+        object_storage,
+        "delete_resume_object",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("AccessDenied")),
+    )
+
+    service = ApplicationService(repository, object())
+    with pytest.raises(DatabaseError, match="application was restored"):
+        service.delete_application("application-1")
+
+    assert repository.calls == [
+        ("lookup", "application-1"),
+        ("soft_delete", "application-1"),
+        ("restore", "application-1"),
+    ]
