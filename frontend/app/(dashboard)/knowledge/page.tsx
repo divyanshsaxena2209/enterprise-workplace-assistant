@@ -241,7 +241,8 @@ export default function KnowledgeDashboard() {
                     disabled={isDeleting}
                     aria-label={`Delete ${doc.title}`}
                     title="Delete document"
-                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-500 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid="delete-knowledge-document"
+                    className="inline-flex min-w-[92px] flex-shrink-0 items-center justify-center gap-2 rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-wider text-red-400 opacity-100 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Trash2 size={14} />
                     <span>Delete</span>
