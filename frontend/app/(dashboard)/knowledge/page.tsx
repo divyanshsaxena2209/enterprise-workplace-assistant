@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Search, UploadCloud, MessageSquare, FileText, Database, MoreHorizontal, Sparkles, Loader2, X, ExternalLink } from "lucide-react";
+import { UploadCloud, MessageSquare, FileText, Database, Sparkles, Loader2, X, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/context/UserContext";
 import { uploadKnowledgeDocument, deleteKnowledgeDocument, getKnowledgeDocumentDownloadUrl, listKnowledgeDocuments } from "@/lib/api/knowledge";
@@ -225,7 +225,28 @@ export default function KnowledgeDashboard() {
                   <p className="text-xs text-muted-foreground mt-0.5">Ingested {doc.uploaded}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                {["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "") && (
+                  <button
+                    type="button"
+                    onClick={(e) => void handleDeleteDocument(
+                      e,
+                      String(doc.id),
+                      doc.title,
+                      doc.file_url,
+                      doc.file_key,
+                      doc.storage_provider,
+                      Boolean(doc.managed_by_api),
+                    )}
+                    disabled={isDeleting}
+                    aria-label={`Delete ${doc.title}`}
+                    title="Delete document"
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-500 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 size={14} />
+                    <span>Delete</span>
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -263,7 +284,7 @@ export default function KnowledgeDashboard() {
                 </svg>
               </div>
               <h2 className="text-xl font-bold tracking-tight text-foreground">Deleting Document...</h2>
-              <p className="text-sm text-muted-foreground">Removing from Qdrant DB</p>
+              <p className="text-sm text-muted-foreground">Removing from S3 storage and Qdrant index</p>
             </div>
           )}
         </div>,
