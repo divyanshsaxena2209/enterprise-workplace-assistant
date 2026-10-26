@@ -1,3 +1,69 @@
+# CURRENT AUTHORITATIVE HANDOFF — STORAGE DECISION & NEXT CHAT (26 October 2026)
+
+> **Read this section first. It supersedes conflicting older plans below.** The older notes are retained as historical context; do not follow obsolete statements that say S3 is out of scope or that the frontend should move to S3.
+
+## Confirmed target architecture
+
+- **Frontend hosting stays on Vercel.** Do not migrate the Next.js frontend to S3/CloudFront. Keep the existing Production and staging/Preview deployments intact.
+- **Original document/file storage and retrieval move to private Amazon S3** for the Knowledge Base/RAG chatbot's uploaded company-policy documents and for uploaded resumes used by resume parsing/evaluation.
+- **Qdrant remains the vector database.** It stores embeddings and the text chunks used for semantic retrieval; it is NOT being replaced by S3. RAG flow is: document original in S3; extract/chunk/embed content; store/retrieve vectors and chunk payloads through Qdrant; use retrieved context to answer. Where appropriate, resolve the original file from S3 using an authorized backend and a short-lived presigned URL.
+- **Supabase PostgreSQL remains the relational database** for users, profiles, jobs, candidates, resume/application metadata, and related records. Do not migrate to RDS.
+- **Gemini remains the LLM provider.** Keep the existing Qdrant cluster/collection configuration if it is still available; if the cluster or API key must be recreated, verify the endpoint/key in the staging environment only. Never paste secrets into GitHub, this handoff, logs, or chat.
+- **No S3 resource has been provisioned as part of the frontend-hosting discussion.** No frontend-hosting implementation was made in that discussion, so there is nothing to revert. Vercel remains the hosting source of truth.
+- Treat this as the target architecture decision, not a claim that S3 is already deployed. Current storage configuration was last confirmed as `STORAGE_PROVIDER=supabase`; live S3 cutover and end-to-end S3 tests are still pending.
+
+## Current demo verification
+
+The user confirmed the staging demo flows are working, including the Knowledge Base chatbot policy questions and the resume application flow after the `resumes.created_at` → `resumes.uploaded_at` fix. The automated regression workflow reported **122 passed, 10 warnings** and the corresponding staging image built successfully. This means the current demo verification is complete for the flows the user tested; it does not mean the S3 cutover is complete or Production is approved for release.
+
+## Next task for the next chat
+
+Continue with the **S3 document-storage cutover only**, keeping Vercel hosting and Qdrant vector search. Automate code/repository/CI work where possible and ask the user only for unavoidable AWS console actions or a consolidated live test.
+
+1. Re-read this handoff and verify the current branch head, staging stack parameters, image digest, S3 template, and the current state of Qdrant and Supabase before making changes.
+2. Review the existing storage adapter and templates; avoid redesigning the working architecture. Deploy a dedicated private staging bucket with Block Public Access enabled, encryption, TLS-only policy, and least-privilege access for only `knowledge/*` and `resumes/*`.
+3. Update the existing staging CloudFormation stack with a reviewed change set, preserving current image digest and all unrelated parameters. Set `STORAGE_PROVIDER=s3` and `AWS_S3_BUCKET` only after the bucket and IAM policy are ready. Keep Production on Supabase storage.
+4. Do not assume old Supabase Storage files are copied. Preserve compatibility/rollback for old references; do not bulk-copy or delete old files without an explicit plan.
+5. Run the existing focused CI checks, then ask the user for one consolidated staging test: upload a small non-sensitive policy PDF, ask a semantic question, verify Qdrant retrieval and answer citations, download/resolve the S3 original, then test a synthetic resume upload/processing if needed and confirm authorization and deletion cleanup.
+6. Update this handoff after each milestone with commit/run links, AWS resource state, test evidence, cost note, blockers, and next step. Do not touch Production, `main`, protected project `busted`, or Vercel settings unless explicitly authorized. Do not provision chargeable resources before checking cost against the user's remaining **$139.88** budget.
+
+## Navigation links for the next chat
+
+### Repository and handoff
+- Repository: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant
+- Active working branch: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/tree/cognito-staging-integration
+- This handoff: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/docs/README_NEW_CHAT_HANDOFF.md
+- Pull request #3 (keep draft; do not merge): https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/pull/3
+
+### S3 storage code and infrastructure
+- Private S3 bucket CloudFormation template: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/infra/aws/private-document-storage.yml
+- S3 staging setup guide: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/docs/S3_STAGING_SETUP.md
+- Staging backend CloudFormation template: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/infra/aws/cognito-staging-backend.yml
+- Storage adapter: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/backend/app/services/object_storage.py
+- Knowledge Base router: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/backend/app/routers/knowledge.py
+- Resume router: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/backend/app/routers/resume.py
+- Storage tests: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/backend/tests/test_object_storage.py
+
+### Current hosting and service consoles/URLs
+- Production Vercel frontend (preserve): https://enterprise-workplace-assistant.vercel.app
+- Staging Vercel branch alias (preserve): https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
+- Previously tested staging login route: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/login
+- Staging Lambda health endpoint: https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/health
+- AWS CloudFormation console (Mumbai): https://console.aws.amazon.com/cloudformation/home?region=ap-south-1#/stacks
+- AWS S3 console: https://s3.console.aws.amazon.com/s3/home?region=ap-south-1
+- AWS billing console: https://console.aws.amazon.com/billing/home
+- AWS S3 pricing: https://aws.amazon.com/s3/pricing/
+- Qdrant Cloud console: https://cloud.qdrant.io/
+- Staging Supabase project dashboard: https://supabase.com/dashboard/project/wxulxcsdpwsyhtpkbazi
+- Production Supabase project dashboard (do not modify): https://supabase.com/dashboard/project/ybkfkdcdhrnjmjvavyhb
+
+### Verification/build references
+- Resume fix CI workflow: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40228553521
+- Resume fix staging image build: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40228553514
+- Resume fix commit: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/commit/cf92329e31e46bc6f8a4bfa5eaa94edf33a5e50a
+
+---
+
 # CURRENT DEMO VERIFICATION — COMPLETE (26 October 2026, Asia/Kolkata)
 
 This section is the current source of truth for the staging demo checklist. The user has confirmed the listed application flows work, including a successful resume submission after the latest backend fix. This marks the **current demo verification** complete; it does not mean every broader AWS migration or production-readiness item is complete.
