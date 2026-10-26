@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.db.supabase import get_supabase_client
+from app.core.config import settings
 from app.core.enums import UserRole
 from app.dependencies.auth import require_management, require_management_or_employee
 from app.repositories.knowledge_document_repository import KnowledgeDocumentRepository
@@ -36,6 +37,11 @@ logger = logging.getLogger(__name__)
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=8000)
     session_id: str | None = None
+
+
+class StorageMigrationRequest(BaseModel):
+    """Request for the staging-only, Management-protected storage migration."""
+    dry_run: bool = True
 
 
 class DeleteDocumentRequest(BaseModel):
@@ -94,6 +100,40 @@ def list_knowledge_documents(
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail="Unable to load the knowledge-document list."
+        ) from exc
+
+
+@router.post("/storage/migrate-existing-to-s3")
+def migrate_existing_storage_to_s3(
+    body: StorageMigrationRequest,
+    current_user: ProfileResponse = Depends(require_management),
+):
+    """Copy referenced legacy Supabase files to S3, verifying each copy before repointing.
+
+    The operation is staging-only. Dry-run defaults to true. Source objects are
+    intentionally retained in Supabase for rollback.
+    """
+    if settings.ENVIRONMENT.strip().lower() != "staging":
+        raise HTTPException(status_code=404, detail="Not found.")
+    if settings.STORAGE_PROVIDER.strip().lower() != "s3" or not settings.AWS_S3_BUCKET:
+        raise HTTPException(
+            status_code=409,
+            detail="S3 storage must be configured before running this migration.",
+        )
+    try:
+        from app.services.storage_migration import migrate_supabase_objects_to_s3
+
+        return migrate_supabase_objects_to_s3(dry_run=body.dry_run)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Storage migration request failed (exception_type=%s).",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The storage migration could not be completed.",
         ) from exc
 
 
