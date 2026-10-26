@@ -1,3 +1,35 @@
+# EXISTING FILE MIGRATION CODE ADDED — DEPLOYMENT AND EXECUTION STILL PENDING (26 October 2026, Asia/Kolkata)
+
+## Database/storage inventory read (staging project only)
+- Supabase project: `wxulxcsdpwsyhtpkbazi`.
+- Read-only database grouping found **1** row in `public.knowledge_documents` with `storage_provider=supabase` and **3** resume rows with Supabase storage references.
+- Read-only `storage.objects` inventory for the existing private `resumes` bucket found **1** `knowledge_` object and **3** `resumes_` objects. The counts align with the registered references. No object names, candidate PII, or document contents are recorded here.
+- Existing files remain in Supabase. The previous S3 cutover still supports Supabase references, so these records were not automatically deleted or invalidated merely by changing the default provider.
+
+## New staging-only migration path added to source
+- Commit `b814f4031988d15b2ceee7c4b621520b776c4af5`: added `backend/app/services/storage_migration.py`.
+- Commit `aeabe24ec0e1a204993e75259883a3524cf505cd`: added Management-protected API endpoint in `backend/app/routers/knowledge.py`.
+- Commit `65b5d3fe19c26cf22deedcec7dbca167cb9b607a`: added `backend/tests/test_storage_migration.py` (dry-run, successful copy/reference update, prefix validation, staging-only guard).
+- Commit `af0398b13c038bb411f6912024c8d140efc8967e`: added a stale-reference check so metadata is only updated if the original reference still matches.
+- Endpoint: `POST /api/v1/knowledge/storage/migrate-existing-to-s3`, Management-only, staging-only, and only when `STORAGE_PROVIDER=s3` plus `AWS_S3_BUCKET` are configured. Request defaults to `{"dry_run": true}`; dry run does not copy or mutate data. Use `{"dry_run": false}` only after reviewing a clean dry-run result.
+- It enumerates the referenced records in `knowledge_documents` and `resumes`; copies from the Supabase `resumes` bucket to `knowledge/<key>` and `resumes/<key>` in S3; reads each S3 object back and compares SHA-256; and only then updates its database reference. Qdrant chunks are untouched. Original Supabase objects are never deleted by this endpoint. Per-object failures are returned with sanitized reason codes and logged without secrets.
+- S3 IAM permissions already present on the staging role cover the required PutObject/GetObject calls under the two allowed prefixes; no new AWS resources or IAM grants should be needed for the migration.
+
+## Important deployment status
+- These new code changes are **not yet confirmed in the running Lambda image**. The last backend source change is `af0398b13c038bb411f6912024c8d140efc8967e`; the documentation commit `fea335c1b74a33580af512e454c85087bb566ceb` followed. Confirm build workflow outcome and image digest before executing the endpoint.
+- The new tests have been committed but this session has not yet obtained a green CI result for them. Do not claim tests passed until the corresponding Actions run is confirmed.
+- Once CI passes and the staging ECR image is built, prepare a reviewed CloudFormation change set for the existing `ewa-cognito-staging-api` stack to update only `ImageUri` to that exact immutable digest. Preserve all current parameter values/secrets, keep `StorageProvider=s3` and `DocumentBucketName=ewa-private-documents-staging-cadvitdiv`, and confirm Lambda replacement is `False` with no unrelated changes. Do not touch Production.
+- After the new image is live, use the existing staging Management token in the staging backend `/docs` UI to call the endpoint once with `{"dry_run": true}`; expected eligible counts are 1 knowledge document and 3 resumes. If clean, call again with `{"dry_run": false}`. Verify result reports 1 and 3 migrated, 0 failed, then verify document listing/semantic Qdrant retrieval, authorized downloads, and resume download/processing. Keep original Supabase objects until all acceptance checks pass.
+- CloudFormation's S3 cutover remains deployed and `UPDATE_COMPLETE`; bucket is `ewa-private-documents-staging-cadvitdiv`. This section only tracks the subsequent data migration, not a second S3 infrastructure change.
+
+## Updated links
+- Migration service: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/backend/app/services/storage_migration.py
+- Migration route: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/backend/app/routers/knowledge.py
+- Migration tests: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/blob/cognito-staging-integration/backend/tests/test_storage_migration.py
+- Build staging backend workflow: https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml
+
+---
+
 # S3 STORAGE MILESTONE — STAGING BUCKET CREATED AND PROVIDER CUTOVER EXECUTED (26 October 2026, Asia/Kolkata)
 
 ## Confirmed AWS console evidence
