@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Search, UploadCloud, MessageSquare, FileText, Database, MoreHorizontal, Sparkles, Loader2, X, ExternalLink, Trash2 } from "lucide-react";
+import { Search, UploadCloud, MessageSquare, FileText, Database, MoreHorizontal, Sparkles, Loader2, X, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/context/UserContext";
 import { uploadKnowledgeDocument, deleteKnowledgeDocument, getKnowledgeDocumentDownloadUrl, listKnowledgeDocuments } from "@/lib/api/knowledge";
@@ -226,18 +226,6 @@ export default function KnowledgeDashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                <span className="px-2.5 py-0.5 bg-secondary border border-border/50 text-[9px] uppercase tracking-wider rounded-full font-bold text-muted-foreground">
-                  {doc.dept}
-                </span>
-                {profile?.role === "MANAGEMENT" && (
-                  <button 
-                    className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
-                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider, doc.managed_by_api)}
-                    title="Delete Document"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
               </div>
             </div>
           ))}
