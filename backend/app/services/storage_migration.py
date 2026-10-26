@@ -42,7 +42,7 @@ def _validated_source_key(value: str | None, *, prefix: str) -> str | None:
         not key
         or not key.startswith(expected)
         or "/" in key
-        or "\\\\" in key
+        or "\\" in key
         or ".." in key
     ):
         return None
