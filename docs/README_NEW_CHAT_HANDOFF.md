@@ -1,3 +1,39 @@
+# FINAL PRE-DEPLOYMENT CHECKPOINT — EXISTING STORAGE MIGRATION (26 October 2026, Asia/Kolkata)
+
+## CI and staging image — PASS
+- Latest code commit: `87497dd6ad27782ad062ad3abeb5028db5aaf75c`.
+- Latest service-replacement CI: [run #40335542752](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40335542752) **success**. The explicit pytest command now includes `backend/tests/test_storage_migration.py`; result **126 passed, 10 warnings**. Frontend production build, Python compile checks, CloudFormation lint for both AWS templates, and the focused regression tests all passed.
+- Latest staging ECR image build: [run #40335544384](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40335544384) **success**.
+- Immutable image URI for deployment to the existing staging Lambda only:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:f883b2a643a31d0df3695ea7ae95e1911fd6015b238347894e6e59133910f924`
+- Matching tag:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-87497dd6ad27782ad062ad3abeb5028db5aaf75c`
+- Config digest: `sha256:d8c5688b20e51bae49a54d23d19175d6365d874511068bbee0c338e139b33407`.
+
+## Required AWS console action — do not execute blindly
+The source code and image are ready, but this image **has not been confirmed deployed**. In CloudFormation `ap-south-1`, create a new change set for the existing `ewa-cognito-staging-api` stack and change only `ImageUri` to the immutable digest above.
+- Preserve every parameter, NoEcho secret, Cognito setting and staging URL.
+- Preserve `StorageProvider=s3` and `DocumentBucketName=ewa-private-documents-staging-cadvitdiv`.
+- Before executing, verify the only intended backend change is `StagingApi` Modify with `Replacement=False`, no unexpected resource changes, and the S3 policy remains scoped only to `knowledge/*` and `resumes/*`.
+- User must perform/confirm this AWS console operation; no AWS stack mutation was executed by the repository tools.
+
+## After deployment
+1. Wait for stack `UPDATE_COMPLETE` and verify the running Lambda image digest matches the one above.
+2. Open the staging backend `/docs` URL `https://rimxyixnw7r4vgan3stbjiq2aa0tbngm.lambda-url.ap-south-1.on.aws/docs`; authorize with the existing staging Management token locally in Swagger (never share it in chat).
+3. Call `POST /api/v1/knowledge/storage/migrate-existing-to-s3` with `{"dry_run": true}`. Expected eligible references: 1 knowledge document and 3 resumes. Stop if errors/skips indicate missing or unsupported object keys.
+4. If the dry run is clean, call once with `{"dry_run": false}`. Expected: 1 knowledge document + 3 resumes migrated, zero failures. Copies are read back and SHA-256 verified before metadata references are switched.
+5. Verify document listing and Qdrant semantic answers/citations, existing resume downloads/processing, and authorized signed URLs. Original Supabase files are retained and Qdrant chunks are left untouched for rollback/compatibility.
+6. Update the handoff with final object counts and test evidence after the user completes the console update and dry-run/execute operations.
+
+## Current live data and infrastructure truth
+- Supabase staging project `wxulxcsdpwsyhtpkbazi`: 1 `knowledge_documents` row, 3 `resumes` rows referencing Supabase files. Supabase `resumes` bucket has 1 `knowledge_` object and 3 `resumes_` objects; counts align.
+- S3 bucket `ewa-private-documents-staging-cadvitdiv` exists and is private; it was empty at the last user screenshot.
+- Existing `ewa-cognito-staging-api` stack has S3 provider configured and `UPDATE_COMPLETE`; the newest image is still awaiting deployment.
+- **No legacy document/resume files have been copied yet**, no database references have been changed by the migration endpoint, and no Supabase objects have been deleted.
+- PR #3 remains draft. Do not merge, change `main`, touch Production, or alter Vercel settings.
+
+---
+
 # LATEST S3 DATA-MIGRATION IMPLEMENTATION CHECKPOINT (26 October 2026, Asia/Kolkata)
 
 - After source review, added guarded, Management-only staging endpoint `POST /api/v1/knowledge/storage/migrate-existing-to-s3`. It supports dry-run first, validates source-key prefixes, writes to S3 and confirms SHA-256 by reading the object back, then conditionally updates the DB reference. It does not delete Supabase source files or modify Qdrant.
