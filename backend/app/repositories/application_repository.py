@@ -449,7 +449,7 @@ class ApplicationRepository:
         Soft deletes an application.
         """
         try:
-            res = self._db.table("applications").update({"is_deleted": True}).eq("id", str(application_id)).execute()
+            res = self._db.table("applications").update({"is_deleted": True}).eq("id", str(application_id)).select("id").execute()
             if not res.data:
                 raise NotFoundError(f"Application with ID '{application_id}' not found.")
         except NotFoundError:
