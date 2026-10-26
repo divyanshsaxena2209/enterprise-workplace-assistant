@@ -1,3 +1,37 @@
+# S3 STORAGE MILESTONE — AWS BUCKET SETUP REQUIRED (26 October 2026, Asia/Kolkata)
+
+This section records the current implementation review and should be read with the authoritative storage decision immediately below/above it. S3 is selected for original knowledge-policy documents and uploaded resumes; Qdrant stays responsible for vectors/chunks, Supabase PostgreSQL stays relational, and Vercel stays frontend hosting.
+
+## Repository review completed
+- Reviewed `infra/aws/private-document-storage.yml` (blob `0e431ca8a1a2d2d4148db7b8ec96b97a81f7caaf`): dedicated opt-in S3 bucket with all four Block Public Access settings, BucketOwnerEnforced ownership, default SSE-S3 encryption, and a bucket policy denying non-TLS traffic.
+- Reviewed `infra/aws/cognito-staging-backend.yml` (blob `05d71fe04605595c16c2a57c57b6d5f3fa05aa78`): existing staging stack has `StorageProvider` defaulting to `supabase`, optional `DocumentBucketName`, and conditional IAM access only to `knowledge/*` and `resumes/*` via PutObject/GetObject/DeleteObject. S3 selection is rejected when the bucket name is blank. Presigned URL TTL is 900 seconds.
+- Reviewed `backend/app/services/object_storage.py`, `backend/app/routers/knowledge.py`, `backend/app/routers/resume.py`, and `backend/tests/test_object_storage.py`: storage provider selection, prefix-scoped object operations, short-lived URL generation, and Supabase compatibility are implemented. Handoff records the existing focused/storage suite as included in a green 119-test CI run; this session did not rerun CI.
+- Reviewed `docs/S3_STAGING_SETUP.md`. No application code or infrastructure template edits are currently needed to begin the AWS setup.
+- PR #3 remains open and draft. No merge was performed; `main`, Production resources, Vercel settings, and Supabase data were not changed.
+
+## Live migration status
+- S3 bucket creation: **NOT DONE**; requires user AWS console access.
+- Staging `ewa-cognito-staging-api` provider cutover: **NOT DONE**; keep `STORAGE_PROVIDER=supabase` until the private bucket exists and the change set has been reviewed.
+- Object migration: **NOT DONE AND NOT AUTOMATIC**. Existing Supabase Storage files are retained; do not bulk-copy or delete them as part of the first staging test.
+- Live S3 upload/read/delete and Qdrant RAG integration: **NOT YET VERIFIED**.
+
+## Next exact steps
+1. Review current AWS Billing/Free Tier usage before provisioning. S3 has usage-based storage, request and transfer charges; see https://aws.amazon.com/s3/pricing/. The previously recorded available budget is $139.88, but the live remaining balance was not accessible from this GitHub session, so verify it in AWS Billing before proceeding.
+2. In CloudFormation region `ap-south-1`, create stack `ewa-private-document-storage-staging` from `infra/aws/private-document-storage.yml`. Select a globally unique lowercase bucket name, e.g. `ewa-private-documents-staging-<unique-suffix>` (replace the placeholder; do not use it verbatim). Review the template and create only if charges are acceptable. Record the `BucketName` output.
+3. After bucket creation, create a change set for the EXISTING `ewa-cognito-staging-api` stack with the current template and current immutable image URI. Change only `StorageProvider=s3` and `DocumentBucketName=<BucketName output>`; use existing values for all masked NoEcho secrets and preserve every other parameter. Review change-set details: no unexpected resource changes, `StagingApi` must be Modify with `Replacement=False`, and the conditional IAM policy must scope to this bucket's `knowledge/*` and `resumes/*`. Execute only if those conditions hold.
+4. Wait for `UPDATE_COMPLETE`, then use one consolidated staging test: upload a tiny non-sensitive policy PDF, ask a semantic question, verify source/chunks in Qdrant and answer citations, download/resolve the original using the authorized signed-URL path, delete it and verify the S3 object and Qdrant chunks are removed. If safe and necessary, also test a synthetic resume upload/download/delete. Never upload company-confidential data for the first test.
+5. If any step fails, do not weaken permissions or touch Production. Preserve the previous Supabase objects and roll staging back by changing only the existing stack parameters to `StorageProvider=supabase` and blank `DocumentBucketName` through another reviewed change set.
+6. Update this handoff again after bucket creation and after the provider cutover/test with CloudFormation stack status, bucket name (not secrets), change-set/CI links, results, cost observation, and next action.
+
+## AWS console links
+- Billing/Free Tier: https://console.aws.amazon.com/billing/home
+- CloudFormation (Mumbai): https://console.aws.amazon.com/cloudformation/home?region=ap-south-1#/stacks
+- S3: https://s3.console.aws.amazon.com/s3/home?region=ap-south-1
+- Official S3 pricing: https://aws.amazon.com/s3/pricing/
+- Official CloudFormation change-set procedure: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-updating-stacks-changesets-create.html
+
+---
+
 # CURRENT AUTHORITATIVE HANDOFF — STORAGE DECISION & NEXT CHAT (26 October 2026)
 
 > **Read this section first. It supersedes conflicting older plans below.** The older notes are retained as historical context; do not follow obsolete statements that say S3 is out of scope or that the frontend should move to S3.
