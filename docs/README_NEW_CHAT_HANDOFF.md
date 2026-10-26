@@ -1,3 +1,32 @@
+# VERIFIED RESUME PREVIEW DIAGNOSIS AND READY STAGING FIX (26 October 2026, Asia/Kolkata)
+
+## Root cause confirmed
+- Staging Supabase database has 5 resume records total: 2 S3 references and 3 Supabase references.
+- Latest resume is a DOCX with `s3://resumes/...`, uploaded `2026-10-26 16:19:06 UTC`; linked application is `70dc0e4c-d413-4f4a-ac9e-f9282a00cdfc`, job `14e08742-9dde-4084-8401-8480c099a3f5`.
+- The screenshot URL `/candidates/d24e02f5-d9c1-4da1-83fd-b7fd0cad8241` identifies an older application whose linked resume is a PDF saved with a Supabase reference (uploaded Oct 25 20:05 UTC). It is not the latest S3-backed upload.
+- `ApplicationRepository._resume_from_row` signed only `s3://` references. Supabase references and recognized legacy HTTP storage URLs passed through as raw URLs, so the application detail iframe receives a non-browser `supabase://` URL and appears blank.
+- The upload route stores to selected provider before inserting metadata; latest DB record's `s3://` reference strongly indicates the S3 PutObject path succeeded. This session could not independently call S3 HeadObject/ListObjects via tools.
+
+## Compatibility fix now implemented
+- Code commit: `276be405b35e0ea81faca9ad05d92f00337267a9` — application detail now creates a short-lived signed URL for `s3://`, `supabase://`, and recognized legacy Supabase HTTP Storage URLs.
+- Regression test commit: `6bc082f19bcae426d2b29a542d8b72659a08d004` — test cases exercise all three URL formats.
+- CI: [run #40359067054](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40359067054) **success**, `129 passed, 10 warnings`. Frontend production build, Python compile, Cognito pre-token tests, CloudFormation lint, and selected backend tests all passed.
+- ECR build: [run #40359066968](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/runs/40359066968) **success**.
+- **New immutable staging image**:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:ea21b32df3da77d9f90fb9a0ebae7cf9c1fa3fffca792600602c4a8474d5750f`
+- Tag:
+  `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-6bc082f19bcae426d2b29a542d8b72659a08d004`
+- This newer image has **not yet been confirmed deployed** to Lambda. Update existing `ewa-cognito-staging-api` only through a reviewed CloudFormation change set, using the immutable digest above. Preserve `StorageProvider=s3`, `DocumentBucketName=ewa-private-documents-staging-cadvitdiv`, all secrets, Cognito parameters, Qdrant settings and other values. Check `StagingApi` is Modify with Replacement=False, no unrelated resource changes.
+- Never touch Production or `main`.
+
+## Next manual acceptance
+1. Deploy the image digest above to the existing staging Lambda using the CloudFormation change-set process. Wait for `UPDATE_COMPLETE`; preserve all parameters except ImageUri.
+2. Open the latest S3-backed application at `https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app/candidates/70dc0e4c-d413-4f4a-ac9e-f9282a00cdfc` and verify the DOCX preview or download.
+3. Return to the older application `d24e02f5-d9c1-4da1-83fd-b7fd0cad8241` and verify its legacy Supabase PDF now receives a fresh signed URL too.
+4. Do not copy/delete legacy objects as part of this fix. Presigned URLs are short-lived bearer links; never share full URLs. AWS docs: https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html
+
+---
+
 # RESUME PREVIEW DIAGNOSIS — LATEST UPLOAD IS S3-BACKED; OLDER DETAIL PAGE USES SUPABASE (26 October 2026, Asia/Kolkata)
 
 ## Read-only staging database evidence
