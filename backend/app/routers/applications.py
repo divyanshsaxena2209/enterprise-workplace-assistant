@@ -35,7 +35,7 @@ from fastapi import BackgroundTasks
     response_model=ApplicationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Submit an application",
-    description="Submit a new application for a job. Associates the current authenticated employee with the application."
+    description="Attach a candidate resume to a job requisition and trigger AI evaluation. Available to authenticated management and employee accounts."
 )
 def create_application(
     application: ApplicationCreate,
