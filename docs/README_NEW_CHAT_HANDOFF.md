@@ -1,3 +1,24 @@
+# MILESTONE UPDATE — MANAGEMENT RESUME INGESTION AUTHORIZATION (26 October 2026, Asia/Kolkata)
+
+This update supersedes the earlier code-head references below for the specific resume-ingestion change. Production and `main` remain untouched.
+
+## Change made on staging
+- Fixed `backend/app/routers/applications.py`: the application-creation endpoint now uses the existing `require_management_or_employee` authorization dependency instead of employee-only authorization.
+- The resume upload endpoint already accepts management and employee roles, creates candidate/resume records, and stores the file using the configured object-storage adapter.
+- The job-detail frontend's management-only `Ingest Resumes` flow already calls resume upload, then creates the application for that requisition. Application creation triggers the existing background AI evaluation. This was the failing permission step: upload could succeed, but the subsequent application request was rejected by the employee-only guard.
+- Added a focused regression check in `backend/tests/test_api.py` to verify the application-creation route is protected by the combined management/employee dependency.
+- Latest relevant staging commit: `eb10f3f3cebdc152ac689eb4f2b1ec918cd0e939` (test commit); route fix commit: `17dcca328f690d341dda4f400164fb6fcb7dfcdd`; initial code fix: `b1dafce7044eb2dc5a8013fd995b1137b378e081`.
+- GitHub's status check showed Vercel pending for the staging branch; no backend CI result has yet been verified for this code head.
+
+## Deployment gate — still required
+- **Do not claim the fix is live yet.** The FastAPI backend runs on the staging AWS Lambda container image; pushing the branch does not by itself prove that the Lambda is running the new code.
+- Rebuild the isolated Cognito staging ECR image from the new branch head using the existing `build-cognito-staging-ecr.yml` workflow. Wait for the workflow and service-replacement tests to pass, then use the newly generated immutable image digest in a reviewed change set for the existing `ewa-cognito-staging-api` stack only.
+- Do not change the production Lambda, production image, `main`, database schema, or IAM permissions to grant browser users direct S3 access.
+- This is application-level role authorization, not a request to give each management user AWS IAM credentials. Keep S3 access on the Lambda execution role with least privilege; management users should use the authenticated API.
+- After staging Lambda update, verify with one synthetic resume: management uploads it on a job page; a candidate/resume record is created; the application is attached to the selected requisition; AI evaluation completes and appears in the candidates list; then verify a non-management user cannot access management-only candidate listing/management operations. Do not use a real resume for this smoke test unless explicitly approved.
+
+---
+
 # FINAL PRE-DEPLOYMENT CHECKPOINT — EXISTING STORAGE MIGRATION (26 October 2026, Asia/Kolkata)
 
 ## CI and staging image — PASS
