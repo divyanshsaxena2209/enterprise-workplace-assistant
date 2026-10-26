@@ -310,3 +310,65 @@ def test_supabase_resume_download_reads_only_validated_resume_object(monkeypatch
             "knowledge_policy.pdf", prefix="resumes"
         )
     assert bucket.downloaded == ["resumes_uuid_resume.pdf"]
+
+
+@pytest.mark.parametrize(
+    ("stored_url", "expected_provider", "expected_key"),
+    [
+        (
+            "s3://resumes/resumes_uuid_candidate_resume.docx",
+            "s3",
+            "resumes/resumes_uuid_candidate_resume.docx",
+        ),
+        (
+            "supabase://resumes_uuid_legacy_resume.pdf",
+            "supabase",
+            "resumes_uuid_legacy_resume.pdf",
+        ),
+        (
+            "https://project.supabase.co/storage/v1/object/sign/resumes/"
+            "resumes_uuid_legacy_resume.pdf?token=test",
+            "supabase",
+            "resumes_uuid_legacy_resume.pdf",
+        ),
+    ],
+)
+def test_application_resume_detail_signs_s3_supabase_and_legacy_urls(
+    monkeypatch, stored_url, expected_provider, expected_key
+):
+    from app.repositories.application_repository import ApplicationRepository
+
+    calls = []
+
+    def fake_signed_url(key, *, storage_provider="s3"):
+        calls.append((key, storage_provider))
+        return f"https://download.invalid/{storage_provider}/resume"
+
+    monkeypatch.setattr(
+        object_storage, "create_resume_download_url", fake_signed_url
+    )
+
+    parsed = {
+        "full_name": None,
+        "email": None,
+        "phone": None,
+        "skills": None,
+        "experience": None,
+        "education": None,
+        "certifications": None,
+        "projects": None,
+        "previous_companies": None,
+    }
+    row = {
+        "id": "resume-test-id",
+        "candidate_id": "candidate-test-id",
+        "file_url": stored_url,
+        "parsed_json": parsed,
+        "uploaded_at": "2026-10-26T16:19:06.771236+00:00",
+    }
+
+    result = ApplicationRepository._resume_from_row(row)
+
+    assert result is not None
+    assert result.file_url == f"https://download.invalid/{expected_provider}/resume"
+    assert calls == [(expected_key, expected_provider)]
