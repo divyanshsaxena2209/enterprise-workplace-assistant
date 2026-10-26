@@ -436,6 +436,7 @@ class ApplicationRepository:
                 self._db.table("applications")
                 .update({"is_deleted": False})
                 .eq("id", str(application_id))
+                .select("id")
                 .execute()
             )
             if not response.data:
