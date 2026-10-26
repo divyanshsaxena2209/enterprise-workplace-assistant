@@ -52,6 +52,21 @@ The Lambda runtime supplies `AWS_REGION` automatically. Do not try to override t
 4. Verify that persisted records use `storage_provider=s3` and preserve the object key; presigned URLs expire and must not be treated as permanent file URLs.
 5. Keep Production on Supabase Storage until all tests pass and there is an explicitly approved migration/rollback plan. Existing Supabase objects are not copied by this change.
 
+## Migrate existing referenced files after S3 cutover
+
+Once the S3-enabled backend image is deployed, use the staging-only migration endpoint rather than manually uploading files in the S3 console. The endpoint is restricted to Management, refuses any environment other than `staging`, and requires `STORAGE_PROVIDER=s3` plus a configured bucket.
+
+Endpoint: `POST /api/v1/knowledge/storage/migrate-existing-to-s3`
+
+1. Open the staging backend's `/docs` page and authorize with the existing staging Management access token (never paste it into chat or GitHub).
+2. First send JSON body `{"dry_run": true}`. Expected plan is one registered knowledge document and three resume records, because the current staging database and Supabase `resumes` bucket inventory each show those four referenced objects.
+3. Review the returned counts and ensure no unsupported/missing references are reported.
+4. If the dry run is clean, send `{"dry_run": false}` once. The backend downloads each source object from Supabase, uploads it to S3 under `knowledge/<source-key>` or `resumes/<source-key>`, reads the destination back and compares SHA-256, and only then updates the corresponding database reference. Repeats are idempotent for already migrated rows.
+5. Source Supabase objects are deliberately retained. Do not delete them as part of this migration. If a copy or reference update fails, inspect the sanitized result and CloudWatch logs before retrying.
+6. Verify the Knowledge Base document still appears and answers a semantic question using the existing Qdrant chunks; verify authorized download and deletion behavior with a non-sensitive document. Also verify existing candidate resume downloads and, if applicable, re-screen one synthetic resume.
+
+This copies referenced files only; it does not bulk-import unrelated objects. Qdrant embeddings/chunks are not re-created or modified by the migration because this operation only changes original-file storage. Rollback remains possible while the original Supabase objects are retained.
+
 ## Private Supabase fallback while S3 remains opt-in
 
 The backend's storage provider still defaults to `supabase`, and the staging project's existing `resumes` bucket is private (`public=false`). New Supabase-backed knowledge and resume uploads now persist stable object keys instead of exposing `get_public_url()` links. The API generates short-lived signed URLs only after the request has passed the role and, for knowledge documents, department-scope checks. See the [Supabase Python signed-URL reference](https://supabase.com/docs/reference/python/storage-from-createsignedurl).
