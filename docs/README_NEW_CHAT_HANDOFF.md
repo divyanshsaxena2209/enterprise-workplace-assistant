@@ -1,3 +1,39 @@
+# S3 STORAGE MILESTONE — STAGING BUCKET CREATED AND PROVIDER CUTOVER EXECUTED (26 October 2026, Asia/Kolkata)
+
+## Confirmed AWS console evidence
+- User created CloudFormation stack `ewa-private-document-storage-staging` in `ap-south-1`; screenshot shows `CREATE_COMPLETE`.
+- Bucket output: `ewa-private-documents-staging-cadvitdiv`.
+- Bucket ARN: `arn:aws:s3:::ewa-private-documents-staging-cadvitdiv`.
+- User executed change set `ewa-cognit-mqfoixfei8b-0boqrnvmk02t` on existing `ewa-cognito-staging-api` stack.
+- Change-set preview showed exactly two changes: Add `StagingApiS3ObjectPolicy` (`AWS::IAM::Policy`) and Modify `StagingApi` (`AWS::Lambda::Function`) with `Replacement=False`.
+- User screenshot after execution shows the stack's latest event `UPDATE_COMPLETE`; the S3 bucket stack remains `CREATE_COMPLETE`.
+- The user confirmed the input parameters were correct: `StorageProvider=s3`, `DocumentBucketName=ewa-private-documents-staging-cadvitdiv`.
+- No Production/main/Supabase data changes were performed in this workflow.
+
+## Current status — distinguish infrastructure from end-to-end proof
+- Private S3 bucket provisioning: **COMPLETE**.
+- Staging stack S3 configuration cutover: **CloudFormation UPDATE_COMPLETE**.
+- Actual upload/download/delete using the live application: **NOT YET TESTED**.
+- Qdrant chunk persistence and semantic retrieval after S3 upload: **NOT YET VERIFIED**.
+- Existing Supabase Storage objects: retained; no migration or deletion performed.
+- Do not claim end-to-end S3 storage is verified until a fresh non-sensitive document is uploaded through the staging UI/API and the object, retrieval, authorized download, and deletion are confirmed.
+
+## Next manual acceptance test (AWS/browser access needed)
+1. Use the currently READY staging Vercel Preview recorded in this handoff, or the known staging UI URL supplied by the user. Confirm the URL is the protected staging Preview, not Production.
+2. Upload one tiny, synthetic/non-sensitive policy PDF through the application's normal knowledge-document upload path. Do not use confidential company documents or resumes.
+3. Confirm the S3 object appears under the expected `knowledge/` prefix in the bucket; confirm the request succeeds and no public ACL/object URL is used.
+4. Ask a question answerable from the synthetic PDF. Verify the answer and source/citation, and confirm corresponding chunks/vectors are present in Qdrant. S3 stores original documents; Qdrant remains the vector store.
+5. Test the authorized temporary signed download route (expected expiry is 900 seconds per code/template). Then delete the test document through the normal application flow and verify its S3 object and corresponding Qdrant chunks are removed.
+6. If any step fails, stop and capture the exact HTTP status/error and local timestamp; check CloudWatch log group `/aws/lambda/ewa-cognito-staging-api` in `ap-south-1`. Do not broaden IAM, expose objects publicly, or touch Production. If staging needs rollback, use a reviewed change set on the existing stack to restore `StorageProvider=supabase` and blank `DocumentBucketName`; preserve all other parameters/secrets.
+7. After the test, update this handoff with sanitized evidence, outcomes, and any failure details. Do not include tokens, credentials, signed URLs, or confidential document contents.
+
+## Console shortcuts
+- S3 bucket: https://s3.console.aws.amazon.com/s3/buckets/ewa-private-documents-staging-cadvitdiv?region=ap-south-1
+- CloudFormation stacks: https://ap-south-1.console.aws.amazon.com/cloudformation/home?region=ap-south-1#/stacks
+- CloudWatch log group: https://ap-south-1.console.aws.amazon.com/cloudwatch/home?region=ap-south-1#logsV2:log-groups
+
+---
+
 # S3 STORAGE MILESTONE — AWS BUCKET SETUP REQUIRED (26 October 2026, Asia/Kolkata)
 
 This section records the current implementation review and should be read with the authoritative storage decision immediately below/above it. S3 is selected for original knowledge-policy documents and uploaded resumes; Qdrant stays responsible for vectors/chunks, Supabase PostgreSQL stays relational, and Vercel stays frontend hosting.
