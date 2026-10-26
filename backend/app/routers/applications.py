@@ -4,7 +4,7 @@ from uuid import UUID
 from supabase import Client
 
 from app.db.supabase import get_supabase_client
-from app.dependencies.auth import get_current_user, require_management, require_employee, require_authenticated_user
+from app.dependencies.auth import get_current_user, require_management, require_employee, require_authenticated_user, require_management_or_employee
 from app.schemas.profile import ProfileResponse
 from app.schemas.application import (
     ApplicationCreate, 
@@ -28,7 +28,7 @@ from fastapi import BackgroundTasks
     response_model=ApplicationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Submit an application",
-    description="Submit a new application for a job. Associates the current authenticated employee with the application."
+    description="Attach a candidate resume to a job requisition and trigger AI evaluation. Available to authenticated management and employee accounts."
 )
 @router.post(
     "/",
@@ -40,7 +40,7 @@ from fastapi import BackgroundTasks
 def create_application(
     application: ApplicationCreate,
     background_tasks: BackgroundTasks,
-    current_user: ProfileResponse = Depends(require_employee),
+    current_user: ProfileResponse = Depends(require_management_or_employee),
     service: ApplicationService = Depends(get_application_service)
 ):
     return service.create_application(application, user_id=current_user.id, background_tasks=background_tasks)
