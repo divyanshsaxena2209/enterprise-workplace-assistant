@@ -385,6 +385,64 @@ class ApplicationRepository:
 
             raise DatabaseError(f"Failed to list applications: {exc}") from exc
 
+    def get_resume_storage_for_deletion(self, application_id: str | UUID) -> Dict[str, Any]:
+        """Return the resume storage reference and whether another active application uses it."""
+        try:
+            application = (
+                self._db.table("applications")
+                .select("id, resume_id")
+                .eq("id", str(application_id))
+                .eq("is_deleted", False)
+                .limit(1)
+                .execute()
+            )
+            if not application.data:
+                raise NotFoundError(f"Application with ID '{application_id}' not found.")
+
+            resume_id = application.data[0].get("resume_id")
+            if not resume_id:
+                return {"resume_id": None, "file_url": None, "has_other_active_applications": False}
+
+            resume = (
+                self._db.table("resumes")
+                .select("file_url")
+                .eq("id", str(resume_id))
+                .limit(1)
+                .execute()
+            )
+            other_applications = (
+                self._db.table("applications")
+                .select("id")
+                .eq("resume_id", str(resume_id))
+                .eq("is_deleted", False)
+                .neq("id", str(application_id))
+                .limit(1)
+                .execute()
+            )
+            return {
+                "resume_id": str(resume_id),
+                "file_url": (resume.data[0].get("file_url") if resume.data else None),
+                "has_other_active_applications": bool(other_applications.data),
+            }
+        except NotFoundError:
+            raise
+        except Exception as exc:
+            raise DatabaseError(f"Failed to load resume storage reference: {exc}") from exc
+
+    def restore_application(self, application_id: str | UUID) -> None:
+        """Restore an application if storage cleanup fails during deletion."""
+        try:
+            response = (
+                self._db.table("applications")
+                .update({"is_deleted": False})
+                .eq("id", str(application_id))
+                .execute()
+            )
+            if not response.data:
+                raise DatabaseError("Failed to restore application after storage cleanup failed.")
+        except Exception as exc:
+            raise DatabaseError("Failed to restore application after storage cleanup failed.") from exc
+
     def soft_delete_application(self, application_id: str | UUID) -> None:
         """
         Soft deletes an application.
