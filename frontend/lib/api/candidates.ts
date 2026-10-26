@@ -96,6 +96,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit & { t
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.message || errorData.detail || `API Error: ${response.status}`);
   }
+  if (response.status === 204) return null;
   const jsonPromise = response.json();
   let jsonTimeoutId: any;
   const jsonTimeout = new Promise<any>((resolve) => {
