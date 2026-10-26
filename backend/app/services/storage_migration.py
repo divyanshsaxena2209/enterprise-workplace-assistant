@@ -149,7 +149,7 @@ def migrate_supabase_objects_to_s3(*, dry_run: bool = True) -> dict[str, Any]:
                 prefix="knowledge",
                 filename=str(row.get("filename") or source_key),
             )
-            update = (
+            update_query = (
                 client.table("knowledge_documents")
                 .update({
                     "storage_provider": "s3",
@@ -158,9 +158,13 @@ def migrate_supabase_objects_to_s3(*, dry_run: bool = True) -> dict[str, Any]:
                 })
                 .eq("id", str(row["id"]))
                 .eq("storage_provider", "supabase")
-                .select("id")
-                .execute()
             )
+            # Avoid overwriting a reference that another request changed mid-copy.
+            if row.get("file_key"):
+                update_query = update_query.eq("file_key", row["file_key"])
+            elif row.get("file_url"):
+                update_query = update_query.eq("file_url", row["file_url"])
+            update = update_query.select("id").execute()
             if not update.data:
                 counts["failed"] += 1
                 result["errors"].append({
