@@ -23,3 +23,18 @@ def test_unauthorized_access():
     
     response = client.get("/api/v1/hiring/")
     assert response.status_code in [401, 403]
+
+
+def test_create_application_allows_management_and_employee_accounts():
+    """Guard the management resume-ingestion flow against employee-only RBAC regressions."""
+    from app.dependencies.auth import require_management_or_employee
+    from app.routers.applications import router as applications_router
+
+    route = next(
+        route for route in applications_router.routes
+        if getattr(route, "endpoint", None).__name__ == "create_application"
+    )
+    assert any(
+        dependency.call is require_management_or_employee
+        for dependency in route.dependant.dependencies
+    )
