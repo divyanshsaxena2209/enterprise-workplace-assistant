@@ -348,7 +348,7 @@ Resources:
         source:
           - aws.cognito-idp
         detail-type:
-          - Amazon API Call via CloudTrail
+          - AWS API Call via CloudTrail
         account:
           - !Ref AWS::AccountId
         region:
