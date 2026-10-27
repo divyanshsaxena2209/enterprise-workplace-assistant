@@ -17,7 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Lambda runs with a read-only application directory; place model and temp caches in /tmp.
-ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache HF_HOME=/tmp/huggingface FASTEMBED_CACHE_PATH=/tmp/fastembed_cache TMPDIR=/tmp
+ENV PYTHONPATH=/app HOME=/tmp XDG_CACHE_HOME=/tmp/.cache HF_HOME=/tmp/huggingface FASTEMBED_CACHE_PATH=/tmp/fastembed_cache TMPDIR=/tmp
+
+# Fail the image build if the dedicated deletion-sync handler is missing from the packaged app.
+RUN python -c "import app.lambdas.cognito_user_delete_sync as sync; assert callable(sync.handler)"
 
 # AWS Lambda Runtime Interface Client + Mangum expose this FastAPI app through a Function URL.
 ENTRYPOINT ["/usr/local/bin/python", "-m", "awslambdaric"]
