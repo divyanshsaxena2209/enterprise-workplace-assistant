@@ -359,8 +359,6 @@ Resources:
           eventName:
             - AdminDeleteUser
             - DeleteUser
-          errorCode:
-            - exists: false
       Targets:
         - Id: CognitoUserDeleteSyncTarget
           Arn: !GetAtt CognitoUserDeleteSyncFunction.Arn
