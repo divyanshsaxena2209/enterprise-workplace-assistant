@@ -49,7 +49,7 @@ class CognitoIdentityRepository:
             return None
         return str(response.data[0]["cognito_sub"])
 
-    def link_verified_identity(self, cognito_sub: str, profile_id: str) -> None:
+    def link_verified_identity(self, cognito_sub: str, profile_id: str, cognito_username: str | None = None) -> None:
         """Link a verified Cognito subject to its email-matched Auth profile.
 
         The caller must have validated the Cognito ID token and verified that
@@ -61,19 +61,37 @@ class CognitoIdentityRepository:
         existing_profile_id = self.get_profile_id(cognito_sub)
         if existing_profile_id is not None:
             if existing_profile_id == profile_id:
+                if cognito_username:
+                    try:
+                        self._db.table(_TABLE).update(
+                            {"cognito_username": cognito_username}
+                        ).eq("profile_id", profile_id).execute()
+                    except Exception as exc:
+                        raise DatabaseError("Could not refresh Cognito username metadata.") from exc
                 return
             raise ConflictError("This Cognito identity is already linked to another profile.")
 
         existing_subject = self.get_subject_for_profile(profile_id)
         if existing_subject is None:
-            self.create_mapping(cognito_sub, profile_id)
+            self.create_mapping(cognito_sub, profile_id, cognito_username)
             return
         if existing_subject == cognito_sub:
+            if cognito_username:
+                try:
+                    self._db.table(_TABLE).update(
+                        {"cognito_username": cognito_username}
+                    ).eq("profile_id", profile_id).execute()
+                except Exception as exc:
+                    raise DatabaseError("Could not refresh Cognito username metadata.") from exc
             return
 
         try:
             self._db.table(_TABLE).upsert(
-                {"cognito_sub": cognito_sub, "profile_id": profile_id},
+                {
+                    "cognito_sub": cognito_sub,
+                    "profile_id": profile_id,
+                    "cognito_username": cognito_username,
+                },
                 on_conflict="profile_id",
             ).execute()
         except Exception as exc:
@@ -86,7 +104,7 @@ class CognitoIdentityRepository:
                 "Could not refresh this verified Cognito identity mapping."
             ) from exc
 
-    def create_mapping(self, cognito_sub: str, profile_id: str) -> None:
+    def create_mapping(self, cognito_sub: str, profile_id: str, cognito_username: str | None = None) -> None:
         existing_profile_id = self.get_profile_id(cognito_sub)
         if existing_profile_id is not None:
             if existing_profile_id == profile_id:
@@ -101,7 +119,11 @@ class CognitoIdentityRepository:
 
         try:
             self._db.table(_TABLE).insert(
-                {"cognito_sub": cognito_sub, "profile_id": profile_id}
+                {
+                    "cognito_sub": cognito_sub,
+                    "profile_id": profile_id,
+                    "cognito_username": cognito_username,
+                }
             ).execute()
         except Exception as exc:
             # A concurrent link may have won the unique constraint race. Never
