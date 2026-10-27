@@ -357,6 +357,7 @@ Resources:
           eventSource:
             - cognito-idp.amazonaws.com
           eventName:
+            - DeleteUser
             - AdminDeleteUser
       Targets:
         - Id: CognitoUserDeleteSyncTarget
