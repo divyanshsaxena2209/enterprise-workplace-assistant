@@ -106,6 +106,13 @@ Parameters:
     Default: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
     Description: Exact HTTPS Vercel preview branch alias. Update if that alias changes.
 
+  AlarmNotificationEmail:
+    Type: String
+    Default: ""
+    Description: >-
+      Optional email for CloudWatch alarm notifications. Leave blank to create alarms
+      without email actions. If set, confirm the SNS subscription email after deployment.
+
 Rules:
   S3StorageRequiresBucketName:
     RuleCondition:
@@ -122,6 +129,7 @@ Rules:
 
 Conditions:
   UseS3DocumentStorage: !Equals [!Ref StorageProvider, "s3"]
+  HasAlarmNotificationEmail: !Not [!Equals [!Ref AlarmNotificationEmail, ""]]
 
 Resources:
   StagingApiLogGroup:
@@ -401,6 +409,82 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt CognitoUserDeleteSyncRule.Arn
 
+  # Standard-resolution CloudWatch alarms for the staging stack. Email notifications
+  # are optional; when configured, confirm the SNS subscription from your inbox.
+  CloudWatchAlarmNotificationTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmNotificationEmail
+    Properties:
+      DisplayName: EWA staging CloudWatch alerts
+
+  CloudWatchAlarmEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmNotificationEmail
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmNotificationEmail
+      TopicArn: !Ref CloudWatchAlarmNotificationTopic
+
+  StagingApiErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-StagingApiErrors"
+      AlarmDescription: >-
+        One or more errors occurred in the staging API Lambda during a 5-minute period.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StagingApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmNotificationEmail, [!Ref CloudWatchAlarmNotificationTopic], !Ref AWS::NoValue]
+
+  CognitoUserDeleteSyncErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-DeleteSyncErrors"
+      AlarmDescription: >-
+        The Cognito deletion-sync Lambda reported one or more errors during a 5-minute period.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CognitoUserDeleteSyncFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmNotificationEmail, [!Ref CloudWatchAlarmNotificationTopic], !Ref AWS::NoValue]
+
+  CognitoUserDeleteSyncDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-DeleteSyncDeadLetterQueue"
+      AlarmDescription: >-
+        One or more deletion-sync events are waiting in the dead-letter queue after delivery retries.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmNotificationEmail, [!Ref CloudWatchAlarmNotificationTopic], !Ref AWS::NoValue]
+
 Outputs:
   StagingApiFunctionName:
     Description: Separate staging backend; do not substitute for the Production Lambda.
@@ -429,3 +513,8 @@ Outputs:
   PreviewSignOutUrl:
     Description: Set as Cognito allowed sign-out URL.
     Value: !Sub "${PreviewOrigin}/login"
+
+  CloudWatchAlarmNotificationTopicArn:
+    Condition: HasAlarmNotificationEmail
+    Description: SNS topic for staging alarm email notifications. Confirm the subscription email after deployment.
+    Value: !Ref CloudWatchAlarmNotificationTopic
