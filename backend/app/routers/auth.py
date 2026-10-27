@@ -211,29 +211,9 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
     profile_repo = ProfileRepository(client)
     profile = profile_repo.get_by_email(cognito_email)
     if profile is None:
-        if body.profile is None:
-            raise NotFoundError(
-                "No existing profile matches this verified email. Use the signup form to provide employee profile details."
-            )
-
-        signup = body.profile
-        profile_data_base = {
-            "email": cognito_email,
-            "full_name": signup.full_name,
-            "role": UserRole.EMPLOYEE.value,
-            "department": signup.department,
-            "job_title": signup.job_title,
-            "phone": signup.phone,
-            "location": signup.location,
-            "bio": signup.bio,
-            "avatar_url": signup.avatar_url,
-            "is_active": True,
-            "is_management_verified": False,
-        }
-
-        # Reuse an existing Auth identity if a previous attempt left auth.users
-        # intact but its public profile row was deleted. Duplicate create_user
-        # calls return HTTP 422 and otherwise strand Cognito signup.
+        # A deleted public profile can leave the corresponding Supabase Auth
+        # identity behind. Recover that identity first, including for sign-in
+        # callbacks where the browser does not resend signup form fields.
         existing_auth_user = None
         try:
             existing_auth_user = _find_supabase_auth_user_by_email(auth_client, cognito_email)
@@ -242,6 +222,51 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
                 "Existing Supabase Auth lookup failed (exception_type=%s)",
                 type(lookup_exc).__name__,
             )
+
+        signup = body.profile
+        if signup is None and existing_auth_user is None:
+            raise NotFoundError(
+                "No matching employee profile or Supabase Auth identity was found. Use Create an account to finish signup."
+            )
+
+        if signup is not None:
+            full_name = signup.full_name
+            department = signup.department
+            job_title = signup.job_title
+            phone = signup.phone
+            location = signup.location
+            bio = signup.bio
+            avatar_url = signup.avatar_url
+        else:
+            auth_metadata = (
+                existing_auth_user.get("user_metadata", {})
+                if isinstance(existing_auth_user, dict)
+                else getattr(existing_auth_user, "user_metadata", {})
+            ) or {}
+            full_name = auth_metadata.get("full_name") or cognito_email.split("@", 1)[0]
+            department = auth_metadata.get("department")
+            job_title = auth_metadata.get("job_title")
+            phone = auth_metadata.get("phone")
+            location = auth_metadata.get("location")
+            bio = auth_metadata.get("bio")
+            avatar_url = auth_metadata.get("avatar_url")
+
+        # Never restore elevated application permissions from browser/user
+        # metadata alone; a recreated profile defaults to EMPLOYEE and must be
+        # promoted through the trusted Management authorization flow.
+        profile_data_base = {
+            "email": cognito_email,
+            "full_name": full_name,
+            "role": UserRole.EMPLOYEE.value,
+            "department": department,
+            "job_title": job_title,
+            "phone": phone,
+            "location": location,
+            "bio": bio,
+            "avatar_url": avatar_url,
+            "is_active": True,
+            "is_management_verified": False,
+        }
 
         if existing_auth_user is not None:
             existing_user_id = _auth_user_id(existing_auth_user)
@@ -258,14 +283,14 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
                 ) from exc
         else:
             metadata = {
-                "full_name": signup.full_name,
+                "full_name": full_name,
                 "role": UserRole.EMPLOYEE.value,
-                "department": signup.department,
-                "job_title": signup.job_title,
-                "phone": signup.phone,
-                "location": signup.location,
-                "bio": signup.bio,
-                "avatar_url": signup.avatar_url,
+                "department": department,
+                "job_title": job_title,
+                "phone": phone,
+                "location": location,
+                "bio": bio,
+                "avatar_url": avatar_url,
                 "is_management_verified": False,
             }
             try:
