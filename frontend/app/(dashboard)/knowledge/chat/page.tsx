@@ -155,13 +155,17 @@ export default function KnowledgeChat() {
         sources: response.sources
       }]);
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        setMessages(prev => [...prev, {
-          id: Date.now() + 1,
-          role: "assistant",
-          content: "Generation stopped."
-        }]);
-      }
+      console.error("[KnowledgeChat] Query failed:", error);
+      const message = error?.name === "AbortError"
+        ? "Generation stopped."
+        : `I couldn't retrieve an answer. ${typeof error?.message === "string" && error.message.trim()
+            ? error.message
+            : "The request failed unexpectedly. Please try again."}`;
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: message,
+      }]);
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
