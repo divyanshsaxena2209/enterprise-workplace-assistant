@@ -85,7 +85,7 @@ def test_management_access_choice_creates_request_without_elevating_profile(monk
         def __init__(self, _client):
             pass
 
-        def link_verified_identity(self, subject, profile_id):
+        def link_verified_identity(self, subject, profile_id, cognito_username=None, cognito_user_pool_id=None):
             mapping_calls.append((subject, profile_id))
 
     class FakeManagementRequests:
@@ -157,7 +157,7 @@ def test_employee_choice_does_not_create_management_request(monkeypatch):
         def __init__(self, _client):
             pass
 
-        def link_verified_identity(self, _subject, _profile_id):
+        def link_verified_identity(self, _subject, _profile_id, _cognito_username=None, _cognito_user_pool_id=None):
             pass
 
     class FakeManagementRequests:
@@ -235,7 +235,7 @@ def test_allowlisted_management_signup_is_assigned_management_by_server(monkeypa
         def __init__(self, _client):
             pass
 
-        def link_verified_identity(self, subject, profile_id):
+        def link_verified_identity(self, subject, profile_id, cognito_username=None, cognito_user_pool_id=None):
             mappings.append((subject, profile_id))
 
     class FakeRequests:
@@ -391,7 +391,7 @@ def test_staging_demo_role_selector_switches_application_role_without_allowlist(
         def __init__(self, _client):
             pass
 
-        def link_verified_identity(self, _subject, _profile_id):
+        def link_verified_identity(self, _subject, _profile_id, _cognito_username=None, _cognito_user_pool_id=None):
             pass
 
     class FakeRequests:
@@ -497,7 +497,7 @@ def test_regular_cognito_signin_without_access_choice_preserves_management_role(
         def __init__(self, _client):
             pass
 
-        def link_verified_identity(self, subject, profile_id):
+        def link_verified_identity(self, subject, profile_id, cognito_username=None, cognito_user_pool_id=None):
             mappings.append((subject, profile_id))
 
     monkeypatch.setattr(auth.settings, "ENVIRONMENT", "staging")
@@ -574,7 +574,7 @@ def test_signin_restores_missing_profile_from_existing_supabase_auth_user(monkey
         def __init__(self, _client):
             pass
 
-        def link_verified_identity(self, subject, profile_id):
+        def link_verified_identity(self, subject, profile_id, cognito_username=None, cognito_user_pool_id=None):
             mapping_calls.append((subject, profile_id))
 
     monkeypatch.setattr(auth, "decode_cognito_id_token", lambda _token, _nonce: {
