@@ -31,6 +31,11 @@ class FakeQuery:
         self.payload = payload
         return self
 
+    def update(self, payload):
+        self.action = "update"
+        self.payload = payload
+        return self
+
     def upsert(self, payload, on_conflict=None):
         self.action = "upsert"
         self.payload = payload
@@ -48,6 +53,14 @@ class FakeQuery:
                 {field: row[field] for field in self.fields.split(",") if field in row}
                 for row in matches[:1]
             ])
+        if self.action == "update":
+            matches = [
+                row for row in records
+                if all(row.get(key) == value for key, value in self.filters.items())
+            ]
+            for row in matches:
+                row.update(self.payload)
+            return SimpleNamespace(data=[dict(row) for row in matches])
         if self.action == "upsert":
             for row in records:
                 if row["profile_id"] == self.payload["profile_id"]:
@@ -139,3 +152,21 @@ def test_mapping_stores_cognito_username_and_pool():
     repo = CognitoIdentityRepository(client)
     repo.create_mapping("cognito-sub", "profile-id", "cognito-username", "ap-south-1_testPool")
     assert client.records == [{"cognito_sub": "cognito-sub", "profile_id": "profile-id", "cognito_username": "cognito-username", "cognito_user_pool_id": "ap-south-1_testPool"}]
+
+
+def test_relinking_same_subject_refreshes_last_verified_timestamp():
+    client = FakeTable()
+    repo = CognitoIdentityRepository(client)
+    repo.create_mapping("same-subject", "same-profile", "old-username", "ap-south-1_testPool")
+
+    repo.link_verified_identity(
+        "same-subject",
+        "same-profile",
+        "new-username",
+        "ap-south-1_testPool",
+    )
+
+    record = client.records[0]
+    assert record["cognito_username"] == "new-username"
+    assert record["cognito_user_pool_id"] == "ap-south-1_testPool"
+    assert record["cognito_last_verified_at"]
