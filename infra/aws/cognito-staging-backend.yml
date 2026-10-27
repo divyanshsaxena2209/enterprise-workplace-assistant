@@ -280,6 +280,11 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub "${CognitoUserDeleteSyncLogGroup.Arn}:*"
+              - Sid: ListOnlyConfiguredCognitoUsersForReconciliation
+                Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
 
   CognitoUserDeleteSyncFunction:
     Type: AWS::Lambda::Function
@@ -328,7 +333,9 @@ Resources:
             Resource: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.Arn
             Condition:
               ArnEquals:
-                aws:SourceArn: !GetAtt CognitoUserDeleteSyncRule.Arn
+                aws:SourceArn:
+                  - !GetAtt CognitoUserDeleteSyncRule.Arn
+                  - !GetAtt CognitoUserDeleteSyncReconciliationRule.Arn
 
   CognitoUserDeleteSyncRule:
     Type: AWS::Events::Rule
@@ -362,6 +369,31 @@ Resources:
           RetryPolicy:
             MaximumEventAgeInSeconds: 86400
             MaximumRetryAttempts: 10
+
+  CognitoUserDeleteSyncReconciliationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: >-
+        Periodically compare staging Cognito users against linked Supabase identities
+        so a missed CloudTrail deletion event is eventually reconciled.
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: CognitoUserDeleteSyncReconciliationTarget
+          Arn: !GetAtt CognitoUserDeleteSyncFunction.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 86400
+            MaximumRetryAttempts: 10
+
+  AllowEventBridgeCognitoDeleteSyncReconciliationInvocation:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CognitoUserDeleteSyncFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CognitoUserDeleteSyncReconciliationRule.Arn
 
   AllowEventBridgeCognitoDeleteSyncInvocation:
     Type: AWS::Lambda::Permission
