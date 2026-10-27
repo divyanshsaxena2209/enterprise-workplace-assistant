@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-_ALLOWED_DELETE_EVENTS = {"AdminDeleteUser"}
+_ALLOWED_DELETE_EVENTS = {"DeleteUser", "AdminDeleteUser"}
 _PAGE_SIZE = 1000
 
 
