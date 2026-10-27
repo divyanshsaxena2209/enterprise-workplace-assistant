@@ -33,6 +33,33 @@ router = APIRouter(
 
 logger = logging.getLogger(__name__)
 
+def _find_supabase_auth_user_by_email(auth_client, email: str):
+    """Find an existing Supabase Auth identity by exact normalized email."""
+    response = auth_client.auth.admin.list_users(page=1, per_page=1000)
+    if isinstance(response, list):
+        users = response
+    elif isinstance(response, dict):
+        users = response.get("users") or (response.get("data") or {}).get("users") or []
+    else:
+        users = getattr(response, "users", None)
+        if users is None:
+            data = getattr(response, "data", None)
+            users = getattr(data, "users", None) if data is not None else None
+    normalized_email = email.strip().lower()
+    for user in users or []:
+        if isinstance(user, dict):
+            user_email = user.get("email")
+        else:
+            user_email = getattr(user, "email", None)
+        if isinstance(user_email, str) and user_email.strip().lower() == normalized_email:
+            return user
+    return None
+
+
+def _auth_user_id(user):
+    return user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+
+
 
 def _get_auth_service() -> AuthService:
     """Dependency factory — creates AuthService with a fresh Supabase client."""
@@ -189,11 +216,9 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
                 "No existing profile matches this verified email. Use the signup form to provide employee profile details."
             )
 
-        # Create a Supabase Auth shadow identity so the existing profiles.id
-        # foreign key remains valid. Cognito remains the only interactive login
-        # provider in Cognito mode; this random password is never returned.
         signup = body.profile
-        metadata = {
+        profile_data_base = {
+            "email": cognito_email,
             "full_name": signup.full_name,
             "role": UserRole.EMPLOYEE.value,
             "department": signup.department,
@@ -202,65 +227,97 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
             "location": signup.location,
             "bio": signup.bio,
             "avatar_url": signup.avatar_url,
+            "is_active": True,
             "is_management_verified": False,
         }
+
+        # Reuse an existing Auth identity if a previous attempt left auth.users
+        # intact but its public profile row was deleted. Duplicate create_user
+        # calls return HTTP 422 and otherwise strand Cognito signup.
+        existing_auth_user = None
         try:
-            created = auth_client.auth.admin.create_user({
-                "email": cognito_email,
-                "password": secrets.token_urlsafe(48),
-                "email_confirm": True,
-                "user_metadata": metadata,
-            })
-        except Exception as exc:
-            # A concurrent request may have created the profile after the first
-            # lookup. Reuse only that exact email-matched profile; never overwrite
-            # an existing user's role or profile fields. If the profile still
-            # does not exist, the original exception could be an Auth API failure,
-            # a trigger failure, bad staging credentials, or a transient outage.
-            # Do not mislabel all such failures as a duplicate-account conflict.
-            upstream_status = getattr(exc, "status_code", None)
-            if not isinstance(upstream_status, int):
-                upstream_status = getattr(exc, "status", None)
-            if not isinstance(upstream_status, int) or not 100 <= upstream_status <= 599:
-                upstream_status = None
+            existing_auth_user = _find_supabase_auth_user_by_email(auth_client, cognito_email)
+        except Exception as lookup_exc:
             logger.warning(
-                "Cognito staging shadow-user provisioning failed "
-                "(exception_type=%s upstream_status=%s)",
-                type(exc).__name__,
-                upstream_status,
+                "Existing Supabase Auth lookup failed (exception_type=%s)",
+                type(lookup_exc).__name__,
             )
-            profile = profile_repo.get_by_email(cognito_email)
-            if profile is None:
-                raise DatabaseError(
-                    "Could not provision the employee profile in the staging database. "
-                    "Check staging Supabase Auth and profile-trigger configuration."
-                ) from exc
 
-        if profile is None:
-            created_user = getattr(created, "user", None) or created
-            created_user_id = getattr(created_user, "id", None)
-            if not created_user_id:
-                raise DatabaseError("Supabase did not return the ID for the Cognito shadow user.")
-
+        if existing_auth_user is not None:
+            existing_user_id = _auth_user_id(existing_auth_user)
+            if not existing_user_id:
+                raise DatabaseError("Supabase Auth returned an existing user without an ID.")
             try:
                 profile = profile_repo.upsert({
-                    "id": str(created_user_id),
-                    "email": cognito_email,
-                    "full_name": signup.full_name,
-                    "role": UserRole.EMPLOYEE.value,
-                    "department": signup.department,
-                    "job_title": signup.job_title,
-                    "phone": signup.phone,
-                    "location": signup.location,
-                    "bio": signup.bio,
-                    "avatar_url": signup.avatar_url,
-                    "is_active": True,
-                    "is_management_verified": False,
+                    **profile_data_base,
+                    "id": str(existing_user_id),
                 })
             except Exception as exc:
                 raise DatabaseError(
-                    "The Cognito account was created but its employee profile could not be saved."
+                    "An existing Supabase Auth identity was found, but its employee profile could not be restored."
                 ) from exc
+        else:
+            metadata = {
+                "full_name": signup.full_name,
+                "role": UserRole.EMPLOYEE.value,
+                "department": signup.department,
+                "job_title": signup.job_title,
+                "phone": signup.phone,
+                "location": signup.location,
+                "bio": signup.bio,
+                "avatar_url": signup.avatar_url,
+                "is_management_verified": False,
+            }
+            try:
+                created = auth_client.auth.admin.create_user({
+                    "email": cognito_email,
+                    "password": secrets.token_urlsafe(48),
+                    "email_confirm": True,
+                    "user_metadata": metadata,
+                })
+                created_user = getattr(created, "user", None) or created
+            except Exception as exc:
+                upstream_status = getattr(exc, "status_code", None)
+                if not isinstance(upstream_status, int):
+                    upstream_status = getattr(exc, "status", None)
+                logger.warning(
+                    "Cognito staging shadow-user provisioning failed "
+                    "(exception_type=%s upstream_status=%s)",
+                    type(exc).__name__,
+                    upstream_status if isinstance(upstream_status, int) else None,
+                )
+                # A concurrent/prior signup may have created the same Auth user.
+                try:
+                    existing_auth_user = _find_supabase_auth_user_by_email(auth_client, cognito_email)
+                except Exception as lookup_exc:
+                    logger.warning(
+                        "Auth identity recovery lookup failed (exception_type=%s)",
+                        type(lookup_exc).__name__,
+                    )
+                    existing_auth_user = None
+                if existing_auth_user is not None:
+                    created_user = existing_auth_user
+                else:
+                    profile = profile_repo.get_by_email(cognito_email)
+                    if profile is None:
+                        raise DatabaseError(
+                            "Could not provision the employee profile in the staging database. "
+                            "Check staging Supabase Auth and profile-trigger configuration."
+                        ) from exc
+
+            if profile is None:
+                created_user_id = _auth_user_id(created_user)
+                if not created_user_id:
+                    raise DatabaseError("Supabase did not return the ID for the staging Auth user.")
+                try:
+                    profile = profile_repo.upsert({
+                        **profile_data_base,
+                        "id": str(created_user_id),
+                    })
+                except Exception as exc:
+                    raise DatabaseError(
+                        "The Cognito account exists, but its employee profile could not be saved."
+                    ) from exc
 
     # The profiles table email is application data. Cross-check it against
     # the actual Supabase Auth identity so an editable/stale profile email can
@@ -283,7 +340,7 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
         raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
 
     mapping_repo = CognitoIdentityRepository(client)
-    mapping_repo.create_mapping(str(claims["sub"]), str(profile.id))
+    mapping_repo.link_verified_identity(str(claims["sub"]), str(profile.id))
 
     # Only apply the staging demo selector when a create-account flow explicitly
     # provided an access-level choice. A normal sign-in must preserve the role
