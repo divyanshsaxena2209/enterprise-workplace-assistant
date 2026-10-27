@@ -154,3 +154,13 @@ Attach this inline policy to that role. It can push only to the existing backend
 ```
 
 After creating the role, open the [staging ECR workflow](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml), select branch `cognito-staging-integration`, and choose **Run workflow**. Expected output image tag is `cognito-staging-<commit-sha>`. This workflow never pushes `latest` and never updates a Lambda function.
+
+
+## Cognito deletion lifecycle synchronization (staging)
+
+- A successful Cognito `AdminDeleteUser` or `DeleteUser` event is routed by EventBridge/CloudTrail to `CognitoUserDeleteSyncFunction` in the staging CloudFormation template.
+- The handler matches only the configured staging pool and an existing `cognito_identity_mappings` row. Cognito `sub` is the primary key; username matching is used only when no subject exists and the event time is older than the current mapping's last-verified time. This protects a newly recreated same-email account from a delayed event for the old account.
+- The cleanup Lambda deletes the linked Supabase Auth user through the Auth Admin API and verifies the related `profiles` row and mapping disappear. `auth.users` deletion cascades those identity rows; job postings and application records remain because owner/user references use `ON DELETE SET NULL`.
+- An EventBridge schedule runs reconciliation every 15 minutes to catch best-effort CloudTrail delivery gaps. It first completes a paginated `ListUsers` read, then deletes only mapping-linked Supabase Auth users whose `cognito_sub` is absent from the configured pool. Failed invocations retry and route to an encrypted SQS dead-letter queue.
+- Additive staging Supabase migrations: `20261027000000_cognito_username_delete_sync.sql` and `20261027000001_keep_cognito_mapping_with_auth_identity.sql`. Both have been applied to the isolated staging project.
+- **Deployment gate:** ECR build, focused regression tests, CloudFormation change-set review and live Cognito-delete acceptance test must pass before claiming end-to-end behavior. The AWS stack has not yet been updated to the new image/template at this checkpoint. Preserve Production/main and all job postings.
