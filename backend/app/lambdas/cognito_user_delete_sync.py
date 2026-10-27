@@ -156,6 +156,9 @@ def _find_mapping(subject: str | None, username: str | None, pool_id: str, event
 def handler(event, context):
     detail = event.get("detail") or event
     event_name = detail.get("eventName") or detail.get("event_name")
+    if detail.get("errorCode") or detail.get("errorMessage"):
+        logger.info("Ignoring unsuccessful Cognito delete API event.")
+        return {"status": "ignored", "reason": "delete-api-call-failed"}
     if event_name not in _ALLOWED_DELETE_EVENTS:
         logger.info("Ignoring non-delete Cognito event: %s", event_name)
         return {"status": "ignored", "reason": "not-a-user-delete"}
