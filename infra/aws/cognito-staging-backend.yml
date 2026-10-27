@@ -306,6 +306,9 @@ Resources:
       Code:
         ImageUri: !Ref ImageUri
       ImageConfig:
+        # Override Lambda's container settings explicitly so the intended
+        # /app package shadows any same-named runtime package and imports resolve.
+        WorkingDirectory: /app
         Command:
           - app.lambdas.cognito_user_delete_sync.handler
       Role: !GetAtt CognitoUserDeleteSyncExecutionRole.Arn
