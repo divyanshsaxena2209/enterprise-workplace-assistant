@@ -49,7 +49,7 @@ class CognitoIdentityRepository:
             return None
         return str(response.data[0]["cognito_sub"])
 
-    def link_verified_identity(self, cognito_sub: str, profile_id: str, cognito_username: str | None = None) -> None:
+    def link_verified_identity(self, cognito_sub: str, profile_id: str, cognito_username: str | None = None, cognito_user_pool_id: str | None = None) -> None:
         """Link a verified Cognito subject to its email-matched Auth profile.
 
         The caller must have validated the Cognito ID token and verified that
@@ -64,7 +64,10 @@ class CognitoIdentityRepository:
                 if cognito_username:
                     try:
                         self._db.table(_TABLE).update(
-                            {"cognito_username": cognito_username}
+                            {
+                                "cognito_username": cognito_username,
+                                "cognito_user_pool_id": cognito_user_pool_id,
+                            }
                         ).eq("profile_id", profile_id).execute()
                     except Exception as exc:
                         raise DatabaseError("Could not refresh Cognito username metadata.") from exc
@@ -73,7 +76,7 @@ class CognitoIdentityRepository:
 
         existing_subject = self.get_subject_for_profile(profile_id)
         if existing_subject is None:
-            self.create_mapping(cognito_sub, profile_id, cognito_username)
+            self.create_mapping(cognito_sub, profile_id, cognito_username, cognito_user_pool_id)
             return
         if existing_subject == cognito_sub:
             if cognito_username:
@@ -91,6 +94,7 @@ class CognitoIdentityRepository:
                     "cognito_sub": cognito_sub,
                     "profile_id": profile_id,
                     "cognito_username": cognito_username,
+                    "cognito_user_pool_id": cognito_user_pool_id,
                 },
                 on_conflict="profile_id",
             ).execute()
@@ -104,7 +108,7 @@ class CognitoIdentityRepository:
                 "Could not refresh this verified Cognito identity mapping."
             ) from exc
 
-    def create_mapping(self, cognito_sub: str, profile_id: str, cognito_username: str | None = None) -> None:
+    def create_mapping(self, cognito_sub: str, profile_id: str, cognito_username: str | None = None, cognito_user_pool_id: str | None = None) -> None:
         existing_profile_id = self.get_profile_id(cognito_sub)
         if existing_profile_id is not None:
             if existing_profile_id == profile_id:
@@ -123,6 +127,7 @@ class CognitoIdentityRepository:
                     "cognito_sub": cognito_sub,
                     "profile_id": profile_id,
                     "cognito_username": cognito_username,
+                    "cognito_user_pool_id": cognito_user_pool_id,
                 }
             ).execute()
         except Exception as exc:
