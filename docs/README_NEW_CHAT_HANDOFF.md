@@ -1,3 +1,29 @@
+# COGNITO DELETION-TO-SUPABASE SYNC — UPDATE (27 October 2026, Asia/Kolkata)
+
+## Requirement and intended behavior
+- User requirement: deleting an identity from the staging Cognito user pool must also remove the corresponding linked Supabase Auth account/profile/mapping. Do not delete or alter job postings.
+- Keep this strictly on `cognito-staging-integration` and the staging stack/project. Production and `main` remain untouched.
+- Supabase FK review confirmed `profiles.id -> auth.users.id ON DELETE CASCADE`; `jobs.created_by -> profiles.id ON DELETE SET NULL`; `applications.user_id -> profiles.id ON DELETE SET NULL`; `knowledge_documents.uploaded_by -> profiles.id ON DELETE SET NULL`. Therefore deleting the linked Supabase Auth identity retains job/application rows (their actor/owner ref becomes NULL) while deleting the corresponding profile/mapping and auth sessions. Other user-owned tables with CASCADE semantics are removed.
+
+## Implemented on the staging branch
+- `backend/app/lambdas/cognito_user_delete_sync.py`: EventBridge CloudTrail handler for successful `AdminDeleteUser` / `DeleteUser` events; validates the configured user-pool ID; resolves only through `cognito_identity_mappings`; deletes the linked Supabase Auth user via the Admin Auth API; verifies the public profile and mapping disappear. Failed Cognito delete API events and events for another pool are ignored.
+- The same Lambda supports a scheduled reconciliation every 15 minutes: it first fully paginates Cognito `ListUsers`, then compares all mappings scoped to this staging pool, and deletes only linked Supabase Auth identities whose Cognito `sub` is no longer present. If the Cognito list or Supabase query fails, it aborts before deleting identities.
+- `infra/aws/cognito-staging-backend.yml`: adds the cleanup Lambda (same ECR image, dedicated handler command), narrow `cognito-idp:ListUsers` permission scoped to this pool, EventBridge delete rule, 15-minute reconciliation rule, 10 retries / 24-hour age, encrypted SQS DLQ and CloudWatch logs.
+- `backend/app/repositories/cognito_identity_repository.py` + `backend/app/routers/auth.py`: store Cognito username/pool and update a last-verified timestamp on verified account linking. The event's `sub` is primary; username-only fallback requires a timestamp check so a delayed delete for an old user cannot delete a recreated user with the same username.
+- `supabase/migrations/20261027000000_cognito_username_delete_sync.sql`: adds username, pool ID, and last-verified fields and an index. Applied to connected staging Supabase project `wxulxcsdpwsyhtpkbazi`.
+- `supabase/migrations/20261027000001_keep_cognito_mapping_with_auth_identity.sql`: changes mapping FK to `auth.users(id) ON DELETE CASCADE`, so deleting/rebuilding a `profiles` row no longer removes the Cognito mapping. Applied to the connected staging Supabase project.
+- Regression tests: `backend/tests/test_cognito_user_delete_sync.py`, `backend/tests/test_cognito_identity_repository.py`, and `backend/tests/test_cognito_provisioning_errors.py`; service replacement workflow now includes the deletion-sync tests.
+- Current known staging DB counts after migration: `jobs=7`, `profiles=1`, `cognito_identity_mappings=1`. No jobs or user records were deleted as part of this lifecycle-sync implementation.
+
+## Deployment and verification status — do not overstate
+- These backend/CloudFormation edits are committed, but **the new backend image build, CI results, and live AWS deployment are not yet confirmed**.
+- Last backend-path commit expected to trigger ECR build: `5ce200e4e3f5df8e4639be88ffdc7c98ac5a4960`; expected tag: `cognito-staging-5ce200e4e3f5df8e4639be88ffdc7c98ac5a4960`. Confirm build success and copy the actual immutable digest from ECR rather than using this tag as the deployed image URI.
+- Required manual AWS action: create a reviewed change set for existing `ewa-cognito-staging-api`, update only `ImageUri` plus the resources in `infra/aws/cognito-staging-backend.yml`, preserve all existing parameters/secrets, and verify `StagingApi` is modified in place (`Replacement=False`). There must be no unrelated deletions or job data changes.
+- After deployment, test with a disposable Cognito test account: link/sign in once, confirm the mapping records the current `cognito_sub`, then delete the test user in Cognito. Check CloudWatch for immediate cleanup and verify Supabase Auth user, `profiles`, and mapping are gone while the job row count remains unchanged. Also inspect the SQS DLQ if the cleanup invocation repeatedly fails.
+- AWS documents Cognito user pool API activity through CloudTrail and EventBridge patterns here: https://docs.aws.amazon.com/eventbridge/latest/ref/events-ref-cognito-idp.html and https://docs.aws.amazon.com/cognito/latest/developerguide/logging-using-cloudtrail.html. CloudTrail delivery is best-effort, which is why the scheduled reconciliation is also required; cleanup is eventual rather than synchronous for console-initiated deletes.
+
+---
+
 # COGNITO SIGN-IN PROFILE PROVISIONING RECOVERY — UPDATE (27 October 2026, Asia/Kolkata)
 
 ## Observed failure and diagnosis
