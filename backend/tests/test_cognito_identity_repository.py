@@ -31,6 +31,12 @@ class FakeQuery:
         self.payload = payload
         return self
 
+    def upsert(self, payload, on_conflict=None):
+        self.action = "upsert"
+        self.payload = payload
+        self.on_conflict = on_conflict
+        return self
+
     def execute(self):
         records = self.table_state.records
         if self.action == "select":
@@ -42,6 +48,20 @@ class FakeQuery:
                 {field: row[field] for field in self.fields.split(",") if field in row}
                 for row in matches[:1]
             ])
+        if self.action == "upsert":
+            for row in records:
+                if row["profile_id"] == self.payload["profile_id"]:
+                    if any(
+                        other is not row and other["cognito_sub"] == self.payload["cognito_sub"]
+                        for other in records
+                    ):
+                        raise RuntimeError("cognito_sub unique constraint violation")
+                    row.update(self.payload)
+                    return SimpleNamespace(data=[dict(row)])
+            if any(row["cognito_sub"] == self.payload["cognito_sub"] for row in records):
+                raise RuntimeError("cognito_sub unique constraint violation")
+            records.append(dict(self.payload))
+            return SimpleNamespace(data=[dict(self.payload)])
         if any(
             row["cognito_sub"] == self.payload["cognito_sub"]
             or row["profile_id"] == self.payload["profile_id"]
@@ -86,3 +106,25 @@ def test_profile_cannot_be_linked_to_a_different_subject():
 
     with pytest.raises(ConflictError, match="already linked to a different Cognito identity"):
         repo.create_mapping("subject-two", "profile-id")
+
+
+def test_link_verified_identity_refreshes_stale_subject_for_same_profile():
+    client = FakeTable()
+    repo = CognitoIdentityRepository(client)
+    repo.create_mapping("deleted-cognito-subject", "verified-profile-id")
+
+    repo.link_verified_identity("recreated-cognito-subject", "verified-profile-id")
+
+    assert client.records == [{
+        "cognito_sub": "recreated-cognito-subject",
+        "profile_id": "verified-profile-id",
+    }]
+
+
+def test_link_verified_identity_never_reassigns_subject_from_another_profile():
+    client = FakeTable()
+    repo = CognitoIdentityRepository(client)
+    repo.create_mapping("already-linked-subject", "other-profile-id")
+
+    with pytest.raises(ConflictError, match="already linked to another profile"):
+        repo.link_verified_identity("already-linked-subject", "verified-profile-id")
