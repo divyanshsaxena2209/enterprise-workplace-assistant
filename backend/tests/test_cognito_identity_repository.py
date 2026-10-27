@@ -87,7 +87,7 @@ def test_create_mapping_is_idempotent_for_same_pair():
     repo.create_mapping("cognito-sub", "profile-id")
     repo.create_mapping("cognito-sub", "profile-id")
 
-    assert client.records == [{"cognito_sub": "cognito-sub", "profile_id": "profile-id"}]
+    assert client.records == [{"cognito_sub": "cognito-sub", "profile_id": "profile-id", "cognito_username": None, "cognito_user_pool_id": None}]
 
 
 def test_subject_cannot_be_linked_to_a_different_profile():
@@ -118,6 +118,8 @@ def test_link_verified_identity_refreshes_stale_subject_for_same_profile():
     assert client.records == [{
         "cognito_sub": "recreated-cognito-subject",
         "profile_id": "verified-profile-id",
+        "cognito_username": None,
+        "cognito_user_pool_id": None,
     }]
 
 
@@ -128,3 +130,11 @@ def test_link_verified_identity_never_reassigns_subject_from_another_profile():
 
     with pytest.raises(ConflictError, match="already linked to another profile"):
         repo.link_verified_identity("already-linked-subject", "verified-profile-id")
+
+
+
+def test_mapping_stores_cognito_username_and_pool():
+    client = FakeTable()
+    repo = CognitoIdentityRepository(client)
+    repo.create_mapping("cognito-sub", "profile-id", "cognito-username", "ap-south-1_testPool")
+    assert client.records == [{"cognito_sub": "cognito-sub", "profile_id": "profile-id", "cognito_username": "cognito-username", "cognito_user_pool_id": "ap-south-1_testPool"}]
