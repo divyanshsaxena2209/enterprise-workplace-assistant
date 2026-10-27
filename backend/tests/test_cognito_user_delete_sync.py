@@ -123,3 +123,53 @@ def test_stale_username_only_delete_event_cannot_remove_newer_mapping(monkeypatc
 
     assert result == {"status": "no-linked-identity", "reason": "stale-delete-event"}
     assert not any(method == "DELETE" for method, _, _ in calls)
+
+
+def test_scheduled_reconciliation_removes_only_mappings_absent_from_cognito(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://staging.example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-only-key")
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", POOL_ID)
+    monkeypatch.setenv("AWS_REGION", "ap-south-1")
+    calls = []
+
+    class FakePaginator:
+        def paginate(self, **kwargs):
+            assert kwargs == {"UserPoolId": POOL_ID}
+            return [{
+                "Users": [
+                    {"Attributes": [{"Name": "sub", "Value": "live-cognito-sub"}]}
+                ]
+            }]
+
+    class FakeCognito:
+        def get_paginator(self, name):
+            assert name == "list_users"
+            return FakePaginator()
+
+    monkeypatch.setattr(sync.boto3, "client", lambda service, **_kwargs: FakeCognito())
+
+    def fake_request(method, path, params=None):
+        calls.append((method, path, params))
+        if method == "GET" and path == "rest/v1/cognito_identity_mappings" and params and "cognito_user_pool_id" in params:
+            return 200, [
+                {"profile_id": "deleted-auth-user", "cognito_sub": "deleted-cognito-sub"},
+                {"profile_id": "live-auth-user", "cognito_sub": "live-cognito-sub"},
+            ]
+        if method == "DELETE" and path == "auth/v1/admin/users/deleted-auth-user":
+            return 200, None
+        if method == "GET" and path == "rest/v1/profiles":
+            return 200, []
+        if method == "GET" and path == "rest/v1/cognito_identity_mappings":
+            return 200, []
+        raise AssertionError(f"Unexpected Supabase request: {method} {path} {params}")
+
+    monkeypatch.setattr(sync, "_supabase_request", fake_request)
+    result = sync.handler({"source": "aws.events", "detail-type": "Scheduled Event"}, None)
+
+    assert result == {
+        "status": "reconciled",
+        "mappings_checked": 2,
+        "identities_removed": 1,
+    }
+    assert ("DELETE", "auth/v1/admin/users/deleted-auth-user", None) in calls
+    assert not any(path == "auth/v1/admin/users/live-auth-user" for _, path, _ in calls)
