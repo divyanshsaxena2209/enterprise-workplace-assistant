@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 import os
 import re
 from urllib.error import HTTPError, URLError
@@ -98,29 +99,58 @@ def _supabase_request(method: str, path: str, params: dict | None = None):
         raise RuntimeError("Could not reach staging Supabase for Cognito deletion cleanup.") from exc
 
 
-def _find_mapping(subject: str | None, username: str | None, pool_id: str):
+def _parse_time(value: str | None):
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _find_mapping(subject: str | None, username: str | None, pool_id: str, event_time: str | None):
     pool_filter = {"cognito_user_pool_id": f"eq.{pool_id}"}
     if subject:
+        # If CloudTrail provides the subject, never fall back to username when
+        # the subject does not match. This prevents a delayed delete event for
+        # a deleted user from removing a recreated account with the same email.
         status, data = _supabase_request(
             "GET", "rest/v1/cognito_identity_mappings",
-            {"select": "profile_id", "cognito_sub": f"eq.{subject}", **pool_filter, "limit": "1"},
+            {
+                "select": "profile_id,cognito_last_verified_at",
+                "cognito_sub": f"eq.{subject}",
+                **pool_filter,
+                "limit": "1",
+            },
         )
         if status == 200 and data:
-            return str(data[0]["profile_id"]), "subject"
+            return str(data[0]["profile_id"]), "subject", None
+        return None, None, "subject-not-mapped"
+
     if username and re.fullmatch(r"[A-Za-z0-9@._+\\-]{1,128}", username):
-        status, data = _supabase_request(
-            "GET", "rest/v1/cognito_identity_mappings",
-            {"select": "profile_id", "cognito_username": f"eq.{username}", **pool_filter, "limit": "1"},
-        )
-        if status == 200 and data:
-            return str(data[0]["profile_id"]), "username"
-        status, data = _supabase_request(
-            "GET", "rest/v1/cognito_identity_mappings",
-            {"select": "profile_id", "cognito_username": f"ilike.{username}", **pool_filter, "limit": "1"},
-        )
-        if status == 200 and data:
-            return str(data[0]["profile_id"]), "username"
-    return None, None
+        event_time_parsed = _parse_time(event_time)
+        if event_time_parsed is None:
+            raise ValueError("CloudTrail deletion event had no valid timestamp; refusing unsafe username-only cleanup.")
+        for operator in ("eq", "ilike"):
+            status, data = _supabase_request(
+                "GET", "rest/v1/cognito_identity_mappings",
+                {
+                    "select": "profile_id,cognito_last_verified_at",
+                    "cognito_username": f"{operator}.{username}",
+                    **pool_filter,
+                    "limit": "1",
+                },
+            )
+            if status != 200 or not data:
+                continue
+            last_verified = _parse_time(data[0].get("cognito_last_verified_at"))
+            if last_verified is None:
+                raise RuntimeError("Mapping lacks its last-verified timestamp; refusing username-only cleanup.")
+            if last_verified >= event_time_parsed:
+                return None, None, "stale-delete-event"
+            return str(data[0]["profile_id"]), "username", None
+    return None, None, "no-linked-identity"
 
 
 def handler(event, context):
@@ -143,10 +173,11 @@ def handler(event, context):
         logger.error("Cognito deletion event had no subject or username; no account will be deleted.")
         raise ValueError("Cognito deletion event has no correlatable user identity.")
 
-    profile_id, matched_by = _find_mapping(subject, username, expected_pool)
+    event_time = event.get("time") or detail.get("eventTime") or detail.get("event_time")
+    profile_id, matched_by, no_match_reason = _find_mapping(subject, username, expected_pool, event_time)
     if not profile_id:
-        logger.info("No linked staging Supabase identity matched the Cognito deletion event.")
-        return {"status": "no-linked-identity"}
+        logger.info("No staging Supabase identity deleted for Cognito event; reason=%s", no_match_reason)
+        return {"status": "no-linked-identity", "reason": no_match_reason}
 
     # The Auth admin delete cascades public.profiles and its Cognito mapping. Jobs
     # remain intact because jobs.created_by is ON DELETE SET NULL.
