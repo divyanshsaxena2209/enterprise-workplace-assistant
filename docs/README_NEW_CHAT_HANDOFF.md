@@ -1,3 +1,28 @@
+# COGNITO SIGN-IN PROFILE PROVISIONING RECOVERY — UPDATE (27 October 2026, Asia/Kolkata)
+
+## Observed failure and diagnosis
+- Staging Cognito account creation is succeeding, but the application link callback has alternated between `cognito_link_conflict`, `cognito_link_database_error`, and `profile_not_found`.
+- Staging Supabase logs showed a profile lookup by email returning HTTP 200 followed by `POST /auth/v1/admin/users` returning HTTP 422. The matching Supabase Auth identity still exists even though its `public.profiles` row had been deleted. The backend was trying to create that Auth identity again, then failed because the public profile was absent.
+- The profiles table has `profiles_email_key` unique on email, `profiles.id` FK to `auth.users.id`, and the Cognito mapping table has a unique profile_id. Job data must remain untouched.
+- An older Cognito-subject mapping can also remain after deleting/recreating a Cognito user with the same verified email.
+
+## Staging-only code changes committed
+- `backend/app/routers/auth.py`: the Cognito link flow now looks for an existing Supabase Auth user by exact normalized email before attempting to create a duplicate. If its public profile row is missing, the handler rebuilds the profile using the existing Auth user ID. This applies to both signup callbacks and sign-in callbacks. Rebuilt profiles default to `EMPLOYEE`; user metadata is never trusted to restore Management privileges.
+- `backend/app/repositories/cognito_identity_repository.py`: after Cognito ID token/nonce/email verification and confirming the corresponding Supabase Auth email matches, the link flow can refresh an old Cognito subject mapping for that same profile. A Cognito subject already mapped to a different profile is still rejected.
+- Added regression coverage in `backend/tests/test_cognito_provisioning_errors.py` for restoring a missing profile from an existing Auth identity and updated fakes to use the new mapping method.
+- Added regression coverage in `backend/tests/test_cognito_identity_repository.py` for replacing a stale subject on the same profile and rejecting a subject that is already mapped to another profile.
+- Relevant commits: auth profile recovery `26ff8798fee95c413c1177a15164ef159d9604a3`; mapping refresh `c2bd1cbedbed56534fd6ddeff866486693a4d315`; test commits `7f24c11cf7c78ab920185ad1c9671af9c955aaf4` and `ad07d3ec6abf7a18a5f88d72383659776deb849d`.
+- The staging branch Vercel check was successful, but that only validates the frontend deployment. Backend ECR build, CI test result, and live Lambda deployment of these backend changes are **not yet confirmed**. The live Lambda still showed old image digest `sha256:ea21b32df3da77d9f90fb9a0ebae7cf9c1fa3fffca792600602c4a8474d5750f` in the prior console screenshot; do not treat it as containing these fixes.
+
+## Next actions
+1. Check [Cognito staging ECR build](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/build-cognito-staging-ecr.yml) and [service replacement tests](https://github.com/divyanshsaxena2209/enterprise-workplace-assistant/actions/workflows/test-service-replacements.yml) for branch `cognito-staging-integration`. Build workflow should publish an image tagged `cognito-staging-<commit-sha>`; capture its immutable digest after success.
+2. Manually create a reviewed change set for existing CloudFormation stack `ewa-cognito-staging-api` using that new digest. Preserve all other parameters/secrets. Confirm only `StagingApi` is modified in place (`Replacement=False`) with no unrelated changes; do not deploy Production.
+3. In Cognito, the current user `divyansh36151@gmail.com` is confirmed/enabled. After new Lambda deployment, sign in through Cognito with that account first; if the callback is missing profile, the backend should restore it from the existing verified-email-matched Supabase Auth user. Then verify profile row and mapping exist.
+4. If the callback still fails, inspect current CloudWatch log event and latest Supabase Auth/PostgREST error response. Do not delete additional rows or jobs as a workaround.
+5. Verify counts and exact titles in `public.jobs` remain unchanged. Keep `main`, Production, and job postings untouched.
+
+---
+
 # STAGING DELETE CONTROLS AND RESUME STORAGE CLEANUP — UPDATE (26 October 2026, Asia/Kolkata)
 
 ## Confirmed AWS deployment from the user's console screenshots
