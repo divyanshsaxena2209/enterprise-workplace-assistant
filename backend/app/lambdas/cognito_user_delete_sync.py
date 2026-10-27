@@ -1,22 +1,21 @@
-"""EventBridge handler to mirror Cognito user deletion into staging Supabase Auth.
+"""EventBridge handler that mirrors Cognito deletes into staging Supabase Auth.
 
-Only acts on the configured staging user pool and only when the Cognito subject
-or username resolves to an existing row in the staging identity-mapping table.
-Deleting auth.users cascades the corresponding profile and mapping; existing
-job rows are retained because jobs.created_by uses ON DELETE SET NULL.
+Acts only on the configured Cognito pool and only when the subject or username
+matches that pool's identity mapping. Deleting auth.users cascades the profile
+and mapping; jobs and application history are retained by existing FK actions.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, quote
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
 _ALLOWED_DELETE_EVENTS = {"AdminDeleteUser", "DeleteUser"}
 
 
@@ -29,12 +28,9 @@ def _first_value(*values):
 
 def _pool_id_from_event(event, detail, request, additional):
     value = _first_value(
-        request.get("userPoolId"),
-        request.get("UserPoolId"),
-        additional.get("userPoolId"),
-        additional.get("UserPoolId"),
-        detail.get("userPoolId"),
-        detail.get("UserPoolId"),
+        request.get("userPoolId"), request.get("UserPoolId"),
+        additional.get("userPoolId"), additional.get("UserPoolId"),
+        detail.get("userPoolId"), detail.get("UserPoolId"),
     )
     if value:
         return value
@@ -61,7 +57,6 @@ def _identity_from_event(detail, request, additional):
         additional.get("username"), additional.get("Username"),
         detail.get("username"), detail.get("Username"),
     )
-    # Some CloudTrail records put request metadata under additionalEventData.
     nested = additional.get("requestParameters")
     if isinstance(nested, dict):
         username = username or _first_value(
@@ -103,33 +98,25 @@ def _supabase_request(method: str, path: str, params: dict | None = None):
         raise RuntimeError("Could not reach staging Supabase for Cognito deletion cleanup.") from exc
 
 
-def _find_mapping(subject: str | None, username: str | None):
+def _find_mapping(subject: str | None, username: str | None, pool_id: str):
+    pool_filter = {"cognito_user_pool_id": f"eq.{pool_id}"}
     if subject:
         status, data = _supabase_request(
-            "GET",
-            "rest/v1/cognito_identity_mappings",
-            {"select": "profile_id", "cognito_sub": f"eq.{subject}", "limit": "1"},
+            "GET", "rest/v1/cognito_identity_mappings",
+            {"select": "profile_id", "cognito_sub": f"eq.{subject}", **pool_filter, "limit": "1"},
         )
         if status == 200 and data:
             return str(data[0]["profile_id"]), "subject"
-    if username:
-        # Query exact value first, then case-insensitive filter for Cognito pools
-        # configured with case-insensitive username semantics.
+    if username and re.fullmatch(r"[A-Za-z0-9@._+\\-]{1,128}", username):
         status, data = _supabase_request(
-            "GET",
-            "rest/v1/cognito_identity_mappings",
-            {"select": "profile_id", "cognito_username": f"eq.{username}", "limit": "1"},
+            "GET", "rest/v1/cognito_identity_mappings",
+            {"select": "profile_id", "cognito_username": f"eq.{username}", **pool_filter, "limit": "1"},
         )
         if status == 200 and data:
             return str(data[0]["profile_id"]), "username"
         status, data = _supabase_request(
-            "GET",
-            "rest/v1/cognito_identity_mappings",
-            {
-                "select": "profile_id",
-                "cognito_username": f"ilike.{username}",
-                "limit": "1",
-            },
+            "GET", "rest/v1/cognito_identity_mappings",
+            {"select": "profile_id", "cognito_username": f"ilike.{username}", **pool_filter, "limit": "1"},
         )
         if status == 200 and data:
             return str(data[0]["profile_id"]), "username"
@@ -153,48 +140,34 @@ def handler(event, context):
 
     subject, username = _identity_from_event(detail, request, additional)
     if not subject and not username:
-        # A CloudTrail event with no correlatable identity must never trigger
-        # deletion by email or broad account criteria.
-        logger.error("Cognito deletion event had no subject or username; not deleting any Supabase account.")
+        logger.error("Cognito deletion event had no subject or username; no account will be deleted.")
         raise ValueError("Cognito deletion event has no correlatable user identity.")
 
-    profile_id, matched_by = _find_mapping(subject, username)
+    profile_id, matched_by = _find_mapping(subject, username, expected_pool)
     if not profile_id:
-        # No mapping means no linked Supabase identity to delete; idempotent no-op.
-        logger.info(
-            "No staging identity mapping found for Cognito deletion event (matched neither subject nor username)."
-        )
+        logger.info("No linked staging Supabase identity matched the Cognito deletion event.")
         return {"status": "no-linked-identity"}
 
-    # Deleting through Supabase Auth admin cascades auth.sessions, public.profiles,
-    # cognito_identity_mappings, and other configured FK children. Foreign keys
-    # from jobs and applications use SET NULL, so recruiting/job records survive.
+    # The Auth admin delete cascades public.profiles and its Cognito mapping. Jobs
+    # remain intact because jobs.created_by is ON DELETE SET NULL.
     status, _ = _supabase_request(
-        "DELETE",
-        f"auth/v1/admin/users/{quote(profile_id, safe='')}",
+        "DELETE", f"auth/v1/admin/users/{quote(profile_id, safe='')}",
     )
     if status not in (200, 204, 404):
         raise RuntimeError(f"Supabase Auth deletion returned unexpected HTTP {status}")
 
-    # Verify the two critical identity records are gone. Failures are retried by
-    # EventBridge and ultimately go to the configured DLQ for inspection.
     status, profile_rows = _supabase_request(
-        "GET",
-        "rest/v1/profiles",
+        "GET", "rest/v1/profiles",
         {"select": "id", "id": f"eq.{profile_id}", "limit": "1"},
     )
     if status != 200 or profile_rows:
         raise RuntimeError("Supabase profile still exists after Auth user deletion.")
     status, mapping_rows = _supabase_request(
-        "GET",
-        "rest/v1/cognito_identity_mappings",
+        "GET", "rest/v1/cognito_identity_mappings",
         {"select": "profile_id", "profile_id": f"eq.{profile_id}", "limit": "1"},
     )
     if status != 200 or mapping_rows:
         raise RuntimeError("Cognito mapping still exists after Auth user deletion.")
 
-    logger.info(
-        "Cognito deletion cleanup complete; removed linked Supabase Auth identity and verified profile/mapping removal. match=%s",
-        matched_by,
-    )
+    logger.info("Cognito deletion cleanup verified for linked Supabase identity; match=%s", matched_by)
     return {"status": "deleted", "matched_by": matched_by}
