@@ -250,6 +250,125 @@ Resources:
       Principal: "*"
       InvokedViaFunctionUrl: true
 
+
+  # Keep Cognito deletions in the staging User Pool synchronized with the
+  # isolated staging Supabase Auth/profile/mapping records. The handler is
+  # idempotent and deletes only identities found in this pool's mapping.
+  CognitoUserDeleteSyncLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/ewa-cognito-user-delete-sync
+      RetentionInDays: 14
+
+  CognitoUserDeleteSyncExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CognitoDeleteSyncWriteOnlyLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${CognitoUserDeleteSyncLogGroup.Arn}:*"
+
+  CognitoUserDeleteSyncFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: >-
+        Staging-only EventBridge handler that removes the mapped Supabase Auth
+        identity when a user is deleted from the Cognito staging pool.
+      LoggingConfig:
+        LogGroup: !Ref CognitoUserDeleteSyncLogGroup
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command:
+          - app.lambdas.cognito_user_delete_sync.handler
+      Role: !GetAtt CognitoUserDeleteSyncExecutionRole.Arn
+      MemorySize: 256
+      Timeout: 20
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          SUPABASE_URL: !Ref SupabaseProjectUrl
+          SUPABASE_SERVICE_ROLE_KEY: !Ref SupabaseServiceRoleKey
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+
+  CognitoUserDeleteSyncDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  CognitoUserDeleteSyncDeadLetterQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref CognitoUserDeleteSyncDeadLetterQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowEventBridgeDeadLetterDelivery
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt CognitoUserDeleteSyncRule.Arn
+
+  CognitoUserDeleteSyncRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: >-
+        Detect successful Cognito AdminDeleteUser and DeleteUser calls in this
+        AWS account and region; the handler filters and matches only the staged pool.
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.cognito-idp
+        detail-type:
+          - AWS API Call via CloudTrail
+        account:
+          - !Ref AWS::AccountId
+        region:
+          - !Ref AWS::Region
+        detail:
+          eventSource:
+            - cognito-idp.amazonaws.com
+          eventName:
+            - AdminDeleteUser
+            - DeleteUser
+      Targets:
+        - Id: CognitoUserDeleteSyncTarget
+          Arn: !GetAtt CognitoUserDeleteSyncFunction.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 86400
+            MaximumRetryAttempts: 10
+
+  AllowEventBridgeCognitoDeleteSyncInvocation:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CognitoUserDeleteSyncFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CognitoUserDeleteSyncRule.Arn
+
 Outputs:
   StagingApiFunctionName:
     Description: Separate staging backend; do not substitute for the Production Lambda.
