@@ -365,7 +365,7 @@ def link_cognito_identity(body: CognitoLinkRequest) -> SuccessResponse:
         raise AuthenticationError("Inactive profiles cannot be linked to Cognito.")
 
     mapping_repo = CognitoIdentityRepository(client)
-    mapping_repo.link_verified_identity(str(claims["sub"]), str(profile.id))
+    mapping_repo.link_verified_identity(str(claims["sub"]), str(profile.id), str(claims.get("cognito:username") or claims.get("username") or "") or None)
 
     # Only apply the staging demo selector when a create-account flow explicitly
     # provided an access-level choice. A normal sign-in must preserve the role
