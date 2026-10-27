@@ -115,12 +115,13 @@ def test_link_verified_identity_refreshes_stale_subject_for_same_profile():
 
     repo.link_verified_identity("recreated-cognito-subject", "verified-profile-id")
 
-    assert client.records == [{
-        "cognito_sub": "recreated-cognito-subject",
-        "profile_id": "verified-profile-id",
-        "cognito_username": None,
-        "cognito_user_pool_id": None,
-    }]
+    assert len(client.records) == 1
+    record = client.records[0]
+    assert record["cognito_sub"] == "recreated-cognito-subject"
+    assert record["profile_id"] == "verified-profile-id"
+    assert record["cognito_username"] is None
+    assert record["cognito_user_pool_id"] is None
+    assert record["cognito_last_verified_at"]
 
 
 def test_link_verified_identity_never_reassigns_subject_from_another_profile():
