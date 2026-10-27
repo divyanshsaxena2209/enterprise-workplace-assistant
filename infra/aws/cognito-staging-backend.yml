@@ -358,7 +358,6 @@ Resources:
             - cognito-idp.amazonaws.com
           eventName:
             - AdminDeleteUser
-            - DeleteUser
       Targets:
         - Id: CognitoUserDeleteSyncTarget
           Arn: !GetAtt CognitoUserDeleteSyncFunction.Arn
