@@ -1908,3 +1908,18 @@ Read-only logs for 2026-10-25 16:07:05–16:07:30 UTC (~21:37 IST) show the stag
 5. If S3 budget is not acceptable, leave S3 opt-in and demonstrate the proven Supabase storage path instead. Do not create a bucket merely to claim the service is used.
 6. Keep PR #3 draft and Production unchanged until live AWS log/permission checks and any chosen S3 acceptance pass.
 
+
+
+## CloudWatch alarms — staging configuration drafted (2026-10-27)
+- Branch: `cognito-staging-integration`; commit `991a9084ed1773159357527d062b370b07796fe1` added alarm resources to `infra/aws/cognito-staging-backend.yml`. This is source configuration only: the CloudFormation stack has NOT been updated by this commit and the alarms are NOT live until a reviewed stack update completes.
+- Added standard-resolution 5-minute metric alarms:
+  - `StagingApiErrorsAlarm`: AWS/Lambda `Errors` for `StagingApi`; triggers on at least one error in a 5-minute period.
+  - `CognitoUserDeleteSyncErrorsAlarm`: AWS/Lambda `Errors` for `CognitoUserDeleteSyncFunction`; same threshold.
+  - `CognitoUserDeleteSyncDlqAlarm`: AWS/SQS `ApproximateNumberOfMessagesVisible` for the deletion-sync DLQ; triggers when at least one message is waiting.
+  - All treat missing metrics as not breaching; no high-resolution metrics, dashboards, custom metrics, canaries or synthetic traffic added.
+- Optional notifications: new `AlarmNotificationEmail` template parameter defaults to blank. When supplied in the CloudFormation update, stack creates a single SNS topic and email subscription and wires all three alarms to that topic. Recipient must confirm the subscription from their inbox. If parameter remains blank, alarms are visible in CloudWatch but send no email notifications.
+- Existing EventBridge reconciliation schedule remains every 15 minutes. Existing staging event rule in source already includes both `DeleteUser` and `AdminDeleteUser`; user manually updated the live rule to include both. The later stack update should reconcile the current console change to template source; review the change set carefully.
+- Workflow `40523854496` (Test AWS service replacement branch) was in progress immediately after the template commit; do not mark CloudFormation validation/CI as passed until the run finishes successfully. Prior same-branch runs failed in the isolated service-replacement test step, so inspect latest result and failing-step detail instead of inferring success.
+- Cost note: AWS pricing examples quote standard metric alarms at about USD $0.10 per alarm metric-month in US East; regional price and free-tier eligibility differ. Three one-metric alarms would be about $0.30/month at that example rate before any applicable free tier, plus any applicable SNS charges. Check current Mumbai-region bill/free-tier usage before deployment.
+- Required next step: user must open a reviewed change set for the EXISTING `ewa-cognito-staging-api` stack and deploy the updated `infra/aws/cognito-staging-backend.yml` template with all existing parameters/secrets preserved. Do not update Production or use a stale `ImageUri`. Confirm `StagingApi` and deletion-sync Lambda are Modify/No replacement, `StorageProvider` and bucket setting remain unchanged, and only intended alarm/SNS resources plus rule drift reconciliation appear. Leave email blank if notifications are not wanted yet; to receive alerts, provide a mailbox and confirm the SNS subscription.
+- Safety: no disposable Cognito accounts were created/deleted and no deletion acceptance test was run in this milestone; user explicitly plans to run that later. Keep PR #3 draft and Production untouched.
