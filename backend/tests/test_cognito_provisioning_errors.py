@@ -85,7 +85,7 @@ def test_management_access_choice_creates_request_without_elevating_profile(monk
         def __init__(self, _client):
             pass
 
-        def create_mapping(self, subject, profile_id):
+        def link_verified_identity(self, subject, profile_id):
             mapping_calls.append((subject, profile_id))
 
     class FakeManagementRequests:
@@ -157,7 +157,7 @@ def test_employee_choice_does_not_create_management_request(monkeypatch):
         def __init__(self, _client):
             pass
 
-        def create_mapping(self, _subject, _profile_id):
+        def link_verified_identity(self, _subject, _profile_id):
             pass
 
     class FakeManagementRequests:
@@ -235,7 +235,7 @@ def test_allowlisted_management_signup_is_assigned_management_by_server(monkeypa
         def __init__(self, _client):
             pass
 
-        def create_mapping(self, subject, profile_id):
+        def link_verified_identity(self, subject, profile_id):
             mappings.append((subject, profile_id))
 
     class FakeRequests:
@@ -391,7 +391,7 @@ def test_staging_demo_role_selector_switches_application_role_without_allowlist(
         def __init__(self, _client):
             pass
 
-        def create_mapping(self, _subject, _profile_id):
+        def link_verified_identity(self, _subject, _profile_id):
             pass
 
     class FakeRequests:
@@ -497,7 +497,7 @@ def test_regular_cognito_signin_without_access_choice_preserves_management_role(
         def __init__(self, _client):
             pass
 
-        def create_mapping(self, subject, profile_id):
+        def link_verified_identity(self, subject, profile_id):
             mappings.append((subject, profile_id))
 
     monkeypatch.setattr(auth.settings, "ENVIRONMENT", "staging")
@@ -520,3 +520,79 @@ def test_regular_cognito_signin_without_access_choice_preserves_management_role(
     assert profile.role == UserRole.MANAGEMENT
     assert profile.is_management_verified is True
     assert mappings == [("existing-management-sub", "existing-management-profile")]
+
+
+
+def test_signin_restores_missing_profile_from_existing_supabase_auth_user(monkeypatch):
+    from app.core.enums import UserRole
+
+    email = "existing.employee@example.test"
+    existing_auth_user = SimpleNamespace(
+        id="existing-auth-user-id",
+        email=email,
+        user_metadata={
+            "full_name": "Existing Employee",
+            "department": "Engineering",
+            "job_title": "Engineer",
+            "phone": None,
+            "location": None,
+            "bio": None,
+            "avatar_url": None,
+        },
+    )
+    created_profiles = []
+    mapping_calls = []
+    fake_client = SimpleNamespace(
+        auth=SimpleNamespace(
+            admin=SimpleNamespace(
+                list_users=lambda **_kwargs: [existing_auth_user],
+                get_user_by_id=lambda _profile_id: SimpleNamespace(
+                    user=SimpleNamespace(email=email)
+                ),
+            )
+        )
+    )
+
+    class FakeProfiles:
+        def __init__(self, _client):
+            pass
+
+        def get_by_email(self, _email):
+            return None
+
+        def upsert(self, payload):
+            created_profiles.append(dict(payload))
+            return SimpleNamespace(
+                id=payload["id"],
+                email=payload["email"],
+                role=UserRole(payload["role"]),
+                is_active=True,
+                is_management_verified=False,
+            )
+
+    class FakeMappings:
+        def __init__(self, _client):
+            pass
+
+        def link_verified_identity(self, subject, profile_id):
+            mapping_calls.append((subject, profile_id))
+
+    monkeypatch.setattr(auth, "decode_cognito_id_token", lambda _token, _nonce: {
+        "email": email,
+        "sub": "new-cognito-sub",
+    })
+    monkeypatch.setattr(auth, "get_supabase_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "create_supabase_auth_client", lambda: fake_client)
+    monkeypatch.setattr(auth, "ProfileRepository", FakeProfiles)
+    monkeypatch.setattr(auth, "CognitoIdentityRepository", FakeMappings)
+
+    result = auth.link_cognito_identity(
+        CognitoLinkRequest(id_token="i" * 32, nonce="n" * 24)
+    )
+
+    assert result.message == "Cognito identity linked to the existing profile."
+    assert created_profiles[0]["id"] == "existing-auth-user-id"
+    assert created_profiles[0]["email"] == email
+    assert created_profiles[0]["role"] == "EMPLOYEE"
+    assert created_profiles[0]["is_management_verified"] is False
+    assert mapping_calls == [("new-cognito-sub", "existing-auth-user-id")]
