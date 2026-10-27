@@ -49,6 +49,43 @@ class CognitoIdentityRepository:
             return None
         return str(response.data[0]["cognito_sub"])
 
+    def link_verified_identity(self, cognito_sub: str, profile_id: str) -> None:
+        """Link a verified Cognito subject to its email-matched Auth profile.
+
+        The caller must have validated the Cognito ID token and verified that
+        its email matches this Supabase Auth profile. If this same profile still
+        has an older Cognito subject after a deleted/recreated Cognito account,
+        refresh only this profile's mapping. Never reassign a subject already
+        mapped to a different profile.
+        """
+        existing_profile_id = self.get_profile_id(cognito_sub)
+        if existing_profile_id is not None:
+            if existing_profile_id == profile_id:
+                return
+            raise ConflictError("This Cognito identity is already linked to another profile.")
+
+        existing_subject = self.get_subject_for_profile(profile_id)
+        if existing_subject is None:
+            self.create_mapping(cognito_sub, profile_id)
+            return
+        if existing_subject == cognito_sub:
+            return
+
+        try:
+            self._db.table(_TABLE).upsert(
+                {"cognito_sub": cognito_sub, "profile_id": profile_id},
+                on_conflict="profile_id",
+            ).execute()
+        except Exception as exc:
+            # Accept only an exact final mapping after a possible concurrent update.
+            current_profile_id = self.get_profile_id(cognito_sub)
+            current_subject = self.get_subject_for_profile(profile_id)
+            if current_profile_id == profile_id and current_subject == cognito_sub:
+                return
+            raise ConflictError(
+                "Could not refresh this verified Cognito identity mapping."
+            ) from exc
+
     def create_mapping(self, cognito_sub: str, profile_id: str) -> None:
         existing_profile_id = self.get_profile_id(cognito_sub)
         if existing_profile_id is not None:
