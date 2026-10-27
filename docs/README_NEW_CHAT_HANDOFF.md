@@ -1,5 +1,34 @@
 # COGNITO DELETION-TO-SUPABASE SYNC — UPDATE (27 October 2026, Asia/Kolkata)
 
+## Latest update — 27 October 2026: Cognito deletion synchronization
+
+### Confirmed from the user's AWS console screenshots
+- CloudFormation stack `ewa-cognito-staging-api` in account `745531385877`, region `ap-south-1` (Mumbai), shows **UPDATE_COMPLETE** at approximately 19:04 IST on 27 October 2026.
+- The update created the staging Cognito deletion-sync resources, including `CognitoUserDeleteSyncFunction`, `CognitoUserDeleteSyncRule`, `CognitoUserDeleteSyncReconciliationRule`, related EventBridge invoke permissions, execution role, log group, and dead-letter queue policy. Resource creation is confirmed; successful end-to-end deletion propagation is **not yet proven**.
+- EventBridge console deep link from the user's stack events: https://ap-south-1.console.aws.amazon.com/events/home?region=ap-south-1#/rules/ewa-cognito-staging-api-CognitoUserDeleteSyncRule-cGP4DoyBcH9H
+- CloudFormation operation details: https://ap-south-1.console.aws.amazon.com/cloudformation/home?region=ap-south-1#/stacks/operations/info?stackId=arn%3Aaws%3Acloudformation%3Aap-south-1%3A745531385877%3Astack%2Fewa-cognito-staging-api%2F3ff3a870-ce29-11f1-aee5-0affe463c27b&operationId=cac1cb00-d20a-11f1-b14f-02fff024aa8b
+- ECR screenshot showed a staging image tag `cognito-staging-a603fa3b3b398e460b791e0ee8b0ff35af08a7d6`, digest `sha256:95d1304201a75cd4ebb038f26fe7f38cb3918b92ebc1a489740bdeca98fbe6f7`, in repository `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend`. The user also provided an image URI ending in digest `ea21b32df3da77d9f90fb9a0ebae7cf9c1fa3fffca792600602c4a8474d5750f` and asked whether it should be changed. **Do not assume these are the same image or deploy either solely based on chat history.** Before any deployment, inspect the current CloudFormation parameter/template value and choose the intended reviewed staging image digest; leave Production untouched.
+- The screenshot also shows separate stack `ewa-private-document-storage-staging` as `CREATE_COMPLETE` (created 26 October). This only confirms the stack status; inspect its Outputs for the actual bucket name and do not assume the application uses S3 until the staging API is configured with the bucket and provider.
+
+### Required deletion behavior (explicit user requirement)
+- If a user is deleted from Amazon Cognito, the matching application profile in the **staging Supabase database** must also be deleted or safely reconciled. This must work for supported Cognito deletion paths and be idempotent; do not create a duplicate user/profile as a workaround for a conflict.
+- Cognito's deletion event delivery and EventBridge/Lambda processing are asynchronous/best-effort. The workflow needs retries/reconciliation and observable failures; never report synchronization as proven just because CloudFormation says `UPDATE_COMPLETE`.
+- Do not delete any existing or production users to test. Use a newly created disposable staging account only.
+- **Acceptance test still required:** (1) create a disposable account via staging signup; (2) verify Cognito user and corresponding Supabase profile exist and map by stable Cognito `sub` (not email alone); (3) delete that user in Cognito; (4) inspect the deletion-sync Lambda's CloudWatch logs and EventBridge matched/invocation metrics; (5) verify the corresponding staging Supabase profile is deleted/reconciled; (6) verify retry/reconciliation behavior on a safe controlled failure if practical. Record the sanitized outcome and correlation ID only, never tokens or secrets.
+- If the profile remains, inspect the rule's event pattern (including supported `DeleteUser` and `AdminDeleteUser` event names), target Lambda, invoke permission, function code/role, Supabase service-role configuration and database matching/deletion query. Confirm behavior against AWS's official Cognito EventBridge event reference: https://docs.aws.amazon.com/eventbridge/latest/ref/events-ref-cognito-idp.html.
+- Do not manually delete a Supabase profile or create another Cognito account as a substitute for fixing the synchronization path.
+
+### Immediate next steps for the next chat
+1. Read the current branch and handoff first; verify current GitHub/CloudFormation state rather than assuming these screenshots are still the latest.
+2. Inspect the CloudFormation template and deployed resource properties for the deletion-sync EventBridge rule, target Lambda, IAM role, dead-letter queue, and reconciliation rule. Confirm event pattern and exact target wiring.
+3. Check CloudWatch logs for the deletion-sync Lambda and EventBridge rule metrics. Then run the safe disposable-account acceptance test above; user may need to perform the Cognito console deletion if AWS console access is not available to the assistant.
+4. Confirm the private document storage stack's Outputs and whether the staging API currently uses `StorageProvider=s3` and the bucket name. If not, S3 remains created-but-not-integrated.
+5. Verify the staging Lambda's actual image digest against the intended ECR image before changing it. Do not redeploy just because a newer tag exists.
+6. Keep PR #3 draft; do not touch `main`, production Lambda, production Supabase, production Vercel settings, or the protected `busted` Supabase project. Keep Supabase/Postgres, Gemini, and Qdrant. No RDS and no new billable resources without explicit approval.
+
+---
+
+
 ## Requirement and intended behavior
 - User requirement: deleting an identity from the staging Cognito user pool must also remove the corresponding linked Supabase Auth account/profile/mapping. Do not delete or alter job postings.
 - Keep this strictly on `cognito-staging-integration` and the staging stack/project. Production and `main` remain untouched.
