@@ -3,12 +3,18 @@
 All access uses the backend's service-role client. The migration deliberately
 provides no browser-client policies for this table.
 """
+from datetime import datetime, timezone
+
 from supabase import Client
 
 from app.core.exceptions import ConflictError, DatabaseError
 
 
 _TABLE = "cognito_identity_mappings"
+
+
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class CognitoIdentityRepository:
@@ -61,16 +67,15 @@ class CognitoIdentityRepository:
         existing_profile_id = self.get_profile_id(cognito_sub)
         if existing_profile_id is not None:
             if existing_profile_id == profile_id:
+                metadata = {"cognito_last_verified_at": _now_utc()}
                 if cognito_username:
-                    try:
-                        self._db.table(_TABLE).update(
-                            {
-                                "cognito_username": cognito_username,
-                                "cognito_user_pool_id": cognito_user_pool_id,
-                            }
-                        ).eq("profile_id", profile_id).execute()
-                    except Exception as exc:
-                        raise DatabaseError("Could not refresh Cognito username metadata.") from exc
+                    metadata["cognito_username"] = cognito_username
+                if cognito_user_pool_id:
+                    metadata["cognito_user_pool_id"] = cognito_user_pool_id
+                try:
+                    self._db.table(_TABLE).update(metadata).eq("profile_id", profile_id).execute()
+                except Exception as exc:
+                    raise DatabaseError("Could not refresh Cognito identity metadata.") from exc
                 return
             raise ConflictError("This Cognito identity is already linked to another profile.")
 
@@ -79,13 +84,15 @@ class CognitoIdentityRepository:
             self.create_mapping(cognito_sub, profile_id, cognito_username, cognito_user_pool_id)
             return
         if existing_subject == cognito_sub:
+            metadata = {"cognito_last_verified_at": _now_utc()}
             if cognito_username:
-                try:
-                    self._db.table(_TABLE).update(
-                        {"cognito_username": cognito_username}
-                    ).eq("profile_id", profile_id).execute()
-                except Exception as exc:
-                    raise DatabaseError("Could not refresh Cognito username metadata.") from exc
+                metadata["cognito_username"] = cognito_username
+            if cognito_user_pool_id:
+                metadata["cognito_user_pool_id"] = cognito_user_pool_id
+            try:
+                self._db.table(_TABLE).update(metadata).eq("profile_id", profile_id).execute()
+            except Exception as exc:
+                raise DatabaseError("Could not refresh Cognito identity metadata.") from exc
             return
 
         try:
@@ -95,6 +102,7 @@ class CognitoIdentityRepository:
                     "profile_id": profile_id,
                     "cognito_username": cognito_username,
                     "cognito_user_pool_id": cognito_user_pool_id,
+                    "cognito_last_verified_at": _now_utc(),
                 },
                 on_conflict="profile_id",
             ).execute()
