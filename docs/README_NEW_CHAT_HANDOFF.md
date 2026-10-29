@@ -1993,3 +1993,37 @@ Read-only logs for 2026-10-25 16:07:05–16:07:30 UTC (~21:37 IST) show the stag
 3. Confirm upload succeeds and the saved document's scope matches that employee's department. If the employee has no department assigned, a controlled 403 saying a department must be set is expected; the old "Management-level access" message is not.
 4. Ask a question about the uploaded document and verify a grounded answer/source if retrieval is ready.
 5. Confirm management can still upload company-wide documents and employee delete controls remain unavailable.
+
+---
+
+## Employee-owned knowledge document deletion + Cognito sign-in repair — 29 October 2026
+
+### User-observed behavior
+- Employee account can now upload and index a test PDF through the staging Knowledge Base UI.
+- Employee document deletion was requested; implement deletion for the uploader only, while Management retains its existing broader document deletion capability.
+- The `glitched22cyborg@gmail.com` Cognito login callback failed with `/login?error=cognito_link_database_error` and a message that the employee profile could not be saved.
+
+### Confirmed staging Supabase diagnosis (project `wxulxcsdpwsyhtpkbazi` only)
+- Read-only profile/mapping checks confirmed the account's Cognito subject, user-pool ID, Supabase Auth user, application profile, and mapping all already matched. The profile was active with the existing Management role; no account deletion/recreation was needed.
+- Supabase Postgres logs around 2026-10-29 10:18–10:25 UTC showed `permission denied for table cognito_identity_mappings`, SQLSTATE `42501`, when the API attempted to update `cognito_last_verified_at`, `cognito_username`, and `cognito_user_pool_id`. PostgREST's error hint explicitly requested `GRANT UPDATE ON public.cognito_identity_mappings TO service_role`.
+- Confirmed before repair: service_role had SELECT and INSERT but not UPDATE/DELETE on this table.
+- Applied narrow staging-only grant: `GRANT UPDATE ON TABLE public.cognito_identity_mappings TO service_role;`
+- Verified after repair: service_role has SELECT=true, INSERT=true, UPDATE=true, DELETE=false. No broader table privilege was granted and no account/profile/mapping/job data was changed by this permission repair.
+- Source migration committed: `supabase/migrations/20261029103029_grant_cognito_identity_mapping_update_staging.sql`, commit `94b374418b1237838932c1e80a8753f4121a48e5`.
+- Retry signing in to the existing Cognito user after the grant. Do not delete/recreate that user. If the callback still fails, inspect the staging Lambda logs for the next actual error rather than repeating signup.
+
+### Employee document-delete implementation (staging branch only)
+- Backend commit `2e1c72cd864d29760e2f21563c9b2d86ca0a8533` in `backend/app/routers/knowledge.py` changes document deletion access to authenticated employee/management and enforces ownership server-side: employees must supply a registered `document_id` and may delete only when the trusted database record's `uploaded_by` matches their current profile ID. Non-owned or unregistered filename-only employee requests return 404/403 before document deletion. Management retains its legacy/broader path.
+- Frontend commit `7936ca181da6588b1244ea03e12031b75024ee2f` makes the delete control appear for documents uploaded by the current EMPLOYEE profile; registered document mapping now includes `uploaded_by`.
+- JSX syntax correction commit `d0df2035b0de82b3784bd7278b7f6e57b237235a`.
+- Current frontend staging deployments were queued/building as of this update. Confirm the latest frontend preview deployment is READY before demoing.
+- Backend ECR build is triggered by backend changes on `cognito-staging-integration`; expected image tag is `cognito-staging-2e1c72cd864d29760e2f21563c9b2d86ca0a8533`. Verify that the workflow/build succeeds and copy the actual image digest from ECR.
+- **AWS deployment still required for the backend deletion change**: update only the existing staging stack `ewa-cognito-staging-api` to the verified image digest in a reviewed CloudFormation change set. Ensure `StagingApi` is modified in place, with no replacement or unrelated resource changes. Do not deploy production.
+
+### Minimal acceptance tests
+1. Sign in to existing `glitched22cyborg@gmail.com` using Cognito; expect redirect to dashboard rather than `cognito_link_database_error`. The staging Supabase mapping update grant is already applied.
+2. In the staging app, employee uploads a disposable small PDF; the document is indexed and visible to the uploader.
+3. Employee delete control appears only for this employee's own registered document. Deletion removes that document from object storage and Qdrant/index and its registry row.
+4. Attempting to delete a different user's document by document ID or filename/key-only request as Employee must be denied/not found and leave the object untouched.
+5. Management can still delete existing documents; confirm no job postings or profiles are changed by the knowledge-document deletion test.
+6. All checks are staging-only. Keep PR #3 draft, `main`, production Lambda/Vercel/Supabase and protected `busted` project untouched.
