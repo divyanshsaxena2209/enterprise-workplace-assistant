@@ -140,7 +140,7 @@ def migrate_existing_storage_to_s3(
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    current_user: ProfileResponse = Depends(require_management),
+    current_user: ProfileResponse = Depends(require_management_or_employee),
     department_scope: str = Form(default="ALL", max_length=100),
 ):
     original_name = (file.filename or "").replace("\\", "/")
@@ -160,7 +160,19 @@ async def upload_document(
     if not file_bytes:
         raise HTTPException(status_code=400, detail="The uploaded file is empty.")
 
-    scope_label = normalize_department_scope(department_scope)
+    is_management = current_user.role in UserRole.management_roles()
+    if is_management:
+        scope_label = normalize_department_scope(department_scope)
+    else:
+        # Employees may upload policy/reference documents, but cannot publish
+        # them to every department by choosing a client-supplied scope.
+        employee_department = (current_user.department or "").strip()
+        if not employee_department:
+            raise HTTPException(
+                status_code=403,
+                detail="An employee department must be set before uploading knowledge documents.",
+            )
+        scope_label = normalize_department_scope(employee_department)
     if len(scope_label) > 100:
         raise HTTPException(status_code=422, detail="Department scope must be 100 characters or fewer.")
 
