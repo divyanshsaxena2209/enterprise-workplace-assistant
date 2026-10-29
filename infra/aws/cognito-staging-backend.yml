@@ -1,0 +1,523 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Opt-in isolated Cognito staging API for Enterprise Workplace Assistant.
+  Nothing is deployed until this stack is created. Lambda invocations, logs,
+  ECR storage, and data transfer may incur charges; check AWS Billing/Free Tier
+  first and do not deploy if you cannot tolerate a non-zero charge.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: >-
+      Required immutable image digest from the successful staging ECR build.
+      This image runs both the API and the isolated Cognito deletion-sync handler.
+      Do not use a digest older than the profile-recovery/deletion-sync fixes.
+
+  StorageProvider:
+    Type: String
+    Default: supabase
+    AllowedValues:
+      - supabase
+      - s3
+    Description: Keep supabase by default; select s3 only after a private staging bucket is created.
+
+  DocumentBucketName:
+    Type: String
+    Default: ""
+    MaxLength: 63
+    AllowedPattern: "^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    ConstraintDescription: Leave blank for Supabase storage or provide a valid lowercase staging S3 bucket name.
+
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: Staging Gemini API key used server-side for resume parsing, evaluation, and Knowledge Base answers. Never paste this value into chat or GitHub.
+
+  QdrantUrl:
+    Type: String
+    MinLength: 10
+    AllowedPattern: "^https://.+"
+    ConstraintDescription: Enter the HTTPS URL of the existing staging Qdrant cluster.
+    Description: Existing staging Qdrant Cloud cluster URL.
+
+  QdrantApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 1
+    Description: Staging Qdrant database API key for vector search and indexing. Never paste this value into chat or GitHub.
+
+  SupabaseProjectUrl:
+    Type: String
+    Default: https://wxulxcsdpwsyhtpkbazi.supabase.co
+    Description: The isolated workplace-assistant-staging Supabase project URL.
+
+  SupabaseServiceRoleKey:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: >
+      Paste the SERVICE ROLE secret from the staging Supabase project only.
+      Never use the Production key and never share this value in chat.
+
+  SupabaseJwtSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >
+      Optional staging Supabase JWT secret for legacy HS256 token validation.
+      Leave blank if you only want to test Cognito tokens; legacy Supabase HS256
+      tokens will fail closed until this staging-only secret is configured.
+
+  CognitoRegion:
+    Type: String
+    Default: ap-south-1
+
+  CognitoUserPoolId:
+    Type: String
+    Default: ap-south-1_89s6YRnwQ
+
+  CognitoAppClientId:
+    Type: String
+    Default: 7npkisjjm5jj0fsqf94et8lqra
+
+  ManagementEmailAllowlist:
+    Type: String
+    Default: ""
+    MaxLength: 4000
+    Description: >-
+      Comma-separated verified email addresses explicitly approved for immediate
+      Management application access. Leave empty to require approval by an existing
+      Management user. This does not grant browser users AWS IAM credentials.
+
+  DemoRoleSelectionEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      DEMO ONLY: allow the staging login role selector to change application-level
+      Employee/Management access. Keep false outside a disposable staging demo.
+      Does not grant or change AWS IAM credentials.
+
+  PreviewOrigin:
+    Type: String
+    Default: https://enterprise-workplace-assistant-git-cognito-a98678-divyansh-50b7.vercel.app
+    Description: Exact HTTPS Vercel preview branch alias. Update if that alias changes.
+
+  AlarmNotificationEmail:
+    Type: String
+    Default: ""
+    Description: >-
+      Optional email for CloudWatch alarm notifications. Leave blank to create alarms
+      without email actions. If set, confirm the SNS subscription email after deployment.
+
+Rules:
+  S3StorageRequiresBucketName:
+    RuleCondition:
+      Fn::Equals:
+        - !Ref StorageProvider
+        - s3
+    Assertions:
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - !Ref DocumentBucketName
+                - ""
+        AssertDescription: DocumentBucketName is required when StorageProvider is s3.
+
+Conditions:
+  UseS3DocumentStorage: !Equals [!Ref StorageProvider, "s3"]
+  HasAlarmNotificationEmail: !Not [!Equals [!Ref AlarmNotificationEmail, ""]]
+
+Resources:
+  StagingApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/ewa-cognito-staging-api
+      RetentionInDays: 7
+
+  StagingApiExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WriteOnlyStagingApiLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${StagingApiLogGroup.Arn}:*"
+
+  StagingApiS3ObjectPolicy:
+    Type: AWS::IAM::Policy
+    Condition: UseS3DocumentStorage
+    Properties:
+      PolicyName: StagingApiPrivateDocumentObjects
+      Roles:
+        - !Ref StagingApiExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${DocumentBucketName}/knowledge/*"
+              - !Sub "arn:${AWS::Partition}:s3:::${DocumentBucketName}/resumes/*"
+
+  StagingApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Isolated backend API for Cognito staging only; Production Lambda is unchanged.
+      # Explicitly route to the stack-managed 7-day-retention log group. The
+      # generated physical Lambda name differs from the stable logical log group name.
+      LoggingConfig:
+        LogGroup: !Ref StagingApiLogGroup
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Role: !GetAtt StagingApiExecutionRole.Arn
+      MemorySize: 1024
+      Timeout: 60
+      # Do not set ReservedConcurrentExecutions here: this AWS account's
+      # available concurrency quota cannot preserve Lambda's required
+      # unreserved pool if this function reserves concurrency. Keep the
+      # staging demo within account defaults instead.
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          ENVIRONMENT: staging
+          SUPABASE_URL: !Ref SupabaseProjectUrl
+          SUPABASE_SERVICE_ROLE_KEY: !Ref SupabaseServiceRoleKey
+          SUPABASE_JWT_SECRET: !Ref SupabaseJwtSecret
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          QDRANT_URL: !Ref QdrantUrl
+          QDRANT_API_KEY: !Ref QdrantApiKey
+          COGNITO_ENABLED: "true"
+          COGNITO_REGION: !Ref CognitoRegion
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_APP_CLIENT_ID: !Ref CognitoAppClientId
+          COGNITO_MANAGEMENT_EMAIL_ALLOWLIST: !Ref ManagementEmailAllowlist
+          COGNITO_DEMO_ROLE_SELECTION_ENABLED: !Ref DemoRoleSelectionEnabled
+          STORAGE_PROVIDER: !Ref StorageProvider
+          AWS_S3_BUCKET: !Ref DocumentBucketName
+          S3_PRESIGNED_URL_TTL_SECONDS: "900"
+          FRONTEND_URLS: !Ref PreviewOrigin
+      EphemeralStorage:
+        Size: 512
+
+  StagingApiFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt StagingApi.Arn
+      AuthType: NONE
+      Cors:
+        AllowCredentials: true
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+          - apikey
+          - x-client-info
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+        AllowOrigins:
+          - !Ref PreviewOrigin
+        MaxAge: 300
+
+  AllowPublicHttpInvocationThroughFunctionUrl:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StagingApi
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  AllowInvocationViaFunctionUrlOnly:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StagingApi
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+
+  # Keep Cognito deletions in the staging User Pool synchronized with the
+  # isolated staging Supabase Auth/profile/mapping records. The handler is
+  # idempotent and deletes only identities found in this pool's mapping.
+  CognitoUserDeleteSyncLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/ewa-cognito-user-delete-sync
+      RetentionInDays: 14
+
+  CognitoUserDeleteSyncExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CognitoDeleteSyncWriteOnlyLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${CognitoUserDeleteSyncLogGroup.Arn}:*"
+              - Sid: ListOnlyConfiguredCognitoUsersForReconciliation
+                Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+
+  CognitoUserDeleteSyncFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: >-
+        Staging-only EventBridge handler that removes the mapped Supabase Auth
+        identity when a user is deleted from the Cognito staging pool.
+      LoggingConfig:
+        LogGroup: !Ref CognitoUserDeleteSyncLogGroup
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      ImageConfig:
+        # Override Lambda's container settings explicitly so the intended
+        # /app package shadows any same-named runtime package and imports resolve.
+        WorkingDirectory: /app
+        Command:
+          - app.lambdas.cognito_user_delete_sync.handler
+      Role: !GetAtt CognitoUserDeleteSyncExecutionRole.Arn
+      MemorySize: 256
+      Timeout: 20
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          SUPABASE_URL: !Ref SupabaseProjectUrl
+          SUPABASE_SERVICE_ROLE_KEY: !Ref SupabaseServiceRoleKey
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+
+  CognitoUserDeleteSyncDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  CognitoUserDeleteSyncDeadLetterQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref CognitoUserDeleteSyncDeadLetterQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowEventBridgeDeadLetterDelivery
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  - !GetAtt CognitoUserDeleteSyncRule.Arn
+                  - !GetAtt CognitoUserDeleteSyncReconciliationRule.Arn
+
+  CognitoUserDeleteSyncRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: >-
+        Detect successful Cognito AdminDeleteUser and DeleteUser calls in this
+        AWS account and region; the handler filters and matches only the staged pool.
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.cognito-idp
+        detail-type:
+          - AWS API Call via CloudTrail
+        account:
+          - !Ref AWS::AccountId
+        region:
+          - !Ref AWS::Region
+        detail:
+          eventSource:
+            - cognito-idp.amazonaws.com
+          eventName:
+            - DeleteUser
+            - AdminDeleteUser
+      Targets:
+        - Id: CognitoUserDeleteSyncTarget
+          Arn: !GetAtt CognitoUserDeleteSyncFunction.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 86400
+            MaximumRetryAttempts: 10
+
+  CognitoUserDeleteSyncReconciliationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: >-
+        Periodically compare staging Cognito users against linked Supabase identities
+        so a missed CloudTrail deletion event is eventually reconciled.
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: CognitoUserDeleteSyncReconciliationTarget
+          Arn: !GetAtt CognitoUserDeleteSyncFunction.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 86400
+            MaximumRetryAttempts: 10
+
+  AllowEventBridgeCognitoDeleteSyncReconciliationInvocation:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CognitoUserDeleteSyncFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CognitoUserDeleteSyncReconciliationRule.Arn
+
+  AllowEventBridgeCognitoDeleteSyncInvocation:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CognitoUserDeleteSyncFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CognitoUserDeleteSyncRule.Arn
+
+  # Standard-resolution CloudWatch alarms for the staging stack. Email notifications
+  # are optional; when configured, confirm the SNS subscription from your inbox.
+  CloudWatchAlarmNotificationTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmNotificationEmail
+    Properties:
+      DisplayName: EWA staging CloudWatch alerts
+
+  CloudWatchAlarmEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmNotificationEmail
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmNotificationEmail
+      TopicArn: !Ref CloudWatchAlarmNotificationTopic
+
+  StagingApiErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-StagingApiErrors"
+      AlarmDescription: >-
+        One or more errors occurred in the staging API Lambda during a 5-minute period.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StagingApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmNotificationEmail, [!Ref CloudWatchAlarmNotificationTopic], !Ref AWS::NoValue]
+
+  CognitoUserDeleteSyncErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-DeleteSyncErrors"
+      AlarmDescription: >-
+        The Cognito deletion-sync Lambda reported one or more errors during a 5-minute period.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CognitoUserDeleteSyncFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmNotificationEmail, [!Ref CloudWatchAlarmNotificationTopic], !Ref AWS::NoValue]
+
+  CognitoUserDeleteSyncDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-DeleteSyncDeadLetterQueue"
+      AlarmDescription: >-
+        One or more deletion-sync events are waiting in the dead-letter queue after delivery retries.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmNotificationEmail, [!Ref CloudWatchAlarmNotificationTopic], !Ref AWS::NoValue]
+
+Outputs:
+  StagingApiFunctionName:
+    Description: Separate staging backend; do not substitute for the Production Lambda.
+    Value: !Ref StagingApi
+
+  StagingApiFunctionUrl:
+    Description: HTTPS base URL to use for Preview NEXT_PUBLIC_API_URL.
+    Value: !GetAtt StagingApiFunctionUrl.FunctionUrl
+
+  CognitoLinkApiUrl:
+    Description: Full HTTPS callback account-link endpoint for Vercel Preview.
+    Value: !Sub "${StagingApiFunctionUrl.FunctionUrl}api/v1/auth/cognito/link"
+
+  CognitoUserDeleteSyncFunctionName:
+    Description: EventBridge target that removes mapped staging Supabase Auth identities after Cognito deletion.
+    Value: !Ref CognitoUserDeleteSyncFunction
+
+  CognitoUserDeleteSyncDeadLetterQueueName:
+    Description: Inspect this queue if repeated Cognito deletion cleanup attempts fail.
+    Value: !GetAtt CognitoUserDeleteSyncDeadLetterQueue.QueueName
+
+  PreviewCallbackUrl:
+    Description: Set as Cognito allowed callback and default redirect URL.
+    Value: !Sub "${PreviewOrigin}/auth/callback"
+
+  PreviewSignOutUrl:
+    Description: Set as Cognito allowed sign-out URL.
+    Value: !Sub "${PreviewOrigin}/login"
+
+  CloudWatchAlarmNotificationTopicArn:
+    Condition: HasAlarmNotificationEmail
+    Description: SNS topic for staging alarm email notifications. Confirm the subscription email after deployment.
+    Value: !Ref CloudWatchAlarmNotificationTopic

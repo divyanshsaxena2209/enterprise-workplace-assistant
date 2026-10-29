@@ -51,6 +51,10 @@ export async function createApplication(data: { job_id: string; candidate_id: st
     body: JSON.stringify(data),
   });
 }
+export async function deleteApplication(id: string) {
+  clearMyApplicationsCache();
+  return fetchWithAuth(`/applications/${id}`, { method: "DELETE" });
+}
 export async function rejectApplication(id: string, notes?: string) {
   clearMyApplicationsCache();
   return fetchWithAuth(`/applications/${id}/reject`, {

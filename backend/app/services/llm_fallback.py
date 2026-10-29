@@ -4,74 +4,69 @@ from google.genai import errors
 
 logger = logging.getLogger(__name__)
 
+# Use currently documented stable Gemini API model IDs. Lite models are tried
+# first for lower-cost throughput-oriented tasks; larger stable Flash models follow.
 DEFAULT_FALLBACK_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
     "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-1.5-flash",
-    "gemini-2.5-flash",
-    "gemini-3.7-flash"
+    "gemini-3.1-flash-lite",
 ]
+
 
 def execute_with_fallback(client: genai.Client, contents: str, models: list[str] = None, **kwargs):
     """
-    Executes a generate_content request with automatic fallback on rate limit / resource exhausted errors.
-    
-    Args:
-        client: The initialized genai.Client instance.
-        contents: The prompt/contents to pass to the model.
-        models: An optional list of model strings ordered by priority.
-        **kwargs: Additional arguments to pass to generate_content (e.g., config).
-        
-    Returns:
-        The successful response object from the Gemini API.
-        
-    Raises:
-        The last exception if all models in the fallback chain fail.
+    Executes a generate_content request with bounded model fallback.
+
+    The Gemini SDK retries transient network, 429 and 5xx failures internally.
+    This function tries the next supported model when the selected model is
+    unavailable or rate-limited. Configuration/permission failures are surfaced
+    immediately rather than repeated against other models.
     """
     if models is None:
         models = DEFAULT_FALLBACK_MODELS
 
     last_exception = None
-    
+
     for i, model in enumerate(models):
         try:
-
-            logger.debug(f"Attempting generate_content with model: {model} (Tier {i+1}/{len(models)})")
-            
+            logger.debug(
+                "Attempting generate_content with model: %s (Tier %s/%s)",
+                model,
+                i + 1,
+                len(models),
+            )
             response = client.models.generate_content(
                 model=model,
                 contents=contents,
                 **kwargs
             )
-            
             if i > 0:
-                logger.info(f"Successfully generated content using fallback model: {model}")
-                
+                logger.info("Successfully generated content using fallback model: %s", model)
             return response
-            
-        except errors.APIError as e:
-
-            if e.code in (429, 403, 503, 404):
+        except errors.APIError as exc:
+            # 404 can mean this model is unavailable to the project; 429/5xx
+            # may be transient. Do not mask invalid credentials/permissions (401/403).
+            if exc.code in (404, 408, 429, 500, 502, 503, 504):
                 logger.warning(
-                    f"Model {model} failed with API error {e.code} (Rate Limit/Quota/Unavailable). "
-                    f"Message: {e.message}. Attempting next fallback..."
+                    "Model %s failed with API error %s; trying next fallback model.",
+                    model,
+                    exc.code,
                 )
-                last_exception = e
+                last_exception = exc
                 continue
-            else:
-
-                logger.error(f"Model {model} failed with non-recoverable APIError {e.code}: {e.message}")
-                raise
-        except Exception as e:
-
+            logger.error("Model %s failed with non-recoverable API error %s.", model, exc.code)
+            raise
+        except Exception as exc:
             logger.warning(
-                f"Model {model} encountered an unexpected error: {str(e)}. Attempting next fallback..."
+                "Model %s encountered an unexpected error (%s); trying next fallback model.",
+                model,
+                type(exc).__name__,
             )
-            last_exception = e
+            last_exception = exc
             continue
-            
-    logger.error("All fallback models exhausted. Raising the last exception.")
+
+    logger.error("All fallback models exhausted.")
     if last_exception:
         raise last_exception
-    else:
-        raise RuntimeError("Fallback execution failed without raising an exception.")
+    raise RuntimeError("Fallback execution failed without raising an exception.")

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { clearCognitoAccessTokenCache, getCognitoAccessToken } from "@/lib/auth/cognito";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not set in the environment variables.");
 const API_URL = BASE_URL.includes("/api/v1") ? BASE_URL : `${BASE_URL.replace(/\/$/, "")}/api/v1`;
@@ -13,24 +14,23 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit & { t
     });
   }
   const isGuest = typeof document !== "undefined" && document.cookie.includes("guest_mode=true");
+  const hasAuthorizationHeader = Object.keys(headers).some((key) => key.toLowerCase() === "authorization");
   console.log(`[fetchWithAuth] Starting request to ${endpoint}`);
   if (isGuest) {
-    headers["Authorization"] = "Bearer guest";
-  } else {
-    if (typeof window !== "undefined") {
+    if (!hasAuthorizationHeader) headers["Authorization"] = "Bearer guest";
+  } else if (typeof window !== "undefined" && !hasAuthorizationHeader) {
+    if (process.env.NEXT_PUBLIC_AUTH_PROVIDER === "cognito") {
+      headers["Authorization"] = `Bearer ${await getCognitoAccessToken()}`;
+    } else {
       if (!cachedAccessToken) {
         if (!tokenRefreshPromise) {
           tokenRefreshPromise = (async () => {
             const supabase = createClient();
-            try {
-              const { data, error } = await supabase.auth.getSession();
-              if (error || !data?.session?.access_token) {
-                throw new Error(error?.message || "User is not authenticated");
-              }
-              return data.session.access_token;
-            } catch (err) {
-              throw err;
+            const { data, error } = await supabase.auth.getSession();
+            if (error || !data?.session?.access_token) {
+              throw new Error(error?.message || "User is not authenticated");
             }
+            return data.session.access_token;
           })();
         }
         try {
@@ -91,10 +91,12 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit & { t
   if (!response.ok) {
     if (response.status === 401) {
       cachedAccessToken = null;
+      clearCognitoAccessTokenCache();
     }
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.message || errorData.detail || `API Error: ${response.status}`);
   }
+  if (response.status === 204) return null;
   const jsonPromise = response.json();
   let jsonTimeoutId: any;
   const jsonTimeout = new Promise<any>((resolve) => {

@@ -83,13 +83,14 @@ class ProfileUpdateRequest(BaseModel):
         {
           "full_name": "Jane A. Smith",
           "phone": "+14155559999",
-          "department": "Platform Engineering",
           "job_title": "Staff Engineer",
           "location": "Austin, TX",
           "bio": "Building scalable distributed systems.",
           "avatar_url": "https://cdn.example.com/avatars/jane.jpg"
         }
     """
+
+    model_config = {"extra": "forbid"}
 
     full_name: Optional[str] = Field(
         default=None,
@@ -101,11 +102,6 @@ class ProfileUpdateRequest(BaseModel):
         default=None,
         description="Phone number in E.164 format.",
         examples=["+14155559999"],
-    )
-    department: Optional[str] = Field(
-        default=None,
-        max_length=100,
-        examples=["Platform Engineering"],
     )
     job_title: Optional[str] = Field(
         default=None,

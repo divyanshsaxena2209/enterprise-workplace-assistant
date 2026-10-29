@@ -1,35 +1,28 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import Link from "next/link";
 import { ArrowRight, CheckCircle, Clock, PlayCircle, Loader2 } from "lucide-react";
 export default function EmployeeHomeDashboard() {
   const { profile, loading: profileLoading } = useUser();
-  const supabase = createClient();
   const [progressData, setProgressData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const fetchProgress = React.useCallback(async () => {
     if (!profile) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("employee_onboarding_progress")
-        .select(`
-          id, status, notes,
-          onboarding_steps ( id, step_name, description, step_order )
-        `)
-        .eq("employee_id", profile.id);
-      if (data) {
-        const sortedData = data.sort((a: any, b: any) => (a.onboarding_steps?.step_order || 0) - (b.onboarding_steps?.step_order || 0));
-        setProgressData(sortedData);
-      }
+      const data = await fetchWithAuth("/onboarding/my-progress");
+      const rows = Array.isArray(data) ? data : [];
+      rows.sort((a: any, b: any) => (a.onboarding_steps?.step_order || 0) - (b.onboarding_steps?.step_order || 0));
+      setProgressData(rows);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load employee onboarding progress:", err);
+      setProgressData([]);
     } finally {
       setLoading(false);
     }
-  }, [profile, supabase]);
+  }, [profile]);
   useEffect(() => {
     if (!profileLoading && profile) {
       fetchProgress();

@@ -4,11 +4,13 @@ Handles business logic for candidate applications.
 """
 
 from typing import List, Optional
+import secrets
 from uuid import UUID
 from supabase import Client
 
 from fastapi import BackgroundTasks
 from app.core.exceptions import ValidationError, DatabaseError, AuthorizationError
+from app.db.supabase import create_supabase_auth_client
 from app.repositories.application_repository import ApplicationRepository
 from app.repositories.job_repository import JobRepository
 from app.repositories.candidate_repository import CandidateRepository
@@ -175,9 +177,43 @@ class ApplicationService:
 
     def delete_application(self, application_id: str | UUID):
         """
-        Soft deletes an application. (Management only, handled in router).
+        Soft-delete an application and remove its private resume object when unshared.
+        Management authorization is enforced by the router.
         """
+        storage = self.repo.get_resume_storage_for_deletion(application_id)
         self.repo.soft_delete_application(application_id)
+
+        if storage.get("has_other_active_applications"):
+            return
+
+        file_url = storage.get("file_url")
+        if not file_url:
+            return
+
+        try:
+            from app.services.object_storage import (
+                delete_resume_object,
+                extract_supabase_object_key_from_url,
+            )
+
+            if file_url.startswith(("s3://", "supabase://")):
+                storage_provider, file_key = file_url.split("://", 1)
+                delete_resume_object(storage_provider, file_key, file_url)
+            else:
+                # Older Supabase rows may contain a signed or public Storage URL.
+                file_key = extract_supabase_object_key_from_url(file_url, prefix="resumes")
+                if file_key:
+                    delete_resume_object("supabase", file_key, file_url)
+        except Exception as exc:
+            # Keep the application visible if its file could not be removed, so
+            # Management can retry rather than leaving a hidden orphaned object.
+            try:
+                self.repo.restore_application(application_id)
+            except Exception:
+                pass
+            raise DatabaseError(
+                "Resume storage deletion failed; the application was restored. Check S3 DeleteObject permissions and retry."
+            ) from exc
 
     def reject_application(self, application_id: str | UUID, user_id: str | UUID, notes: Optional[str] = None):
         """
@@ -252,9 +288,9 @@ class ApplicationService:
             
             try:
                 emp_id_str = f"EMP-{str(candidate_id)[:8].upper()}"
-                new_user = self.client.auth.admin.create_user({
+                new_user = create_supabase_auth_client().auth.admin.create_user({
                     "email": candidate_email,
-                    "password": "Password123!",
+                    "password": secrets.token_urlsafe(48),
                     "email_confirm": True,
                     "user_metadata": {
                         "full_name": candidate_name,

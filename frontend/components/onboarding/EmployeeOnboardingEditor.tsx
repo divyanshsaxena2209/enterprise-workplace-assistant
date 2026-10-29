@@ -1,10 +1,9 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import { CheckCircle, Clock, Search, ChevronRight, X, GripVertical, Plus, Trash2, ArrowUp, ArrowDown, Save, Calendar, AlertTriangle, Circle, CheckCircle2, MoreHorizontal, HelpCircle } from "lucide-react";
 import OnboardingProgressMeter from "./OnboardingProgressMeter";
 export default function EmployeeOnboardingEditor({ employee, onClose, onUpdate }: { employee: any, onClose: () => void, onUpdate: () => void }) {
-  const supabase = createClient();
   const [progresses, setProgresses] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
@@ -14,32 +13,19 @@ export default function EmployeeOnboardingEditor({ employee, onClose, onUpdate }
   }, [employee]);
   const handleStatusChange = async (progressId: string, newStatus: string) => {
     setLoading(true);
-    const dateStr = newStatus === 'COMPLETED' ? new Date().toISOString() : null;
-    await supabase.from("employee_onboarding_progress").update({ status: newStatus, completion_date: dateStr }).eq("id", progressId);
-    if (newStatus === 'COMPLETED' && !employee.employee_id) {
-      const sortedProgresses = [...progresses].sort((a, b) => (a.onboarding_steps?.step_order || 0) - (b.onboarding_steps?.step_order || 0));
-      const day1Tasks = sortedProgresses.filter(p => p.onboarding_steps?.description?.includes('Day 1'));
-      if (day1Tasks.length > 0 && day1Tasks[0].id === progressId) {
-        const newEmployeeId = `SS-${Math.floor(50000 + Math.random() * 10000)}`;
-        try {
-          const res = await fetch("/api/assign-employee-id", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ employeeId: employee.id, newEmployeeId })
-          });
-          if (res.ok) {
-            employee.employee_id = newEmployeeId; 
-          } else {
-            console.error("Failed to assign employee ID:", await res.text());
-          }
-        } catch (e) {
-          console.error("Error assigning employee ID:", e);
-        }
-      }
+    const dateStr = newStatus === "COMPLETED" ? new Date().toISOString() : null;
+    try {
+      await fetchWithAuth(`/onboarding/management/progress/${progressId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus, completion_date: dateStr }),
+      });
+      setProgresses(prev => prev.map(p => p.id === progressId ? { ...p, status: newStatus, completion_date: dateStr } : p));
+      onUpdate();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not update onboarding progress.");
+    } finally {
+      setLoading(false);
     }
-    setProgresses(prev => prev.map(p => p.id === progressId ? { ...p, status: newStatus, completion_date: dateStr } : p));
-    onUpdate();
-    setLoading(false);
   };
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIdx(index);
@@ -49,51 +35,68 @@ export default function EmployeeOnboardingEditor({ employee, onClose, onUpdate }
     e.preventDefault();
     if (draggedIdx === null || draggedIdx === index) return;
     setLoading(true);
-    const newProgresses = [...progresses];
-    const item = newProgresses.splice(draggedIdx, 1)[0];
-    newProgresses.splice(index, 0, item);
-    const updates = newProgresses.map((prog, i) => {
-      prog.onboarding_steps.step_order = i;
-      return supabase.from("onboarding_steps").update({ step_order: i }).eq("id", prog.onboarding_steps.id);
-    });
-    await Promise.all(updates);
-    setProgresses(newProgresses);
-    setDraggedIdx(null);
-    onUpdate();
-    setLoading(false);
+    const reordered = [...progresses];
+    const item = reordered.splice(draggedIdx, 1)[0];
+    reordered.splice(index, 0, item);
+    const orderedProgresses = reordered.map((prog, order) => ({
+      ...prog,
+      onboarding_steps: prog.onboarding_steps
+        ? { ...prog.onboarding_steps, step_order: order }
+        : prog.onboarding_steps,
+    }));
+    try {
+      await fetchWithAuth("/onboarding/management/steps/order", {
+        method: "PATCH",
+        body: JSON.stringify({
+          items: orderedProgresses
+            .filter((prog) => prog.onboarding_steps?.id)
+            .map((prog, order) => ({ step_id: prog.onboarding_steps.id, step_order: order })),
+        }),
+      });
+      setProgresses(orderedProgresses);
+      onUpdate();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not reorder onboarding steps.");
+    } finally {
+      setDraggedIdx(null);
+      setLoading(false);
+    }
   };
-  const handleDelete = async (progressId: string, stepId: string) => {
-    if (!confirm("Are you sure you want to delete this step?")) return;
+  const handleDelete = async (progressId: string) => {
+    if (!confirm("Remove this step from this employee's onboarding plan?")) return;
     setLoading(true);
-    await supabase.from("onboarding_steps").delete().eq("id", stepId);
-    setProgresses(prev => prev.filter(p => p.id !== progressId));
-    onUpdate();
-    setLoading(false);
+    try {
+      await fetchWithAuth(`/onboarding/management/progress/${progressId}`, { method: "DELETE" });
+      setProgresses(prev => prev.filter(p => p.id !== progressId));
+      onUpdate();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not remove onboarding step.");
+    } finally {
+      setLoading(false);
+    }
   };
   const handleAddStep = async () => {
     const stepName = prompt("Enter new step name:");
-    if (!stepName) return;
+    if (!stepName?.trim()) return;
     setLoading(true);
     const maxOrder = progresses.length > 0 ? Math.max(...progresses.map(p => p.onboarding_steps?.step_order || 0)) : 0;
-    const { data: stepData } = await supabase.from("onboarding_steps").insert({
-      step_name: stepName,
-      description: "Custom step added by management.",
-      step_order: maxOrder + 1,
-      template_id: null
-    }).select().single();
-    if (stepData) {
-      const { data: progData } = await supabase.from("employee_onboarding_progress").insert({
-        employee_id: employee.id,
-        step_id: stepData.id,
-        status: "PENDING",
-        notes: ""
-      }).select().single();
-      if (progData) {
-        setProgresses(prev => [...prev, { ...progData, onboarding_steps: stepData }]);
-        onUpdate();
-      }
+    try {
+      const result = await fetchWithAuth("/onboarding/management/progress/steps", {
+        method: "POST",
+        body: JSON.stringify({
+          profile_id: employee.profile_id || employee.id.split("_")[0],
+          step_name: stepName.trim(),
+          description: "Custom step added by management.",
+          step_order: maxOrder + 1,
+        }),
+      });
+      setProgresses(prev => [...prev, { ...result.progress, onboarding_steps: result.step }]);
+      onUpdate();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not add onboarding step.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
   const completed = progresses.filter(p => p.status === "COMPLETED").length;
   const getStatusIcon = (status: string) => {
@@ -171,7 +174,7 @@ export default function EmployeeOnboardingEditor({ employee, onClose, onUpdate }
                         </span>
                       </div>
                     )}
-                    <button onClick={() => handleDelete(prog.id, prog.onboarding_steps?.id)} disabled={loading} className="text-red-500/50 hover:text-red-500 transition-colors">
+                    <button onClick={() => handleDelete(prog.id)} disabled={loading} className="text-red-500/50 hover:text-red-500 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>

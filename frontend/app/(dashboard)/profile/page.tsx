@@ -1,20 +1,18 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useUser } from "@/lib/context/UserContext";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import { 
   User, Mail, Briefcase, Phone, MapPin, 
   FileText, Shield, Loader2, Edit3, Check
 } from "lucide-react";
 export default function ProfilePage() {
   const { profile, loading, refreshProfile } = useUser();
-  const supabase = createClient();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     full_name: "",
-    department: "",
     job_title: "",
     phone: "",
     location: "",
@@ -25,7 +23,6 @@ export default function ProfilePage() {
     if (profile) {
       setFormData({
         full_name: profile.full_name || "",
-        department: profile.department || "",
         job_title: profile.job_title || "",
         phone: profile.phone || "",
         location: profile.location || "",
@@ -57,19 +54,17 @@ export default function ProfilePage() {
     setSaving(true);
     setError(null);
     try {
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
+      await fetchWithAuth("/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
           full_name: formData.full_name,
-          department: formData.department,
           job_title: formData.job_title,
-          phone: formData.phone,
+          phone: formData.phone.trim() || null,
           location: formData.location,
           bio: formData.bio,
           avatar_url: formData.avatar_url,
-        })
-        .eq("id", profile.id);
-      if (updateError) throw updateError;
+        }),
+      });
       await refreshProfile();
       setIsEditing(false);
     } catch (err) {
@@ -179,20 +174,11 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Department</label>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    name="department"
-                    value={formData.department}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-secondary/50 text-sm focus:outline-none focus:border-ring"
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Briefcase className="w-4 h-4 text-muted-foreground" />
-                    {profile.department || "Not specified"}
-                  </div>
-                )}
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Briefcase className="w-4 h-4 text-muted-foreground" />
+                  {profile.department || "Not specified"}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">Assigned by Management</p>
               </div>
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Job Title</label>

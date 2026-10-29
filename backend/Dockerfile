@@ -2,11 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies including LibreOffice and Java
-# This is required for the DOCX -> PDF pipeline
+# Keep only build tools needed by native Python dependencies. DOCX ingestion uses
+# docx2txt directly, so the Lambda image does not need a desktop Office/JRE stack.
 RUN apt-get update && apt-get install -y \
-    libreoffice \
-    default-jre \
     build-essential \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -19,7 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Lambda runs with a read-only application directory; place model and temp caches in /tmp.
-ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache HF_HOME=/tmp/huggingface FASTEMBED_CACHE_PATH=/tmp/fastembed_cache TMPDIR=/tmp
+ENV PYTHONPATH=/app HOME=/tmp XDG_CACHE_HOME=/tmp/.cache HF_HOME=/tmp/huggingface FASTEMBED_CACHE_PATH=/tmp/fastembed_cache TMPDIR=/tmp
+
+# Fail the image build if the dedicated deletion-sync handler is missing from the packaged app.
+RUN python -c "import app.lambdas.cognito_user_delete_sync as sync; assert callable(sync.handler)"
 
 # AWS Lambda Runtime Interface Client + Mangum expose this FastAPI app through a Function URL.
 ENTRYPOINT ["/usr/local/bin/python", "-m", "awslambdaric"]

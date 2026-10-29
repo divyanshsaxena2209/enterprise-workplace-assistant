@@ -2,9 +2,10 @@ import { fetchWithAuth } from "./candidates";
 import { createClient } from "@/lib/supabase/client";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 const API_URL = BASE_URL?.includes("/api/v1") ? BASE_URL : `${BASE_URL?.replace(/\/$/, "")}/api/v1`;
-export async function uploadKnowledgeDocument(file: File) {
+export async function uploadKnowledgeDocument(file: File, departmentScope = "ALL") {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("department_scope", departmentScope.trim() || "ALL");
   const controller = new AbortController();
   try {
     return await fetchWithAuth("/knowledge/upload", {
@@ -36,14 +37,19 @@ export async function deleteKnowledgeDocument(
   file_url?: string,
   file_key?: string,
   storage_provider?: string,
+  document_id?: string,
 ) {
   return fetchWithAuth("/knowledge/document", {
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ filename, file_url, file_key, storage_provider }),
+    body: JSON.stringify({ filename, file_url, file_key, storage_provider, document_id }),
   });
+}
+
+export async function listKnowledgeDocuments() {
+  return fetchWithAuth("/knowledge/documents", { method: "GET" });
 }
 
 export async function getKnowledgeDocumentDownloadUrl(file_key: string) {

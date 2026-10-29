@@ -5,7 +5,7 @@ Strict Pydantic v2 validation for all auth-related API payloads.
 """
 
 import re
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core.enums import UserRole
@@ -17,7 +17,6 @@ from app.schemas.profile import ProfileResponse
 
 
 _PHONE_RE = re.compile(r"^\+?[1-9]\d{6,14}$")
-_EMP_ID_RE = re.compile(r"^[A-Za-z0-9\-_]{2,20}$")
 
 
 class SignupRequest(BaseModel):
@@ -65,11 +64,6 @@ class SignupRequest(BaseModel):
     )
 
     
-    employee_id: Optional[str] = Field(
-        default=None,
-        description="Company-assigned employee identifier.",
-        examples=["EMP-001"],
-    )
     department: Optional[str] = Field(
         default=None,
         max_length=100,
@@ -126,17 +120,6 @@ class SignupRequest(BaseModel):
             )
         return v
 
-    @field_validator("employee_id")
-    @classmethod
-    def validate_employee_id(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        v = v.strip()
-        if not _EMP_ID_RE.match(v):
-            raise ValueError(
-                "Employee ID must be 2–20 alphanumeric characters, hyphens, or underscores."
-            )
-        return v
 
 
 class LoginRequest(BaseModel):
@@ -188,3 +171,54 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int = Field(description="Token lifetime in seconds.")
     user: ProfileResponse
+
+
+class CognitoSignupProfile(BaseModel):
+    """Non-authoritative profile fields plus an unprivileged access request."""
+    model_config = {"extra": "forbid"}
+
+    full_name: str = Field(..., min_length=2, max_length=128)
+    department: str = Field(..., min_length=1, max_length=100)
+    job_title: str = Field(..., min_length=1, max_length=100)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    location: Optional[str] = Field(default=None, max_length=128)
+    bio: Optional[str] = Field(default=None, max_length=500)
+    avatar_url: Optional[str] = Field(default=None, max_length=1024)
+    requested_access_level: Literal["EMPLOYEE", "MANAGEMENT"] = Field(
+        default="EMPLOYEE",
+        description="Requested application access. MANAGEMENT is only a request and never grants privileges by itself.",
+    )
+
+    @field_validator("full_name", "department", "job_title")
+    @classmethod
+    def trim_required_profile_fields(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This profile field cannot be blank.")
+        return value
+
+
+class CognitoLinkRequest(BaseModel):
+    """Verified Cognito ID token used to link or provision an existing application identity."""
+    id_token: str = Field(
+        ...,
+        min_length=20,
+        max_length=10000,
+        description="Cognito ID token from the staging authorization-code flow. Never log this value.",
+    )
+    nonce: str = Field(
+        ...,
+        min_length=16,
+        max_length=256,
+        description="OAuth nonce kept in the server-side flow cookie; never log this value.",
+    )
+    profile: Optional[CognitoSignupProfile] = Field(
+        default=None,
+        description="Profile fields supplied during Cognito signup. Any role selection remains non-authoritative unless the staging-only demo switch is enabled.",
+    )
+    requested_access_level: Optional[Literal["EMPLOYEE", "MANAGEMENT"]] = Field(
+        default=None,
+        description="Requested application role for the staging demo selector; ignored for grants unless the staging-only server flag is enabled or trusted authorization applies.",
+    )
+
+

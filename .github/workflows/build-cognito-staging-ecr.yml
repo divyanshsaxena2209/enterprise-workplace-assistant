@@ -1,0 +1,50 @@
+name: Build Cognito staging backend image to Amazon ECR
+
+on:
+  # Build only the isolated staging image when this integration branch changes.
+  # Production/main are intentionally excluded; workflow_dispatch remains available.
+  push:
+    branches:
+      - cognito-staging-integration
+    paths:
+      - "backend/**"
+      - ".github/workflows/build-cognito-staging-ecr.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-push-cognito-staging:
+    name: Build and push isolated Cognito staging image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::745531385877:role/GitHubActions-EWA-Cognito-Staging-ECR
+          aws-region: ap-south-1
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push staging-only backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          cache-from: type=gha,scope=ewa-cognito-staging
+          cache-to: type=gha,mode=max,scope=ewa-cognito-staging,timeout=2m,ignore-error=true
+          tags: |
+            745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend:cognito-staging-${{ github.sha }}

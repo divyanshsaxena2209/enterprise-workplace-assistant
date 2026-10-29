@@ -37,7 +37,7 @@ export default function JobsPage() {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const response = await getJobs();
+      const response = await getJobs(1, 20, true);
       setJobs(response.data || []);
       if (profile?.role !== "MANAGEMENT") {
         try {

@@ -1,12 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import Link from "next/link";
 import { Briefcase, Users, FileText, Settings, BookOpen, UserPlus, Loader2, ArrowRight } from "lucide-react";
+import FeaturedJobs from "@/components/jobs/FeaturedJobs";
 export default function ManagementDashboard() {
   const { profile, loading: profileLoading } = useUser();
-  const supabase = createClient();
   const [stats, setStats] = useState({
     jobsCount: 0,
     candidatesCount: 0,
@@ -16,31 +16,25 @@ export default function ManagementDashboard() {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     async function fetchStats() {
-      if (!profile) return;
+      if (!profile || profile.role !== "MANAGEMENT") return;
       setLoading(true);
       try {
-        const [jobsRes, candidatesRes, applicationsRes, profilesRes] = await Promise.all([
-          supabase.from("jobs").select("id", { count: "exact", head: true }).in("status", ["PUBLISHED", "Published"]),
-          supabase.from("candidates").select("id", { count: "exact", head: true }),
-          supabase.from("applications").select("id", { count: "exact", head: true }),
-          supabase.from("profiles").select("id", { count: "exact", head: true }).in("role", ["EMPLOYEE", "MANAGEMENT", "HR", "ADMIN"])
-        ]);
+        const data = await fetchWithAuth("/dashboard/management-summary");
         setStats({
-          jobsCount: jobsRes.count || 0,
-          candidatesCount: candidatesRes.count || 0,
-          applicationsCount: applicationsRes.count || 0,
-          employeesCount: profilesRes.count || 0
+          jobsCount: Number(data.jobsCount || 0),
+          candidatesCount: Number(data.candidatesCount || 0),
+          applicationsCount: Number(data.applicationsCount || 0),
+          employeesCount: Number(data.employeesCount || 0),
         });
       } catch (err) {
-        console.error("Error fetching stats", err);
+        console.error("Error fetching management stats", err);
       } finally {
         setLoading(false);
       }
     }
-    if (!profileLoading && profile) {
-      fetchStats();
-    }
-  }, [profileLoading, profile, supabase]);
+    if (!profileLoading && profile) void fetchStats();
+  }, [profileLoading, profile]);
+
   if (profileLoading || loading) {
     return (
       <div className="flex justify-center p-20">
@@ -65,7 +59,7 @@ export default function ManagementDashboard() {
           </p>
         </div>
       </div>
-      {}
+      <FeaturedJobs />
       <div>
         <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">Overview</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     
     SUPABASE_JWT_SECRET: str = ""
 
+    # Cognito remains disabled until identity-to-profile mapping and staging tests
+    # are implemented. These public identifiers are not secrets.
+    COGNITO_ENABLED: bool = False
+    COGNITO_REGION: str = "ap-south-1"
+    COGNITO_USER_POOL_ID: str = ""
+    COGNITO_APP_CLIENT_ID: str = ""
+    # Comma-separated, verified emails explicitly trusted for immediate Management access.
+    COGNITO_MANAGEMENT_EMAIL_ALLOWLIST: str = ""
+    # Demo-only role picker. Effective only when Cognito is enabled and ENVIRONMENT=staging.
+    # Leave disabled in every production deployment.
+    COGNITO_DEMO_ROLE_SELECTION_ENABLED: bool = False
+
     # Object storage provider. Keep "supabase" until the private S3 bucket and IAM
     # permissions have been created and the S3 upload flow has been verified.
     STORAGE_PROVIDER: str = "supabase"
@@ -74,6 +86,24 @@ class Settings(BaseSettings):
     
     
     
+    @property
+    def cognito_management_email_allowlist(self) -> set[str]:
+        """Normalized allowlist supplied only by trusted server-side configuration."""
+        return {
+            email.strip().lower()
+            for email in self.COGNITO_MANAGEMENT_EMAIL_ALLOWLIST.split(",")
+            if email.strip()
+        }
+
+    @property
+    def cognito_demo_role_selection_enabled(self) -> bool:
+        """Enable self-service role switching only for an explicitly configured Cognito staging demo."""
+        return (
+            self.COGNITO_DEMO_ROLE_SELECTION_ENABLED
+            and self.COGNITO_ENABLED
+            and self.ENVIRONMENT.strip().lower() == "staging"
+        )
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"

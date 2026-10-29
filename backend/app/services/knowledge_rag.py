@@ -5,8 +5,18 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from app.core.config import settings
+from app.services.knowledge_scope import build_department_scope_filter, normalize_department_scope_key
 
-embedding_model = FastEmbedEmbeddings()
+embedding_model = None
+
+
+def get_embedding_model():
+    global embedding_model
+
+    if embedding_model is None:
+        embedding_model = FastEmbedEmbeddings()
+
+    return embedding_model
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-flash-latest",
@@ -41,36 +51,22 @@ def get_vector_store():
     return QdrantVectorStore(
         client=client,
         collection_name=collection_name,
-        embedding=embedding_model,
+        embedding=get_embedding_model(),
     )
 
-def process_and_store_document(file_path: str):
+def process_and_store_document(file_path: str, department_scope: str = "ALL"):
     if file_path.lower().endswith(".pdf"):
         loader = PyPDFLoader(file_path)
     elif file_path.lower().endswith(".docx"):
-        import pythoncom
-        from docx2pdf import convert
-        import traceback
-        
-        try:
-            pythoncom.CoInitialize()
-            pdf_path = file_path.rsplit('.', 1)[0] + '.pdf'
-            print(f"Converting {file_path} to {pdf_path}")
-            convert(file_path, pdf_path)
-            loader = PyPDFLoader(pdf_path)
-        except Exception as e:
-            print(f"Error converting docx to pdf: {e}")
-            traceback.print_exc()
-            raise e
-        finally:
-            pythoncom.CoUninitialize()
+        # docx2pdf/pythoncom require a Windows desktop; use direct text loading on
+        # Linux AWS Lambda where no desktop Office installation is available.
+        loader = Docx2txtLoader(file_path)
     else:
         raise ValueError("Unsupported file format. Only PDF and DOCX are allowed.")
     documents = loader.load()
-    
-    if file_path.lower().endswith(".docx"):
-        if os.path.exists(pdf_path):
-            os.remove(pdf_path)
+    scope_key = normalize_department_scope_key(department_scope)
+    for document in documents:
+        document.metadata["department_scope_key"] = scope_key
     
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=4000,
@@ -97,7 +93,7 @@ def process_and_store_document(file_path: str):
         "chunks": len(chunks)
     }
 
-def delete_document(filename: str):
+def delete_document(filename: str, *, exact_source: bool = False):
     deleted_count = 0
     try:
         from qdrant_client import QdrantClient
@@ -128,7 +124,8 @@ def delete_document(filename: str):
             if not source:
                 source = point.payload.get("source", "")
                 
-            if filename in source:
+            matches = source == filename if exact_source else filename in source
+            if matches:
                 ids_to_delete.append(point.id)
                 
         if ids_to_delete:
@@ -139,24 +136,36 @@ def delete_document(filename: str):
             deleted_count = len(ids_to_delete)
             
     except Exception as e:
-        print(f"Error deleting document {filename}: {e}")
-        
+        # Registry-backed deletion uses a unique source identifier. Surface failures
+        # so the API keeps the document record/object available for a retry.
+        if exact_source:
+            raise
+        print(f"Error deleting document {filename}: {type(e).__name__}")
+
     return deleted_count
 
-def retrieve_and_answer(question: str, k: int = 15, chat_history: list = None):
+def retrieve_and_answer(question: str, k: int = 15, chat_history: list = None, department_scope: str | None = ""):
     try:
         clean_question = question
 
         try:
             vector_store = get_vector_store()
-            results = vector_store.similarity_search(clean_question, k=k)
+            results = vector_store.similarity_search(
+                clean_question,
+                k=k,
+                filter=build_department_scope_filter(department_scope),
+            )
         except Exception as e:
             if "10053" in str(e) or "aborted" in str(e).lower():
                 print("[WARN] Retrying vector search due to 10053 connection abort...")
                 import time
                 time.sleep(2)
                 vector_store = get_vector_store()
-                results = vector_store.similarity_search(clean_question, k=k)
+                results = vector_store.similarity_search(
+                    clean_question,
+                    k=k,
+                    filter=build_department_scope_filter(department_scope),
+                )
             else:
                 raise e
         

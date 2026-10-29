@@ -48,6 +48,21 @@ def screen_resume(
         elif resume_file_path.startswith("resumes/"):
             from app.services.object_storage import download_s3_object_bytes
             file_data = download_s3_object_bytes(resume_file_path, prefix="resumes")
+        elif resume_file_path.startswith("supabase://"):
+            from app.services.object_storage import download_supabase_object_bytes
+            supabase_key = resume_file_path.removeprefix("supabase://")
+            file_data = download_supabase_object_bytes(supabase_key, prefix="resumes")
+        elif resume_file_path.startswith(("http://", "https://")):
+            from app.services.object_storage import (
+                download_supabase_object_bytes,
+                extract_supabase_object_key_from_url,
+            )
+            supabase_key = extract_supabase_object_key_from_url(
+                resume_file_path, prefix="resumes"
+            )
+            if not supabase_key:
+                raise ValueError("Unsupported legacy resume URL.")
+            file_data = download_supabase_object_bytes(supabase_key, prefix="resumes")
         else:
             # Backward compatibility for resumes uploaded before the S3 cutover.
             file_data = supabase_admin.storage.from_("resumes").download(resume_file_path)

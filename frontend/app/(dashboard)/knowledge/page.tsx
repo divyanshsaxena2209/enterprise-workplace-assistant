@@ -1,10 +1,10 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Search, UploadCloud, MessageSquare, FileText, Database, MoreHorizontal, Sparkles, Loader2, X, ExternalLink, Trash2 } from "lucide-react";
+import { UploadCloud, MessageSquare, FileText, Database, Sparkles, Loader2, X, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/context/UserContext";
-import { uploadKnowledgeDocument, deleteKnowledgeDocument, getKnowledgeDocumentDownloadUrl } from "@/lib/api/knowledge";
+import { uploadKnowledgeDocument, deleteKnowledgeDocument, getKnowledgeDocumentDownloadUrl, listKnowledgeDocuments } from "@/lib/api/knowledge";
 import LockedFeature from "@/components/layout/LockedFeature";
 export default function KnowledgeDashboard() {
   const { profile, isHired } = useUser();
@@ -14,18 +14,73 @@ export default function KnowledgeDashboard() {
   const [toastMessage, setToastMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
   const [viewingDoc, setViewingDoc] = useState<{url: string, title: string} | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [uploadDepartmentScope, setUploadDepartmentScope] = useState("ALL");
   useEffect(() => {
-    const savedDocs = JSON.parse(localStorage.getItem('knowledge_documents') || '[]');
-    setDocuments(savedDocs);
+    let cancelled = false;
     const savedSearches = parseInt(localStorage.getItem('knowledge_searches') || '0', 10);
-    setSearchesRun(savedSearches);
-  }, []);
-  const handleDeleteDocument = async (e: React.MouseEvent, docId: string, filename: string, file_url?: string, file_key?: string, storage_provider?: string) => {
+    setSearchesRun(Number.isFinite(savedSearches) ? savedSearches : 0);
+
+    let savedDocs: any[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem('knowledge_documents') || '[]');
+      savedDocs = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      savedDocs = [];
+    }
+    const isManagementProfile = ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "");
+    // Browser localStorage is not a trusted source of access-scope metadata.
+    // Employees initially see no legacy entries while the server registry loads.
+    setDocuments(isManagementProfile ? savedDocs : []);
+
+    // The API registry is the shared source of truth. Legacy local-only entries are
+    // retained only for Management to review and re-upload into the server registry.
+    async function loadRegisteredDocuments() {
+      try {
+        const result = await listKnowledgeDocuments();
+        if (!Array.isArray(result)) return;
+        const registered = result.map((doc: any) => ({
+          id: String(doc.id),
+          managed_by_api: true,
+          title: doc.filename,
+          uploaded: doc.created_at ? new Date(doc.created_at).toLocaleDateString() : "",
+          dept: doc.department_scope || "ALL",
+          department_scope: doc.department_scope || "ALL",
+          file_url: doc.file_url || undefined,
+          file_key: doc.file_key,
+          uploaded_by: doc.uploaded_by,
+          storage_provider: doc.storage_provider,
+          pages: doc.pages,
+          chunks: doc.chunks,
+        }));
+        const registeredKeys = new Set(
+          registered.map((doc: any) => doc.file_key ? `${doc.storage_provider}:${doc.file_key}` : ""),
+        );
+        const legacy = isManagementProfile
+          ? savedDocs.filter((doc: any) => {
+              const key = doc.file_key ? `${doc.storage_provider || "supabase"}:${doc.file_key}` : "";
+              return !key || !registeredKeys.has(key);
+            }).map((doc: any) => ({ ...doc, managed_by_api: false }))
+          : [];
+        const merged = [...registered, ...legacy];
+        if (!cancelled) {
+          setDocuments(merged);
+          localStorage.setItem("knowledge_documents", JSON.stringify(merged));
+        }
+      } catch {
+        // Never fall back to untrusted browser-local document entries for employees.
+        if (!cancelled) setDocuments(isManagementProfile ? savedDocs : []);
+      }
+    }
+
+    if (profile?.id) void loadRegisteredDocuments();
+    return () => { cancelled = true; };
+  }, [profile?.id, profile?.department, profile?.role]);
+  const handleDeleteDocument = async (e: React.MouseEvent, docId: string, filename: string, file_url?: string, file_key?: string, storage_provider?: string, managedByApi?: boolean) => {
     e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete "${filename}" from the Knowledge Base? This cannot be undone.`)) return;
     setIsDeleting(true);
     try {
-      await deleteKnowledgeDocument(filename, file_url, file_key, storage_provider);
+      await deleteKnowledgeDocument(filename, file_url, file_key, storage_provider, managedByApi ? docId : undefined);
       await new Promise(resolve => setTimeout(resolve, 2000));
       const updatedDocs = documents.filter(doc => doc.id !== docId);
       setDocuments(updatedDocs);
@@ -49,15 +104,20 @@ export default function KnowledgeDashboard() {
     setIsUploading(true);
     setToastMessage(null);
     try {
-      const result = await uploadKnowledgeDocument(file);
+      const result = await uploadKnowledgeDocument(file, uploadDepartmentScope);
       const newDoc = {
-        id: Date.now().toString(),
+        id: String(result.id || Date.now()),
+        managed_by_api: Boolean(result.id),
+        uploaded_by: result.uploaded_by || profile?.id,
         title: result.filename || file.name,
-        uploaded: new Date().toLocaleDateString(),
-        dept: "Knowledge Base",
-        file_url: result.file_url,
+        uploaded: result.created_at ? new Date(result.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+        dept: result.department_scope || uploadDepartmentScope || "ALL",
+        department_scope: result.department_scope || uploadDepartmentScope || "ALL",
+        file_url: result.file_url || undefined,
         file_key: result.file_key,
-        storage_provider: result.storage_provider
+        storage_provider: result.storage_provider,
+        pages: result.pages,
+        chunks: result.chunks
       };
       const updatedDocs = [newDoc, ...documents];
       setDocuments(updatedDocs);
@@ -94,8 +154,8 @@ export default function KnowledgeDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Search and ask questions about your company documents.</p>
         </div>
         <div className="flex gap-3">
-          {profile?.role === "MANAGEMENT" && (
-            <div className="flex items-center gap-2">
+          {(profile?.employee_id || ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "")) && (
+            <div className="flex items-center gap-2 flex-wrap">
               <input 
                 type="file" 
                 id="file-upload" 
@@ -141,9 +201,9 @@ export default function KnowledgeDashboard() {
           {documents.map(doc => (
             <div 
               key={doc.id} 
-              className={`p-5 flex items-center justify-between transition-colors group ${doc.file_url ? 'hover:bg-secondary/30 cursor-pointer' : ''}`}
+              className={`p-5 flex items-center justify-between transition-colors group ${(doc.file_url || (doc.managed_by_api && doc.storage_provider && doc.file_key)) ? 'hover:bg-secondary/30 cursor-pointer' : ''}`}
               onClick={async () => {
-                if (doc.storage_provider === "s3" && doc.file_key) {
+                if (doc.managed_by_api && ["s3", "supabase"].includes(doc.storage_provider) && doc.file_key) {
                   try {
                     const result = await getKnowledgeDocumentDownloadUrl(doc.file_key);
                     if (!result?.file_url) throw new Error("No download URL was returned.");
@@ -167,17 +227,30 @@ export default function KnowledgeDashboard() {
                   <p className="text-xs text-muted-foreground mt-0.5">Ingested {doc.uploaded}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <span className="px-2.5 py-0.5 bg-secondary border border-border/50 text-[9px] uppercase tracking-wider rounded-full font-bold text-muted-foreground">
-                  {doc.dept}
-                </span>
-                {profile?.role === "MANAGEMENT" && (
-                  <button 
-                    className="bg-red-600 text-white hover:scale-110 hover:shadow-lg hover:shadow-red-600/20 active:scale-95 p-1.5 rounded-lg transition-all duration-200" 
-                    onClick={(e) => handleDeleteDocument(e, doc.id, doc.title, doc.file_url, doc.file_key, doc.storage_provider)}
-                    title="Delete Document"
+              <div className="flex items-center gap-3">
+                {(
+                  ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "") ||
+                  (profile?.role === "EMPLOYEE" && Boolean(doc.managed_by_api) && String(doc.uploaded_by || "") === String(profile?.id || ""))
+                ) && (
+                  <button
+                    type="button"
+                    onClick={(e) => void handleDeleteDocument(
+                      e,
+                      String(doc.id),
+                      doc.title,
+                      doc.file_url,
+                      doc.file_key,
+                      doc.storage_provider,
+                      Boolean(doc.managed_by_api),
+                    )}
+                    disabled={isDeleting}
+                    aria-label={`Delete ${doc.title}`}
+                    title="Delete document"
+                    data-testid="delete-knowledge-document"
+                    className="inline-flex min-w-[92px] flex-shrink-0 items-center justify-center gap-2 rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-wider text-red-400 opacity-100 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
+                    <span>Delete</span>
                   </button>
                 )}
               </div>
@@ -217,7 +290,7 @@ export default function KnowledgeDashboard() {
                 </svg>
               </div>
               <h2 className="text-xl font-bold tracking-tight text-foreground">Deleting Document...</h2>
-              <p className="text-sm text-muted-foreground">Removing from Qdrant DB</p>
+              <p className="text-sm text-muted-foreground">Removing from S3 storage and Qdrant index</p>
             </div>
           )}
         </div>,

@@ -1,18 +1,21 @@
 "use client";
 import React from "react";
-import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, UserCircle, CheckCircle, FileText, Bot, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { getApplicationDetails, rejectApplication, acceptApplication } from "@/lib/api/applications";
+import { getApplicationDetails, rejectApplication, acceptApplication, deleteApplication } from "@/lib/api/applications";
 import { Loader2 } from "lucide-react";
 import InterviewSchedulerModal from "@/components/candidates/InterviewSchedulerModal";
+import { useUser } from "@/lib/context/UserContext";
 export default function CandidateDetailPage() {
   const { id } = useParams();
+  const { profile } = useUser();
   const [appData, setAppData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [rejecting, setRejecting] = React.useState(false);
   const [accepting, setAccepting] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const [isInterviewModalOpen, setIsInterviewModalOpen] = React.useState(false);
   const fetchDetails = async () => {
     try {
@@ -75,6 +78,18 @@ export default function CandidateDetailPage() {
       alert("Failed to accept candidate: " + err.message);
     } finally {
       setAccepting(false);
+    }
+  };
+  const handleDeleteApplication = async () => {
+    if (!window.confirm("Delete this application and remove its resume from private storage if no other active application uses it? This action cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await deleteApplication(id as string);
+      window.location.assign("/jobs");
+    } catch (err: any) {
+      alert("Failed to delete application/resume: " + (err.message || "Unknown error"));
+    } finally {
+      setDeleting(false);
     }
   };
   const handleInterviewSuccess = async () => {
@@ -320,6 +335,19 @@ export default function CandidateDetailPage() {
           )}
         </div>
       </div>
+      {["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "") && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleDeleteApplication}
+            disabled={deleting}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+            {deleting ? "Deleting Application & Resume..." : "Delete Application & Resume"}
+          </button>
+        </div>
+      )}
       <InterviewSchedulerModal
         isOpen={isInterviewModalOpen}
         onClose={() => setIsInterviewModalOpen(false)}

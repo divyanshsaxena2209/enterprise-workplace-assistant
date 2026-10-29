@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useUser } from "@/lib/context/UserContext";
-import { createClient } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/api/candidates";
 import { CheckCircle2, Clock, Loader2, AlertTriangle, PlayCircle, HelpCircle, Circle, Calendar, ChevronRight } from "lucide-react";
 import LockedFeature from "@/components/layout/LockedFeature";
 import { getMyApplications } from "@/lib/api/applications";
@@ -22,7 +22,6 @@ interface Progress {
 }
 export default function EmployeeOnboardingDashboard() {
   const { profile, isHired, loading: profileLoading } = useUser();
-  const supabase = createClient();
   const [progressData, setProgressData] = useState<Progress[]>([]);
   const [hiredJobs, setHiredJobs] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
@@ -51,16 +50,8 @@ export default function EmployeeOnboardingDashboard() {
     if (!profile) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("employee_onboarding_progress")
-        .select(`
-          id, step_id, status, notes, completion_date,
-          onboarding_steps ( id, step_name, description, step_order )
-        `)
-        .eq("employee_id", profile.id);
-      if (error) {
-        console.error("Error fetching onboarding progress:", error);
-      } else if (data) {
+      const data = await fetchWithAuth("/onboarding/my-progress");
+      if (Array.isArray(data)) {
         let mapped: Progress[] = data.map((d: any) => ({
           id: d.id,
           step_id: d.step_id,
@@ -73,28 +64,29 @@ export default function EmployeeOnboardingDashboard() {
           mapped = mapped.filter(m => m.notes && m.notes.includes(`APP_ID:${selectedJob.id}`));
         }
         setProgressData(mapped);
+      } else {
+        setProgressData([]);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching onboarding progress:", err);
+      setProgressData([]);
     } finally {
       setLoading(false);
     }
-  }, [profile, supabase, selectedJob]);
+  }, [profile, selectedJob]);
   useEffect(() => {
     if (!profileLoading && profile) {
       fetchProgress();
     }
   }, [profileLoading, profile, fetchProgress]);
+  // Cognito identities do not use the browser Supabase session; refresh through the authenticated API.
   useEffect(() => {
     if (!profile) return;
-    const channel = supabase.channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_onboarding_progress', filter: `employee_id=eq.${profile.id}` }, () => fetchProgress())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'onboarding_steps' }, () => fetchProgress())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [profile, supabase, fetchProgress]);
+    const refreshId = window.setInterval(() => {
+      void fetchProgress();
+    }, 30000);
+    return () => window.clearInterval(refreshId);
+  }, [profile, fetchProgress]);
   if (profileLoading || loading || jobsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
@@ -186,7 +178,7 @@ export default function EmployeeOnboardingDashboard() {
           <div className="flex-1 space-y-6">
             <div>
               <h1 className="text-3xl font-black tracking-tight mb-2">Welcome aboard, {profile?.full_name?.split(' ')[0] || 'Team'}!</h1>
-              <p className="text-muted-foreground text-sm leading-relaxed max-w-2xl">This is your personalized onboarding roadmap. It outlines everything you need to know and do to get fully integrated into the team. Your progress is tracked in real-time.</p>
+              <p className="text-muted-foreground text-sm leading-relaxed max-w-2xl">This is your personalized onboarding roadmap. It outlines everything you need to know and do to get fully integrated into the team. Your progress refreshes automatically.</p>
             </div>
             <div className="flex flex-wrap gap-4">
               <div className="bg-background border border-border rounded-xl px-5 py-3 shadow-sm flex items-center gap-3">

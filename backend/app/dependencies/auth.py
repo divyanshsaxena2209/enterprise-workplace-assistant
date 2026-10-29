@@ -36,9 +36,11 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.enums import UserRole
 from app.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError
-from app.core.security import bearer_scheme, decode_jwt, extract_user_id
+from app.core.security import bearer_scheme
 from app.db.supabase import get_supabase_client
+from app.repositories.cognito_identity_repository import CognitoIdentityRepository
 from app.repositories.profile_repository import ProfileRepository
+from app.services.identity_resolver import resolve_profile_from_bearer_token
 from app.schemas.profile import ProfileResponse
 
 logger = logging.getLogger(__name__)
@@ -87,21 +89,18 @@ def get_current_user(
             updated_at=datetime.utcnow()
         )
 
-    payload = decode_jwt(credentials.credentials)
-    user_id = extract_user_id(payload)
-
     client = get_supabase_client()
-    repo = ProfileRepository(client)
-
-    profile = repo.get_by_id(user_id)
+    profile_repo = ProfileRepository(client)
+    cognito_identity_repo = CognitoIdentityRepository(client)
+    profile = resolve_profile_from_bearer_token(
+        credentials.credentials,
+        profile_repo,
+        cognito_identity_repo,
+    )
     if profile is None:
-        raise NotFoundError("User profile not found. Please contact support.")
-
-    if not profile.is_active:
-        raise AuthenticationError(
-            "This account has been deactivated. Please contact your administrator."
+        raise NotFoundError(
+            "User profile was not found, is inactive, or is not linked to this Cognito identity."
         )
-
     return ProfileResponse.from_model(profile)
 
 
