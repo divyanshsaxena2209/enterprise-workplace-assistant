@@ -152,7 +152,7 @@ export default function KnowledgeDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Search and ask questions about your company documents.</p>
         </div>
         <div className="flex gap-3">
-          {profile?.role === "MANAGEMENT" && (
+          {(profile?.employee_id || ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "")) && (
             <div className="flex items-center gap-2 flex-wrap">
               <input 
                 type="file" 
