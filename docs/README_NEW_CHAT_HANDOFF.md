@@ -1943,3 +1943,24 @@ Read-only logs for 2026-10-25 16:07:05–16:07:30 UTC (~21:37 IST) show the stag
 - Existing verified image digest remains `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:1590296c2a31e5afc4b3388e3a0175666f185c7503e1902b1b3e9594f2c6e7c2`. It was built from commit `78de2cfc0352d7661104dbbf0dedf88f13b438cc`; Dockerfile sets `PYTHONPATH=/app` and includes a build-time import check. No rebuild is required for the CloudFormation-only WorkingDirectory field, unless the change set/current image URI comparison shows a different digest.
 - Next manual action: update existing `ewa-cognito-staging-api` stack using the current template from branch `cognito-staging-integration` (direct URL `https://raw.githubusercontent.com/divyanshsaxena2209/enterprise-workplace-assistant/cognito-staging-integration/infra/aws/cognito-staging-backend.yml`) and set `ImageUri` to the exact digest above. Preserve all remaining parameters/secrets. Review the change set; require both Lambda functions to update in place and no unrelated replacement/deletions. Do not touch Production.
 - After UPDATE_COMPLETE, inspect actual Lambda configuration: ImageUri should match the digest, and ImageConfig should show Command `app.lambdas.cognito_user_delete_sync.handler` and WorkingDirectory `/app`. Check newest log events and verify the scheduled invocation no longer produces ImportModuleError, then check whether DeleteSyncErrors clears after its 5-minute evaluation. The disposable-user acceptance test remains pending by user choice.
+
+---
+
+## Knowledge Base employee-upload access update — 29 October 2026
+
+### Requested behavior
+- Employee-level accounts should be able to upload PDF/DOCX policy/reference documents and ask questions in the Knowledge Base.
+- Management/admin/HR document-management permissions remain unchanged.
+- Employee uploads must be scoped to the employee's own department; employees must not be able to select or forge a company-wide `ALL` scope through a client request.
+- Keep changes on `cognito-staging-integration`; do not touch `main`, production Vercel, production Lambda, production Supabase, or the protected `busted` project.
+
+### Changes committed to the staging branch
+- `frontend/app/(dashboard)/knowledge/page.tsx`: show the Upload Document control to profiles with an employee ID as well as Management/Admin/HR roles. Existing Ask Questions entry point remains available.
+- `backend/app/routers/knowledge.py`: changed the upload endpoint dependency from management-only to `require_management_or_employee`. Management roles retain their requested scope; employees are forced to their own profile department and receive HTTP 403 if no department is assigned. This server-side enforcement prevents a forged `department_scope=ALL` form field from granting broader document visibility.
+- Commits: backend `d383aa94f89fd266bd8a1af26899be1edea89d1c`; frontend `627b2aaf06083e77e8bec8a6cf9ac45428287884`.
+
+### Status and verification required
+- Git changes are committed on `cognito-staging-integration`; this alone does not prove that the Vercel frontend or Lambda backend has deployed the new code.
+- Verify the staging frontend deployment and staging Lambda image/build before claiming this is live. No production changes were made.
+- Minimal acceptance checks: (1) employee can see Upload Document; (2) employee can upload a small test PDF and ask a question; (3) employee request attempting `department_scope=ALL` is stored with the employee's department scope; (4) employee with no department receives a clear 403; (5) management can still upload company-wide documents and existing deletion restrictions remain management-only.
+- Confirm employee query visibility remains restricted by the existing `document_scope_visible` logic. Test only with disposable staging data and do not upload confidential company policies unless approved.
