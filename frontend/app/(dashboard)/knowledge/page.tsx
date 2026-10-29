@@ -228,7 +228,10 @@ export default function KnowledgeDashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {(\n                  ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "") ||\n                  (profile?.role === "EMPLOYEE" && Boolean(doc.managed_by_api) && String(doc.uploaded_by || "") === String(profile?.id || ""))\n                ) && (
+                {(
+                  ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "") ||
+                  (profile?.role === "EMPLOYEE" && Boolean(doc.managed_by_api) && String(doc.uploaded_by || "") === String(profile?.id || ""))
+                ) && (
                   <button
                     type="button"
                     onClick={(e) => void handleDeleteDocument(
