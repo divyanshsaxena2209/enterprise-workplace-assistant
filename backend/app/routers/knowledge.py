@@ -382,16 +382,27 @@ def get_document_download_url(file_key: str, current_user: ProfileResponse = Dep
 @router.delete("/document")
 async def delete_document_endpoint(
     body: DeleteDocumentRequest,
-    current_user: ProfileResponse = Depends(require_management),
+    current_user: ProfileResponse = Depends(require_management_or_employee),
 ):
     repository = _document_repository()
+    is_management = current_user.role in UserRole.management_roles()
     record = None
+    # Employees must delete by a trusted registry ID so the backend can verify
+    # ownership. Do not allow filename/key-only deletion requests from employees.
+    if not is_management and body.document_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Employees can only delete documents they uploaded.",
+        )
     if body.document_id is not None:
         try:
             record = repository.get_by_id(str(body.document_id))
         except Exception as exc:
             raise HTTPException(status_code=500, detail="Unable to load the knowledge-document record.") from exc
         if record is None:
+            raise HTTPException(status_code=404, detail="Knowledge document not found.")
+        if not is_management and str(record.get("uploaded_by") or "") != str(current_user.id):
+            # Return 404 rather than revealing another department/user's document.
             raise HTTPException(status_code=404, detail="Knowledge document not found.")
         filename = str(record["filename"])
         file_key = record.get("file_key")
