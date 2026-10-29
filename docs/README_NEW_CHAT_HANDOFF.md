@@ -1964,3 +1964,32 @@ Read-only logs for 2026-10-25 16:07:05–16:07:30 UTC (~21:37 IST) show the stag
 - Verify the staging frontend deployment and staging Lambda image/build before claiming this is live. No production changes were made.
 - Minimal acceptance checks: (1) employee can see Upload Document; (2) employee can upload a small test PDF and ask a question; (3) employee request attempting `department_scope=ALL` is stored with the employee's department scope; (4) employee with no department receives a clear 403; (5) management can still upload company-wide documents and existing deletion restrictions remain management-only.
 - Confirm employee query visibility remains restricted by the existing `document_scope_visible` logic. Test only with disposable staging data and do not upload confidential company policies unless approved.
+
+---
+
+## Employee Knowledge Base upload — staging backend deployment blocker (29 October 2026)
+
+### Latest user-observed result
+- In the staging frontend, an EMPLOYEE-level account now sees both **UPLOAD DOCUMENT** and **ASK QUESTIONS**.
+- After attempting the upload, the frontend displays: **"This action requires Management-level access."**
+- This exact error text is raised by the old `require_management` backend dependency. In the current `cognito-staging-integration` source, `POST /api/v1/knowledge/upload` now uses `require_management_or_employee`, and employee uploads are forced to the employee's department scope.
+- Therefore, the screenshot indicates the staging backend API is still serving an older image/code version (or the request is reaching an old backend deployment). It is not a frontend button-visibility problem anymore.
+
+### Code already committed
+- Backend permission fix commit: `d383aa94f89fd266bd8a1af26899be1edea89d1c`.
+- Frontend employee upload control commit: `627b2aaf06083e77e8bec8a6cf9ac45428287884`.
+- This frontend button is visible in the user's latest screenshot.
+- The staging ECR build workflow `.github/workflows/build-cognito-staging-ecr.yml` builds a branch-specific image tagged `cognito-staging-d383aa94f89fd266bd8a1af26899be1edea89d1c` when the backend fix commit is pushed. Verify that the workflow succeeded and that the image exists before deployment.
+
+### Required staging-only AWS step
+- ECR build alone does not change the running Lambda image. AWS Lambda resolves a container tag to a specific digest; an updated tag does not automatically update an existing Lambda. Explicitly update the image URI or perform the reviewed CloudFormation stack update.
+- In AWS Console (account 745531385877, region ap-south-1), inspect repository `enterprise-workplace-assistant-backend` for the staging tag above and copy the immutable image digest.
+- Create a change set for existing CloudFormation stack `ewa-cognito-staging-api`; update only the intended `ImageUri` to `745531385877.dkr.ecr.ap-south-1.amazonaws.com/enterprise-workplace-assistant-backend@sha256:<verified-digest>`, while preserving current parameter values/secrets. Review the change set: `StagingApi` must be modified in place (`Replacement=False`) and there must be no unrelated deletion/replacement. Execute only after that review.
+- Do not deploy to the production Lambda. Keep `main`, production Supabase/Vercel settings, job postings, and all existing data untouched.
+
+### Minimal acceptance test after deployment
+1. Confirm the staging stack update succeeds and the staging Lambda has the new image digest.
+2. Refresh the staging Knowledge Base as an EMPLOYEE user and upload a small non-confidential test PDF.
+3. Confirm upload succeeds and the saved document's scope matches that employee's department. If the employee has no department assigned, a controlled 403 saying a department must be set is expected; the old "Management-level access" message is not.
+4. Ask a question about the uploaded document and verify a grounded answer/source if retrieval is ready.
+5. Confirm management can still upload company-wide documents and employee delete controls remain unavailable.
