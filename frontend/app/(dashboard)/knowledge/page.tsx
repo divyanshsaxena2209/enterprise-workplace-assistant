@@ -47,6 +47,7 @@ export default function KnowledgeDashboard() {
           department_scope: doc.department_scope || "ALL",
           file_url: doc.file_url || undefined,
           file_key: doc.file_key,
+          uploaded_by: doc.uploaded_by,
           storage_provider: doc.storage_provider,
           pages: doc.pages,
           chunks: doc.chunks,
@@ -107,6 +108,7 @@ export default function KnowledgeDashboard() {
       const newDoc = {
         id: String(result.id || Date.now()),
         managed_by_api: Boolean(result.id),
+        uploaded_by: result.uploaded_by || profile?.id,
         title: result.filename || file.name,
         uploaded: result.created_at ? new Date(result.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
         dept: result.department_scope || uploadDepartmentScope || "ALL",
@@ -226,7 +228,7 @@ export default function KnowledgeDashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "") && (
+                {(\n                  ["MANAGEMENT", "ADMIN", "HR"].includes(profile?.role || "") ||\n                  (profile?.role === "EMPLOYEE" && Boolean(doc.managed_by_api) && String(doc.uploaded_by || "") === String(profile?.id || ""))\n                ) && (
                   <button
                     type="button"
                     onClick={(e) => void handleDeleteDocument(
